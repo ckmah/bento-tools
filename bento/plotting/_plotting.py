@@ -7,12 +7,6 @@ def spots(data, width=400, height=400, path=''):
     """
     # TODO convert for mark_circle? geoshape point size is buggy
     # TODO add side histograms
-    cell_chart = alt.Chart(data['cell']).mark_geoshape(
-        fill=None,
-        stroke='black'
-    ).project(
-        type='identity',
-        reflectY=True)
 
     point_chart = alt.Chart(data['points']).mark_geoshape().encode(
         color='gene',
@@ -21,7 +15,21 @@ def spots(data, width=400, height=400, path=''):
         reflectY=True,
         pointRadius=1)
 
-    chart = (cell_chart + point_chart).configure_view(
+    cell_chart = alt.Chart(data['cell']).mark_geoshape(
+        fill=None,
+        stroke='black'
+    ).project(
+        type='identity',
+        reflectY=True)
+
+    nucleus_chart = alt.Chart(data['nucleus']).mark_geoshape(
+        fill=None,
+        stroke='black',
+    ).project(
+        type='identity',
+        reflectY=True)
+
+    chart = (cell_chart + nucleus_chart + point_chart).configure_view(
         strokeWidth=0
     ).properties(
         width=width,

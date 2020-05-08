@@ -17,10 +17,10 @@ def pca(data, n_components=2):
     return data
 
 
-def umap(data, n_components=2):
+def umap(data, n_components=2, n_neighbors=15):
     """
     """
-    fit = u.UMAP(n_components=n_components, n_neighbors=4)
+    fit = u.UMAP(n_components=n_components, n_neighbors=n_neighbors)
     x_new = fit.fit_transform(data['features'])
     columns = [str(c) for c in range(0, x_new.shape[1])]
     x_new = pd.DataFrame(x_new,
