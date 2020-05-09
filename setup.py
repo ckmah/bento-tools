@@ -20,5 +20,6 @@ setup(name='bento',
                         'scipy>=1.4.1',
                         'shapely>=1.7.0',
                         'tqdm>=4.44.1',
-                        'umap-learn>=0.3.10'],
+                        'umap-learn>=0.3.10',
+                        'astropy>=4.0.1'],
       zip_safe=False)
