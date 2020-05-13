@@ -2,34 +2,34 @@ import geopandas
 import pandas as pd
 import altair as alt
 
-def spots(data, width=400, height=400, path=''):
+def spots(data, width=800, height=800, path=''):
     """
     """
     # TODO convert for mark_circle? geoshape point size is buggy
     # TODO add side histograms
 
-    point_chart = alt.Chart(data['points']).mark_geoshape().encode(
+    point_chart = alt.Chart(data['points']).mark_circle(size=5).encode(
+        longitude='x:Q',
+        latitude='y:Q',
         color='gene',
-    ).project(
-        type='identity',
-        reflectY=True,
-        pointRadius=1)
+    )
 
     cell_chart = alt.Chart(data['cell']).mark_geoshape(
-        fill=None,
-        stroke='black'
-    ).project(
-        type='identity',
-        reflectY=True)
+        fill='#DDD',
+        stroke='gray',
+        opacity=0.6
+    )
 
     nucleus_chart = alt.Chart(data['nucleus']).mark_geoshape(
-        fill=None,
-        stroke='black',
-    ).project(
-        type='identity',
-        reflectY=True)
+        fill='#DDD',
+        stroke='gray',
+        opacity=0.6
+    )
 
-    chart = (cell_chart + nucleus_chart + point_chart).configure_view(
+    chart = (cell_chart + nucleus_chart + point_chart).project(
+        type='identity',
+        reflectY=True
+    ).configure_view(
         strokeWidth=0
     ).properties(
         width=width,

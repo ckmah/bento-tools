@@ -10,33 +10,45 @@ from scipy.stats import spearmanr
 from scipy.stats.mstats import zscore
 from sklearn.metrics import mean_squared_error
 from pandarallel import pandarallel
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
-pandarallel.initialize(nb_workers=4)
+from .._settings import settings
 
-# Global computations for memoization
+pandarallel.initialize(nb_workers=settings.n_cores, verbose=0)
+
 _progress_bar = None
-_cell_morph_masks = {}
+# Global computations for memoization
+_cell_cache = {}
 
 def prepare_features(data):
     """
     """
     global _progress_bar
-    _progress_bar = tqdm(
-        zip(data['cell_id'], data['cell'], data['nucleus']), total=len(data['cell']))
+    _progress_bar = tqdm(data['cell_id'])
     _progress_bar.set_description('Preparing features...')
+    
+    points = data['points']
+    cell = data['cell']
+    nucleus = data['nucleus']
 
     features = []
-    for id, cell_mask, nucleus_mask in _progress_bar:
+    # Prepare features for each cell independently
+    for cell_id in _progress_bar:
         # Select points in cell
-        cell_points = geopandas.clip(data['points'], cell_mask)
-        _cell_morph_masks = {}
+        cell_points = points.loc[points['cell_id'] == cell_id]
+        cell_mask = cell.loc[cell['cell_id'] == cell_id, 'geometry'].values[0]
+        nucleus_mask = nucleus.loc[cell['cell_id'] == cell_id, 'geometry'].values[0]
+        
+        _prepare_cell_cache(cell_points, cell_mask, nucleus_mask, cell_id)
 
-        # Prepare features for each gene
-        cell_features = cell_points.groupby('gene').parallel_apply(
-            lambda gene_points: _prepare_features(gene_points, cell_mask, nucleus_mask))
+        # Prepare features for each gene in cell
+        cell_features = cell_points.groupby('gene').parallel_apply(lambda gene_points: _prepare_features(
+            gene_points,
+            cell_mask,
+            nucleus_mask,
+            cell_id))
 
-        cell_features['cell_id'] = id
+        cell_features['cell_id'] = cell_id
         features.append(cell_features)
 
 
@@ -50,20 +62,75 @@ def prepare_features(data):
     return data
 
 
-def _prepare_features(points, cell_mask, nucleus_mask):
+def _prepare_cell_cache(points, cell_mask, nucleus_mask, cell_id):
+    """Precompute cell-specific features.
+
+    Parameters
+    ----------
+    cell_mask : Geo
+        [description]
+    nucleus_mask : [type]
+        [description]
+    """
+    cache = {}
+    
+    # Uniform grid of points across cell
+    cache['grid_points'] = _poly2grid(cell_mask)
+
+    # Get all centroids
+    cache['grid_centroid'] = [cache['grid_points'].mean(axis=1)]
+    cache['cell_centroid'] = [np.array(cell_mask.centroid)]
+    cache['nucleus_centroid'] = [np.array(nucleus_mask.centroid)]
+
+    # Calculate cell's radius of gyration
+    # TODO memoize this
+    cell_centroid_array = np.tile(
+        cache['cell_centroid'], len(cache['grid_points'])).reshape(-1, 2)
+    cache['radius_of_gyration'] = mean_squared_error(cache['grid_points'], cell_centroid_array)
+
+    # Mean cell radius size
+    cell_radius = distance.cdist(cache['cell_centroid'],
+                                 np.array(cell_mask.exterior.xy).T)
+    cache['mean_cell_radius'] = abs(cell_radius).mean()
+
+    proportions = [.1, .25]
+    for p in proportions:
+        d = cache['mean_cell_radius'] * p
+
+        morph_p = f'morph_{p}_mask'
+        cache[morph_p] = cell_mask.buffer(distance=-d).buffer(distance=d)
+
+    global _cell_cache
+    _cell_cache[cell_id] = cache
+
+
+def _poly2grid(polygon):
+    minx, miny, maxx, maxy = polygon.bounds
+    x, y = np.meshgrid(np.arange(minx, maxx, step=np.float(20)),
+                       np.arange(miny, maxy, step=np.float(20)))
+    x = x.flatten()
+    y = y.flatten()
+    xy = np.array([x, y]).T
+    polygon_path = mplPath.Path(np.array(polygon.exterior.xy).T)
+    polygon_cell_mask = polygon_path.contains_points(xy)
+    xy = xy[polygon_cell_mask]
+
+    return xy
+
+def _prepare_features(points, cell_mask, nucleus_mask, cell_id):
     cell_features = _calc_ripley_features(points, cell_mask)
     cell_features = cell_features.append(
         _calc_norm_distance_quantile_features(points, cell_mask, nucleus_mask))
     cell_features = cell_features.append(
-        _calc_morph_enrichment(points, cell_mask))
+        _calc_morph_enrichment(points, cell_mask, cell_id))
     cell_features = cell_features.append(
         _calc_nuclear_fraction(points, cell_mask, nucleus_mask))
-    cell_features = cell_features.append(_calc_indexes(points, cell_mask))
+    cell_features = cell_features.append(_calc_indexes(points, cell_id))
 
     return cell_features
 
 
-def _calc_ripley_features(points, mask):
+def _calc_ripley_features(points, cell_mask):
     """
     Compute 5 features extracted from Ripley L-function.
 
@@ -76,10 +143,8 @@ def _calc_ripley_features(points, mask):
         monotony : float
         l_4 : float
     """
-    global _progress_bar
-    _progress_bar.set_description('Computing Ripley features...')
 
-    ripley_norm, radii = _ripley(points, mask)
+    ripley_norm, radii = _ripley(points, cell_mask)
 
     # Max value of the L-function
     max_l = ripley_norm.max()
@@ -95,9 +160,9 @@ def _calc_ripley_features(points, mask):
     l_corr = spearmanr(radii, ripley_norm)[0]
 
     # L-function at L/4 where length of the cell L is max dist between 2 points on polygon defining cell border
-    mask_points = np.array(mask.exterior.coords.xy).T
-    l_4_dist = distance_matrix(mask_points, mask_points).max() / 4
-    l_4 = _ripley(points, mask, [l_4_dist])[0][0]
+    cell_mask_points = np.array(cell_mask.exterior.coords.xy).T
+    l_4_dist = distance_matrix(cell_mask_points, cell_mask_points).max() / 4
+    l_4 = _ripley(points, cell_mask, [l_4_dist])[0][0]
 
     return pd.Series([max_l, max_gradient, min_gradient, l_corr, l_4],
                      index=['max_l', 'max_gradient', 'min_gradient', 'l_corr', 'l_4'])
@@ -148,8 +213,6 @@ def _calc_norm_distance_quantile_features(points, cell_mask, nucleus_mask):
     -------
     pd.Series
     """
-    global _progress_bar
-    _progress_bar.set_description('Computing distance features...')
 
     # Calculate normalized distances from points to centroids
     cell_centroid_dist = _calc_norm_dist_to_centroid(points, cell_mask)
@@ -206,68 +269,62 @@ def _calc_norm_dist_to_mask(points, mask):
 
 def _calc_nuclear_fraction(points, cell_mask, nucleus_mask):
     total_count = len(points)
+    # TODO use loc instead of clip
     nuclear_count = len(geopandas.clip(points, nucleus_mask))
     ratio = float(nuclear_count) / total_count
     return pd.Series(ratio, index=['nuclear_fraction'])
 
 
-def _calc_indexes(points, mask):
+def _calc_indexes(points, cell_id):
     """Calculate polarization index, dispersion index, and peripheral index.
     """
-    global _progress_bar
-    _progress_bar.set_description('Computing index features...')
+    global _cell_cache
+    cache = _cell_cache[cell_id]
 
+    # Calculate distance between point and cell centroids
     point_centroid = [points[['x', 'y']].mean().values]
-    cell_centroid = [np.array(mask.centroid)]
-    offset = distance.cdist(point_centroid, cell_centroid)[0][0]
+    offset = distance.cdist(point_centroid, _cell_cache[cell_id]['cell_centroid'])[0][0]
 
-    mask_grid = _poly2grid(mask)
-    cell_centroid_array = np.tile(cell_centroid, len(mask_grid)).reshape(-1, 2)
+    # Calculate polarization index
+    polarization_index = offset / cache['radius_of_gyration']
 
-    radius_of_gyration = mean_squared_error(mask_grid, cell_centroid_array)
-    polarization_index = offset / radius_of_gyration
+    # Calculate second moment of points with centroid as reference
+    def _calc_second_moment(centroid, pts):
+        '''
+        centroid : [1 x 2] float
+        pts : [n x 2] float
+        '''
+        radii = distance.cdist(centroid, pts)
+        second_moment = np.sum(radii * radii / len(pts))
+        return second_moment
 
-    return pd.Series([polarization_index], index=['polarization_index'])
+    # Calculate dispersion index; d-index = 2nd moment of spots, norm. by 2nd moment of uniform spots; moments relative to spot centroid
+    dispersion_index = _calc_second_moment(point_centroid, points[['x', 'y']].values) / \
+                       _calc_second_moment(point_centroid, cache['grid_points'])
 
-
-def _poly2grid(polygon):
-    minx, miny, maxx, maxy = polygon.bounds
-    x, y = np.meshgrid(np.linspace(minx, maxx, num=100),
-                       np.linspace(miny, maxy, num=100))
-    x = x.flatten()
-    y = y.flatten()
-    xy = np.array([x, y]).T
-    polygon_path = mplPath.Path(np.array(polygon.exterior.xy).T)
-    polygon_mask = polygon_path.contains_points(xy)
-    xy = xy[polygon_mask]
-
-    return xy
+    # Calculate peripheral distribution index; d-index = 2nd moment of spots, norm. by 2nd moment of uniform spots; moments relative to nucleus centroid
+    peripheral_distribution_index = _calc_second_moment(cache['nucleus_centroid'], points[['x', 'y']].values) / \
+                                    _calc_second_moment(cache['nucleus_centroid'], cache['grid_points'])
 
 
-def _calc_morph_enrichment(points, mask):
-    global _progress_bar
-    _progress_bar.set_description('Computing morphological features...')
+    feature_labels = ['polarization_index', 'dispersion_index', 'peripheral_distribution_index']
+    return pd.Series([polarization_index, dispersion_index, peripheral_distribution_index], index=feature_labels)
 
-    # Mean radius size
-    mean_radius = distance.cdist(np.array(mask.centroid).reshape(1, 2),
-                                 np.array(mask.exterior.xy).T)
-    mean_radius = abs(mean_radius).mean()
-    total_points = len(points)
 
-    global _cell_morph_masks
+def _calc_morph_enrichment(points, cell_mask, cell_id):
+    global _cell_cache
+    cache = _cell_cache[cell_id]
+    # Mean cell radius size
+    cell_radius = distance.cdist(cache['cell_centroid'],
+                                 np.array(cell_mask.exterior.xy).T)
+    mean_cell_radius = abs(cell_radius).mean()
 
     enrichment = {}
     proportions = [.1, .25]
+    # Count proportion of points in mask
     for p in proportions:
-        d = mean_radius * p
-
-        p_str = str(p)
-        if p_str not in _cell_morph_masks:
-            _cell_morph_masks[p_str] = mask.buffer(distance=-d).buffer(distance=d)
-
-        n_points = len(geopandas.clip(points, _cell_morph_masks[p_str]))
-
-        stat = np.float(n_points) / total_points
-        enrichment[f'morph_enrichment_{p}'] = stat
+        # Count points in morph mask
+        n_points = len(geopandas.clip(points, cache[f'morph_{p}_mask']))
+        enrichment[f'morph_enrichment_{p}'] = np.float(n_points) / len(points)
 
     return pd.Series(enrichment)

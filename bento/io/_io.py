@@ -3,17 +3,63 @@ import cv2 as cv
 import pandas as pd
 import geopandas
 from shapely import geometry
+from pandarallel import pandarallel
+
+from .._settings import settings
+
+pandarallel.initialize(nb_workers=settings.n_cores, verbose=0)
+
 
 def read_geodata(spots_path, cells_path, nucleus_path):
+    """Load spots and masks for many cells.
+
+
+    Parameters
+    ----------
+    spots_path : str
+        Filepath to spots .shp file.
+    cells_path : str
+        Filepath to cell segmentation masks .shp file.
+    nucleus_path : str
+        Filepath to nucleus segmentation masks .shp file.
+
+    Returns
+    -------
+        dict : keys = points, cell_id, cell, nucleus
     """
-    Load spots and masks for many cells.
-    """
+
     points = geopandas.read_file(spots_path)
-    cells = geopandas.read_file(cells_path).geometry
-    nuclei = geopandas.read_file(nucleus_path).geometry
-    cell_ids = range(0, len(cells))
+    cell = geopandas.read_file(cells_path)
+    nucleus = geopandas.read_file(nucleus_path)
+    nucleus = nucleus.set_geometry(nucleus.buffer(0))
+    cell_ids = range(0, len(cell))
+
+    # Assign points to cells, default to -1 to denote not in cell
+    print('Indexing cell segmentation masks...\r')
+    cell['cell_id'] = range(0, len(cell))
+    points['cell_id'] = -1
+    nucleus['cell_id'] = -1
+
+    def assign_cell_id(c):
+        c_poly = c['geometry']
+        c_id = c['cell_id']
+        # Assign cell_id to each point
+        subset_pids = geopandas.clip(points, c_poly).index
+        points.loc[subset_pids, 'cell_id'] = c_id
+
+        # Assign cell_id to each nucleus
+        subset_nucleus = geopandas.clip(nucleus, c_poly).geometry
+        subset_nucleus_area = subset_nucleus.apply(lambda n: n.intersection(c_poly).area/n.area)
+        subset_nid = subset_nucleus_area.idxmax()
+        nucleus.loc[subset_nid, 'cell_id'] = c_id
+        
+        # TODO assign cell ids by position in fov
     
-    return {'points': points, 'cell_id': cell_ids, 'cell': cells, 'nucleus': nuclei}
+    # TODO parallelize
+    cell.apply(lambda c: assign_cell_id(c), axis=1)
+    
+    print('Done.')
+    return {'points': points, 'cell_id': cell_ids, 'cell': cell, 'nucleus': nucleus}
 
 def read_imgs(spots_path, cell_img_path, nucleus_img_path):
     """Load spots and masks for a single cell.
@@ -50,6 +96,5 @@ def read_imgs(spots_path, cell_img_path, nucleus_img_path):
             0][0].flatten().reshape(-1, 2)
         poly = geometry.Polygon(contour)
         polys.append(poly)
-        
+
     return {'points': points, 'cell': polys[0], 'nucleus': polys[1]}
-  
