@@ -2,13 +2,17 @@ import geopandas
 import pandas as pd
 import altair as alt
 
-def spots(data, width=400, height=400, path=''):
+def spots(data, width=400, height=400, path='', downsample=1.0, genes=[]):
     """
     """
     # TODO convert for mark_circle? geoshape point size is buggy
     # TODO add side histograms
+    if len(genes) > 0:
+        points_df = data['points'][data['points']['gene'].isin(genes)]
+    else:
+        points_df = data['points']
 
-    point_chart = alt.Chart(data['points']).mark_geoshape().encode(
+    point_chart = alt.Chart(points_df.sample(frac=downsample)).mark_geoshape().encode(
         color='gene',
     ).project(
         type='identity',
