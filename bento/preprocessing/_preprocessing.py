@@ -20,7 +20,7 @@ _progress_bar = None
 # Global computations for memoization
 _cell_cache = {}
 
-def prepare_features(data):
+def prepare_features(data,smFISH=False):
     """
     """
     global _progress_bar
@@ -53,9 +53,11 @@ def prepare_features(data):
 
 
     features = pd.concat(features)
-
-    # Z-score normalize features
-    features = features.apply(zscore)
+    if smFISH == False:
+        # Z-score normalize features
+        features = features.apply(zscore)
+    else:
+        pass
 
     # TODO add more features
     data['features'] = features
