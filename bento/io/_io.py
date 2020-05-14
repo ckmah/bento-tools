@@ -3,6 +3,7 @@ import cv2 as cv
 import pandas as pd
 import geopandas
 from shapely import geometry
+from shapely.ops import unary_union
 from pandarallel import pandarallel
 
 from .._settings import settings
@@ -32,14 +33,29 @@ def read_geodata(spots_path, cells_path, nucleus_path):
     cell = geopandas.read_file(cells_path)
     nucleus = geopandas.read_file(nucleus_path)
     nucleus = nucleus.set_geometry(nucleus.buffer(0))
-    cell_ids = range(0, len(cell))
-
+    
+    cell = _clean_polygons(cell)
+    nucleus = _clean_polygons(nucleus)
+    
     # Assign points to cells, default to -1 to denote not in cell
     print('Indexing cell segmentation masks...\r')
-    cell['cell_id'] = range(0, len(cell))
-    points['cell_id'] = -1
-    nucleus['cell_id'] = -1
+    points, cell, nucleus, cell_ids = _assign_cell_id(points, cell, nucleus)
+    
+    print('Done.')
+    return {'points': points, 'cell_id': cell_ids, 'cell': cell, 'nucleus': nucleus}
 
+
+def _clean_polygons(gdf):
+    # remove self-intersections
+    gdf.buffer(0)
+    
+    # simplify MultiPolygon to Polygon (remove artifacts)
+    gdf.geometry = gdf.geometry.apply(unary_union)
+
+    return gdf
+
+def _assign_cell_id(points, cell, nucleus):
+    
     def assign_cell_id(c):
         c_poly = c['geometry']
         c_id = c['cell_id']
@@ -55,11 +71,14 @@ def read_geodata(spots_path, cells_path, nucleus_path):
         
         # TODO assign cell ids by position in fov
     
+    cell['cell_id'] = range(0, len(cell))
+    points['cell_id'] = -1
+    nucleus['cell_id'] = -1
+    
     # TODO parallelize
     cell.apply(lambda c: assign_cell_id(c), axis=1)
-    
-    print('Done.')
-    return {'points': points, 'cell_id': cell_ids, 'cell': cell, 'nucleus': nucleus}
+
+    return points, cell, nucleus, cell['cell_id'].values
 
 def read_imgs(spots_path, cell_img_path, nucleus_img_path):
     """Load spots and masks for a single cell.
