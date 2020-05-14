@@ -3,37 +3,38 @@ import pandas as pd
 import altair as alt
 
 def spots(data, width=400, height=400, path='', downsample=1.0, genes=[]):
-    """
-    """
-    # TODO convert for mark_circle? geoshape point size is buggy
+
     # TODO add side histograms
     if len(genes) > 0:
-        points_df = data['points'][data['points']['gene'].isin(genes)]
+        points = data['points'][data['points']['gene'].isin(genes)]
     else:
-        points_df = data['points']
+        points = data['points']
 
-    point_chart = alt.Chart(points_df.sample(frac=downsample)).mark_geoshape().encode(
+    # Downsample points
+    points = points.sample(frac=downsample)
+        
+    point_chart = alt.Chart(points).mark_circle(size=5).encode(
+        longitude='x:Q',
+        latitude='y:Q',
         color='gene',
-    ).project(
-        type='identity',
-        reflectY=True,
-        pointRadius=1)
+    )
 
     cell_chart = alt.Chart(data['cell']).mark_geoshape(
-        fill=None,
-        stroke='black'
-    ).project(
-        type='identity',
-        reflectY=True)
+        fill='#DDD',
+        stroke='gray',
+        opacity=0.6
+    )
 
     nucleus_chart = alt.Chart(data['nucleus']).mark_geoshape(
-        fill=None,
-        stroke='black',
-    ).project(
-        type='identity',
-        reflectY=True)
+        fill='#DDD',
+        stroke='gray',
+        opacity=0.6
+    )
 
-    chart = (cell_chart + nucleus_chart + point_chart).configure_view(
+    chart = (cell_chart + nucleus_chart + point_chart).project(
+        type='identity',
+        reflectY=True
+    ).configure_view(
         strokeWidth=0
     ).properties(
         width=width,
