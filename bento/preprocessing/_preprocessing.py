@@ -20,16 +20,13 @@ _progress_bar = None
 # Global computations for memoization
 _cell_cache = {}
 
-
-def 
-
 def prepare_features(data,smFISH=False):
     """
     """
     global _progress_bar
     _progress_bar = tqdm(data['cell_id'])
     _progress_bar.set_description('Preparing features...')
-    
+
     points = data['points']
     cell = data['cell']
     nucleus = data['nucleus']
@@ -41,7 +38,7 @@ def prepare_features(data,smFISH=False):
         cell_points = points.loc[points['cell_id'] == cell_id]
         cell_mask = cell.loc[cell['cell_id'] == cell_id, 'geometry'].values[0]
         nucleus_mask = nucleus.loc[cell['cell_id'] == cell_id, 'geometry'].values[0]
-        
+
         _prepare_cell_cache(cell_points, cell_mask, nucleus_mask, cell_id)
 
         # Prepare features for each gene in cell
@@ -78,7 +75,7 @@ def _prepare_cell_cache(points, cell_mask, nucleus_mask, cell_id):
         [description]
     """
     cache = {}
-    
+
     # Uniform grid of points across cell
     cache['grid_points'] = _poly2grid(cell_mask)
 
