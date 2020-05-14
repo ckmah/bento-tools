@@ -2,7 +2,9 @@ import geopandas
 import pandas as pd
 import altair as alt
 
-def spots(data, width=400, height=400, path='', downsample=1.0, genes=[]):
+alt.data_transformers.enable('json')
+
+def spots(data, width=400, height=400, path='', downsample=1.0, genes=[], size=5):
 
     # TODO add side histograms
     if len(genes) > 0:
@@ -13,22 +15,20 @@ def spots(data, width=400, height=400, path='', downsample=1.0, genes=[]):
     # Downsample points
     points = points.sample(frac=downsample)
         
-    point_chart = alt.Chart(points).mark_circle(size=5).encode(
+    point_chart = alt.Chart(points).mark_circle(size=size).encode(
         longitude='x:Q',
         latitude='y:Q',
         color='gene',
     )
 
     cell_chart = alt.Chart(data['cell']).mark_geoshape(
-        fill='#DDD',
+        fill='#EEE',
         stroke='gray',
-        opacity=0.6
     )
 
     nucleus_chart = alt.Chart(data['nucleus']).mark_geoshape(
-        fill='#DDD',
+        fill='#EEE',
         stroke='gray',
-        opacity=0.6
     )
 
     chart = (cell_chart + nucleus_chart + point_chart).project(

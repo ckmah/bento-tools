@@ -28,17 +28,18 @@ def read_geodata(spots_path, cells_path, nucleus_path):
     -------
         dict : keys = points, cell_id, cell, nucleus
     """
-
+    print('Loading files...')
     points = geopandas.read_file(spots_path)
     cell = geopandas.read_file(cells_path)
     nucleus = geopandas.read_file(nucleus_path)
     nucleus = nucleus.set_geometry(nucleus.buffer(0))
     
+    print('Cleaning up masks...')
     cell = _clean_polygons(cell)
     nucleus = _clean_polygons(nucleus)
     
     # Assign points to cells, default to -1 to denote not in cell
-    print('Indexing cell segmentation masks...\r')
+    print('Indexing cells...')
     points, cell, nucleus, cell_ids = _assign_cell_id(points, cell, nucleus)
     
     print('Done.')
@@ -72,12 +73,15 @@ def _assign_cell_id(points, cell, nucleus):
         # TODO assign cell ids by position in fov
     
     cell['cell_id'] = range(0, len(cell))
-    points['cell_id'] = -1
-    nucleus['cell_id'] = -1
+#     points['cell_id'] = -1
+#     nucleus['cell_id'] = -1
     
     # TODO parallelize
-    cell.apply(lambda c: assign_cell_id(c), axis=1)
-
+#     cell.apply(lambda c: assign_cell_id(c), axis=1)
+    points = geopandas.sjoin(points, cell, how='inner', op='intersects')
+    nucleus = geopandas.sjoin(nucleus, cell, how='inner', op='intersects')
+    nucleus = nucleus.loc[~nucleus.duplicated('cell_id', keep='first')]
+    
     return points, cell, nucleus, cell['cell_id'].values
 
 def read_imgs(spots_path, cell_img_path, nucleus_img_path):

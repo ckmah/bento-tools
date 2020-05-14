@@ -10,7 +10,7 @@ from scipy.stats import spearmanr
 from scipy.stats.mstats import zscore
 from sklearn.metrics import mean_squared_error
 from pandarallel import pandarallel
-from tqdm.auto import tqdm
+from tqdm import tqdm
 
 from .._settings import settings
 
@@ -19,6 +19,9 @@ pandarallel.initialize(nb_workers=settings.n_cores, verbose=0)
 _progress_bar = None
 # Global computations for memoization
 _cell_cache = {}
+
+
+def 
 
 def prepare_features(data,smFISH=False):
     """
