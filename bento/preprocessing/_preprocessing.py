@@ -27,6 +27,7 @@ def filter_cells(data, min_points=5):
         return data[filt_points, :]
 
 
+
 def filter_genes(data, min_points):
 
     def _filter_genes(obs_gene_df, min_points):
