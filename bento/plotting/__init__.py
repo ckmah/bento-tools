@@ -1,1 +1,1 @@
-from ._plotting import spots, pca, umap
+from ._plotting import plot_cells, quality_metrics, display, pca, umap
