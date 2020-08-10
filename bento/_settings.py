@@ -17,20 +17,36 @@ class BentoConfig:
     """
     Config manager for bento.
     """
-    
-    def __init__(self, n_cores=2):
+
+    def __init__(self, n_cores=1, progress_bar=False):
         self.n_cores = n_cores
-        
+        self.progress_bar = progress_bar
+
     @property
     def n_cores(self) -> int:
         """
         Default number of cores to use for parallel computing.
         """
         return self._n_cores
-    
+
     @n_cores.setter
     def n_cores(self, n_cores: int):
         _type_check(n_cores, "n_cores", int)
         self._n_cores = n_cores
-        
+
+    @property
+    def progress_bar(self) -> bool:
+        """
+        Return whether progress bars for parallel computing are shown.
+        """
+        return self._progress_bar
+
+    @progress_bar.setter
+    def progress_bar(self, show: bool):
+        """
+        Set whether to display progress bars.
+        """
+        _type_check(show, "progress_bar", bool)
+        self._progress_bar = show
+
 settings = BentoConfig()

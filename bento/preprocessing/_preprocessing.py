@@ -22,7 +22,7 @@ def filter_cells(data, min_points=5):
         return data
     else:
         npoints_cell = data.obs['cell'].value_counts()
-        filt_cells = npoints_cell[npoints_cell > min_points].index
+        filt_cells = npoints_cell[npoints_cell >= min_points].index
         filt_points = data.obs['cell'].isin(filt_cells)
         return data[filt_points, :]
 

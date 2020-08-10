@@ -1,17 +1,18 @@
 import numpy as np
-import cv2 as cv
 import pandas as pd
 import geopandas
 from shapely import geometry, wkt
 from shapely.ops import unary_union
 from pandarallel import pandarallel
 
+from ast import literal_eval
+
 import anndata
 from anndata import AnnData
 
 from .._settings import settings
 
-pandarallel.initialize(nb_workers=settings.n_cores, verbose=0)
+pandarallel.initialize(nb_workers=settings.n_cores, progress_bar=settings.progress_bar, verbose=0)
 
 
 def read_h5ad(filename):
@@ -36,6 +37,9 @@ def read_h5ad(filename):
         adata.uns['masks'][m] = geopandas.GeoDataFrame(
             adata.uns['masks'][m], geometry='geometry')
 
+    # if 'labels' in adata.uns:
+    #     adata.uns['labels'].index = pd.MultiIndex.from_tuples([literal_eval(i) for i in adata.uns['labels'].index], names=['cell', 'gene'])
+
     return adata
 
 def write_h5ad(adata, filename):
@@ -50,7 +54,7 @@ def write_h5ad(adata, filename):
     """
     # Convert geometry from GeoSeries to list for h5ad serialization compatibility
     for m in adata.uns['masks']:
-        adata.uns['masks'][m]['geometry'] = adata.uns['masks'][m]['geometry'].tolist()
+        adata.uns['masks'][m]['geometry'] = adata.uns['masks'][m]['geometry'].apply(lambda x: x.wkt).astype(str)
 
     # Write to h5ad
     adata.write(filename)

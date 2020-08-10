@@ -43,7 +43,7 @@ def _poly2grid(polygon):
 
 def _ripley(points, mask, radii=None):
     """
-    Calculate estimation for Ripley H function.
+    Calculate estimation for Ripley H function (0-centered L function).
 
     Parameters
     ----------
@@ -62,8 +62,8 @@ def _ripley(points, mask, radii=None):
                                   y_min=float(points[:, 1].min()), y_max=float(points[:, 1].max()))
 
     # https://docs.astropy.org/en/stable/api/astropy.stats.RipleysKEstimator.html#astropy.stats.RipleysKEstimator
-    if radii is None:
-        radii = np.linspace(1, np.sqrt(mask.area / 2) ** 0.5, 200)
+    # if radii is None:
+    #     radii = np.linspace(1, np.sqrt(mask.area / 2) ** 0.5, 200)
     ripley = estimator.Hfunction(data=points, radii=radii, mode='none')
 
     return ripley, radii

@@ -10,10 +10,11 @@ from scipy.spatial import distance, distance_matrix
 from scipy.stats import spearmanr
 
 from .._utils import _poly2grid, _ripley
+from .._settings import settings
 
 from pandarallel import pandarallel
 
-pandarallel.initialize(nb_workers=8)
+pandarallel.initialize(nb_workers=settings.n_cores, progress_bar=settings.progress_bar)
 
 tqdm.pandas()
 
@@ -41,25 +42,25 @@ def pca(data, n_components=2):
     """
     """
     pca = PCA(n_components=n_components)
-    x_new = pca.fit_transform(data['features'])
-    columns = [str(c) for c in range(0, x_new.shape[1])]
-    x_new = pd.DataFrame(x_new,
-                         index=data['features'].index,
+    pca_components = pca.fit_transform(data.uns['features'])
+    columns = [str(c) for c in range(0, pca_components.shape[1])]
+    pca_components = pd.DataFrame(pca_components,
+                         index=data.uns['features'].index,
                          columns=columns)
-    data['pca_components'] = x_new
+    data.uns['pca_components'] = pca_components
     return data
 
 
-def umap(data, n_components=2, n_neighbors=15):
+def umap(data, n_components=2, n_neighbors=15, **kwargs):
     """
     """
-    fit = u.UMAP(n_components=n_components, n_neighbors=n_neighbors)
-    x_new = fit.fit_transform(data['features'])
-    columns = [str(c) for c in range(0, x_new.shape[1])]
-    x_new = pd.DataFrame(x_new,
-                         index=data['features'].index,
+    fit = u.UMAP(n_components=n_components, n_neighbors=n_neighbors, **kwargs)
+    umap_components = fit.fit_transform(data.uns['features'])
+    columns = [str(c) for c in range(0, umap_components.shape[1])]
+    umap_components = pd.DataFrame(umap_components,
+                         index=data.uns['features'].index,
                          columns=columns)
-    data['umap_components'] = x_new
+    data.uns['umap_components'] = umap_components
     return data
 
 
@@ -72,7 +73,7 @@ def classify_genes(data, model, labels=None):
     return model, pred_labels
 
 
-def prepare_features(data, features=[], smFISH=False):
+def prepare_features(data, features=[]):
     """Prepare features from raw data.
 
     Parameters
@@ -81,8 +82,6 @@ def prepare_features(data, features=[], smFISH=False):
         AnnData formatted spatial data.
     features : list of str
         List of feature names to compute, by default empty list
-    smFISH : bool, optional
-        [description], by default False
 
     Returns
     -------
@@ -97,9 +96,10 @@ def prepare_features(data, features=[], smFISH=False):
     # Prepare features for each cell separately
     cells = pd.Series(adata.obs['cell'].unique())
     features = cells.parallel_apply(lambda cell: _prepare_cell_features(adata[adata.obs['cell'] == cell], features, cell))
-    blah = pd.concat(features.tolist(), keys=cells.tolist(), axis=0)
-    adata.uns['features'][features[0].columns] = blah
 
+    features = pd.concat(features.tolist(), keys=cells.tolist(), axis=0)
+    adata.uns['features'] = features
+    adata.uns['features'].index = pd.MultiIndex.from_tuples(features.index, names=('cell', 'gene'))
     return adata
 
 
@@ -157,7 +157,8 @@ def _calc_ripley_features(cell_data, cell):
         cell_mask_points, cell_mask_points).max() / 4
 
     def _calc(gene_data, cell):
-        ripley_norm, radii = _ripley(gene_data.X, cell_mask)
+        # Compute ripley function for r=(1, cell diameter / 2)
+        ripley_norm, radii = _ripley(gene_data.X, cell_mask, radii=np.linspace(1, l_4_dist*2, 100))
 
         # Max value of the L-function
         max_l = ripley_norm.max()
@@ -166,6 +167,10 @@ def _calc_ripley_features(cell_data, cell):
         # Rolling number determines min points needed per gene
         ripley_smooth = pd.Series(ripley_norm).rolling(5).mean()
         ripley_smooth.dropna(inplace=True)
+        # if len(ripley_smooth) < 2:
+        #     print('Ripley:')
+        #     print(ripley_norm)
+        #     print(ripley_smooth)
         ripley_gradient = np.gradient(ripley_smooth)
         max_gradient = ripley_gradient.max()
         min_gradient = ripley_gradient.min()
@@ -316,7 +321,7 @@ def _calc_morph_enrichment(cell_data, cell):
 def _calc_nuclear_fraction(cell_data, cell):
     def _calc(gene_data, cell):
         nucleus_index = cell_data.uns['mask_index']['nucleus']
-        n_index = nucleus_index[cell_data.uns['mask_index']['nucleus'] == cell].index[0]
+        n_index = nucleus_index[nucleus_index['cell'] == cell].index[0]
         nuclear_count = sum(gene_data.obs['nucleus'] == n_index)
         ratio = float(nuclear_count) / len(gene_data)
         return pd.Series(ratio, index=['nuclear_fraction'])

@@ -1,1 +1,1 @@
-from ._plotting import plot_cells
+from ._plotting import pca, plot_cells, umap, quality_metrics
