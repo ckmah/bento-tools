@@ -5,15 +5,13 @@ import numpy as np
 import pandas as pd
 from scipy.spatial import distance, distance_matrix
 from scipy.stats.mstats import zscore
-from pandarallel import pandarallel
 from tqdm import tqdm
 
 from .._settings import settings
+from .._settings import pandarallel
+
 from .._utils import quantify_variable
 from collections import defaultdict
-
-pandarallel.initialize(nb_workers=settings.n_cores, verbose=0)
-
 
 # TODO
 def filter_cells(data, min_points=5):

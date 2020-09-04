@@ -1,5 +1,6 @@
 from typing import Any, Union
 from typing import Tuple, List
+from pandarallel import pandarallel
 
 def _type_check(var: Any, varname: str, types: Union[type, Tuple[type, ...]]):
     if isinstance(var, types):
@@ -19,8 +20,9 @@ class BentoConfig:
     """
 
     def __init__(self, n_cores=1, progress_bar=False):
-        self.n_cores = n_cores
-        self.progress_bar = progress_bar
+        self._n_cores = n_cores
+        self._progress_bar = progress_bar
+        pandarallel.initialize(nb_workers=self._n_cores, progress_bar=self._progress_bar)
 
     @property
     def n_cores(self) -> int:
@@ -33,6 +35,7 @@ class BentoConfig:
     def n_cores(self, n_cores: int):
         _type_check(n_cores, "n_cores", int)
         self._n_cores = n_cores
+        pandarallel.initialize(nb_workers=self._n_cores, progress_bar=self._progress_bar)
 
     @property
     def progress_bar(self) -> bool:
@@ -48,5 +51,6 @@ class BentoConfig:
         """
         _type_check(show, "progress_bar", bool)
         self._progress_bar = show
+        pandarallel.initialize(nb_workers=self._n_cores, progress_bar=self._progress_bar)
 
 settings = BentoConfig()

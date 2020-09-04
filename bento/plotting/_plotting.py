@@ -72,7 +72,7 @@ def quality_metrics(data, width=900, height=250):
     return chart
 
 
-def plot_cells(data, type='points', genes=None, downsample=1.0, draw_masks=['cell'], binsize=200, tile=False, width=400, height=400):
+def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, draw_masks=['cell'], bins=200, tile=False, width=400, height=400):
     """
     Visualize distribution of variable in spatial coordinates.
     Parameters
@@ -80,6 +80,8 @@ def plot_cells(data, type='points', genes=None, downsample=1.0, draw_masks=['cel
     data : dict
     type : str
         Options include 'points' and 'heatmap'
+    cells: None, list
+        Select specified list of cells. Default value of None selects all cells.
     genes: None, list
         Select specified list of genes. Default value of None selects all genes.
     downsample: float (0,1]
@@ -88,15 +90,26 @@ def plot_cells(data, type='points', genes=None, downsample=1.0, draw_masks=['cel
        masks to draw outlines for. Will always include outline for union of `masks`.
     """
 
-    # * Subset points to specified genes
+    # * Subset points to specified cells and genes
     points = data
-    if genes:
+
+    if cells is not None:
+        print('Subsetting cells...')
+        if type(cells) != list:
+            cells = [cells]
+
+        cells = [str.upper(str(i)) for i in cells]
+
+    if genes is not None:
         print('Subsetting genes...')
         if type(genes) != list:
-            genes = list(genes)
+            genes = [genes]
 
-        genes = [str.upper(i) for i in genes]
-        points = data[data.obs['gene'].astype(str).str.upper().isin(genes),:]
+        genes = [str.upper(str(i)) for i in genes]
+
+    cells_mask = data.obs['cell'].astype(str).str.upper().isin(cells)
+    genes_mask = data.obs['gene'].astype(str).str.upper().isin(genes)
+    points = data[cells_mask & genes_mask,:]
 
     # * Downsample points per cell
     if downsample < 1:
@@ -109,30 +122,30 @@ def plot_cells(data, type='points', genes=None, downsample=1.0, draw_masks=['cel
     points_df = pd.DataFrame(points.X, columns=['x', 'y'])
     points_df = pd.concat([points_df, points.obs.reset_index(drop=True)], axis=1)
     # * Plot raw points
-    if variable == 'points':
+    if style == 'points':
         print('Plotting points...')
 
         variable_chart = alt.Chart(points_df).mark_circle(
             opacity=0.5,
-            size=10
+            size=30,
+            stroke='black',
+            strokeWidth=1,
         ).encode(
             longitude='x:Q',
             latitude='y:Q',
             color='gene',
             tooltip=['cell', 'gene']
-        ).facet(
-            column='cell:N'
         )
 
-    # * Plot heatmap
-    else:
-        print('Plotting variable...')
+        # * Plot heatmap
+    elif style == 'heatmap':
+        print('Plotting heatmap...')
 
         variable_chart = None
 
         c = alt.Chart(points_df).mark_rect().encode(
-            alt.X('x:Q', bin=alt.Bin(maxbins=binsize)),
-            alt.Y('y:Q', bin=alt.Bin(maxbins=binsize)),
+            alt.X('x:Q', bin=alt.Bin(maxbins=bins)),
+            alt.Y('y:Q', bin=alt.Bin(maxbins=bins)),
             alt.Color('count(x):Q', scale=alt.Scale(scheme='tealblues'))
         )
 
@@ -140,52 +153,52 @@ def plot_cells(data, type='points', genes=None, downsample=1.0, draw_masks=['cel
             variable_chart = c
         else:
             variable_chart = variable_chart + c
-
-        # for mask in quantify_masks:
-        #     # Quantify variable wrt mask
-        #     data = quantify_variable(data, mask, variable)
-
-        #     # Plot quantitative variable as background color
-        #     c = alt.Chart(data['masks'][mask].reset_index().rename(columns={"index": mask})).mark_geoshape(
-        #         opacity=1,
-        #         stroke='black'
-        #     ).encode(
-        #         color=alt.Color(f'{variable}:Q', scale=alt.Scale(scheme='reds', zero=True)),
-        #         tooltip=[f'{mask}:N', f'{variable}:N']
-        #     )
-
-            # if variable_chart is None:
-            #     variable_chart = c
-            # else:
-            #     variable_chart = variable_chart + c
-
+    else:
+        print('Variable ')
 
     # * Plot mask outlines
-    # outline_chart = None
-    # for mask in draw_masks:
+    outline_chart = None
+    mask_cell_index = data.uns['masks']['cell']['gene'].index[data.uns['masks']['cell']['gene'].astype(str).isin(genes)]
+    for mask in draw_masks:
 
-    #     c = alt.Chart(data.uns['masks'][mask].reset_index().rename(columns={"index": mask})).mark_geoshape(
-    #         fill="transparent",
-    #         stroke="black",
-    #         strokeDash=[4,2]
-    #     )
+        # Subset masks by gene
+        strokeDash = []
+        if mask != 'cell': # use cell index to query other mask index
+            mask_cell_index = data.uns['masks'][mask]['cell'].isin(mask_cell_index)
+            strokeDash = [4, 2]
 
-    #     if outline_chart is None:
-    #         outline_chart = c
-    #     else:
-    #         outline_chart = outline_chart + c
+        mask_df = data.uns['masks'][mask].loc[mask_cell_index].reset_index().rename(columns={
+            "index": mask})
 
-    # chart = variable_chart + outline_chart
-    chart = variable_chart
+
+        c = alt.Chart(mask_df).mark_geoshape(
+            fill="transparent",
+            stroke="black",
+            strokeDash=strokeDash
+        )
+
+        if outline_chart is None:
+            outline_chart = c
+        else:
+            outline_chart = outline_chart + c
+
+    chart = alt.layer(variable_chart, outline_chart)
 
     chart = chart.project(
         type='identity',
         reflectY=True
-    ).configure_view(
-        strokeWidth=0
     ).properties(
         width=width,
         height=height
+    )
+
+    if tile:
+        chart = chart.repeat(
+            column=cells
+        )
+
+    chart = chart.configure_view(
+        strokeWidth=0
     )
 
     return chart

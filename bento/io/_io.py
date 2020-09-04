@@ -3,7 +3,6 @@ import pandas as pd
 import geopandas
 from shapely import geometry, wkt
 from shapely.ops import unary_union
-from pandarallel import pandarallel
 
 from ast import literal_eval
 
@@ -11,8 +10,7 @@ import anndata
 from anndata import AnnData
 
 from .._settings import settings
-
-pandarallel.initialize(nb_workers=settings.n_cores, progress_bar=settings.progress_bar, verbose=0)
+from .._settings import pandarallel
 
 
 def read_h5ad(filename):

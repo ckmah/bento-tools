@@ -4,6 +4,8 @@ import numpy as np
 from sklearn.decomposition import PCA
 import umap as u
 from collections import defaultdict
+import cv2
+
 from tqdm import tqdm
 from sklearn.metrics import mean_squared_error
 from scipy.spatial import distance, distance_matrix
@@ -11,10 +13,7 @@ from scipy.stats import spearmanr
 
 from .._utils import _poly2grid, _ripley
 from .._settings import settings
-
-from pandarallel import pandarallel
-
-pandarallel.initialize(nb_workers=settings.n_cores, progress_bar=settings.progress_bar)
+from .._settings import pandarallel
 
 tqdm.pandas()
 
@@ -95,7 +94,7 @@ def prepare_features(data, features=[]):
 
     # Prepare features for each cell separately
     cells = pd.Series(adata.obs['cell'].unique())
-    features = cells.parallel_apply(lambda cell: _prepare_cell_features(adata[adata.obs['cell'] == cell], features, cell))
+    features = cells.progress_apply(lambda cell: _prepare_cell_features(adata[adata.obs['cell'] == cell], features, cell))
 
     features = pd.concat(features.tolist(), keys=cells.tolist(), axis=0)
     adata.uns['features'] = features
@@ -383,6 +382,59 @@ def _calc_indexes(cell_data, cell):
     return cell_data.obs.groupby('gene').apply(lambda obs: _calc(cell_data[obs.index, :], cell))
 
 
+def _rasterize(cell_data, cell):
+    output_size = 32
+     ##### Cell mask
+    cell_xy = np.array(cell_data.uns['masks']['cell'].loc[cell, 'geometry'].exterior.xy).reshape(2, -1).T
+
+    # shift to 0
+    offset = cell_xy.min(axis=0)
+    cell_xy = cell_xy - offset
+
+    # scale to res
+    scale_factor = (output_size*0.99) / cell_xy.max()
+    cell_xy = cell_xy * scale_factor
+
+    # Center
+    center_offset = (output_size/2) - cell_xy.max(axis=0) / 2
+    cell_xy = cell_xy + center_offset
+
+    # Rasterize
+    cell_xy = np.floor(cell_xy).astype(int)
+
+    # To dense image
+    cell_img = np.zeros((output_size, output_size))
+    cell_img = cv2.fillPoly(cell_img, [cell_xy], 1)
+
+    ##### Nuclear mask
+    nucleus_index = cell_data.uns['mask_index']['nucleus']
+    n_index = nucleus_index[cell_data.uns['mask_index']['nucleus'] == cell].index[0]
+    nucleus_xy = np.array(cell_data.uns['masks']['nucleus'].loc[n_index, 'geometry'].exterior.xy).reshape(2, -1).T
+    nucleus_xy = (nucleus_xy - offset) * scale_factor + center_offset
+    nucleus_xy = np.floor(nucleus_xy).astype(int)
+
+    nuc_img = np.zeros((output_size, output_size))
+    nuc_img = cv2.fillPoly(nuc_img, [nucleus_xy], 1)
+
+    def _calc(gene_data, cell):
+    ##### Points
+        points = gene_data.X
+        points = (points - offset) * scale_factor + center_offset
+        points = np.floor(points).astype(int)
+
+        pts_img = np.zeros((output_size, output_size))
+        for coo in points:
+            pts_img[coo[1], coo[0]] += 1
+
+        image = np.stack([cell_img, nuc_img, pts_img]).astype(np.float32)
+        # image = torch.from_numpy(image) # convert to Tensor
+        return pd.Series(image, index=['raster'])
+
+    return cell_data.obs.groupby('gene').apply(lambda obs: _calc(cell_data[obs.index, :], cell))
+
+
+    
+
 # Store feature names, descriptions, and respective functions.
 # Format:
 # { 'feature_name': {
@@ -394,7 +446,8 @@ menu = dict({'ripley': {'description': 'ripley features', 'function': _calc_ripl
              'distance': {'description': 'distance features', 'function': _calc_norm_distance_quantile_features},
              'morphology': {'description': 'morphology features', 'function': _calc_morph_enrichment},
              'mask_fraction': {'description': 'ripley features', 'function': _calc_nuclear_fraction},
-             'indexes': {'description': 'index features', 'function': _calc_indexes}})
+             'indexes': {'description': 'index features', 'function': _calc_indexes},
+             'raster': {'description': 'rasterize to image', 'function': _rasterize}})
 
 
 def get_menu():
