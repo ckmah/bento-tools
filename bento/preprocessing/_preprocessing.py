@@ -52,7 +52,7 @@ def filter_genes(data, min_points):
 
 
 def prepare_features(data, features=[]):
-    """Prepare features from raw data. TODO move features to preprocessing
+    """Prepare features from raw data.
 
     Parameters
     ----------
@@ -71,14 +71,27 @@ def prepare_features(data, features=[]):
     if 'features' not in adata.uns.keys():
         adata.uns['features'] = pd.DataFrame()
 
-    # Prepare features for each cell separately
+    # Get cells
     cells = pd.Series(adata.obs['cell'].unique())
-    cells = cells[cells != -1] # Ignore transcripts outside cells
+
+    # Ignore transcripts outside cells
+    cells = cells[cells != -1] 
+
+    # Prepare features for each cell separately
     f = cells.progress_apply(lambda cell: _prepare_cell_features(adata[adata.obs['cell'] == cell], features, cell))
 
+    # Stack as single dataframe
     f = pd.concat(f.tolist(), keys=cells.tolist(), axis=0)
-    adata.uns['features'] = f
-    adata.uns['features'].index = pd.MultiIndex.from_tuples(f.index, names=('cell', 'gene'))
+    
+    # Save sample -> cell, gene mapping
+    adata.uns['samples_annot'] = f.index.to_frame(index=False)
+    adata.uns['samples_annot'].columns = ['cell', 'gene']    
+
+    # Save each feature as {feature : np.array} in adata.uns
+    feature_dict = f.reset_index(drop=True).to_dict(orient='list')
+    feature_dict = {key: np.array(values) for key, values in feature_dict.items()}
+    adata.uns.update(feature_dict)
+
     return adata
 
 
