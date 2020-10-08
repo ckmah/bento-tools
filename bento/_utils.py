@@ -3,7 +3,7 @@ import numpy as np
 from astropy.stats import RipleysKEstimator
 
 
-def quantify_variable(data, mask_name, variable):
+def _quantify_variable(data, mask_name, variable):
     """Quantify variable on points binned by mask Polygons.
 
     Parameters

@@ -1,18 +1,20 @@
+import warnings
 import geopandas
 
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from .._utils import quantify_variable
+from .._utils import _quantify_variable
 
 from shapely.affinity import translate
 from shapely import geometry
 
 import altair as alt
 
+
 alt.themes.enable('opaque')
-alt.renderers.enable('mimetype')
+alt.renderers.enable('default')
 alt.data_transformers.enable('json')
 
 
@@ -93,24 +95,33 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, dra
     # * Subset points to specified cells and genes
     points = data
 
-    if cells is not None:
+    if cells is None:
+        cells =  set(data.obs_vector('cell'))
+    else:
         print('Subsetting cells...')
         if type(cells) != list:
             cells = [cells]
 
-        cells = [str.upper(str(i)) for i in cells]
+    cells = [str.upper(str(i)) for i in cells]
 
-    if genes is not None:
+    if -1 in cells:
+        warnings.warn('Detected points outside of cells. TODO write clean fx that drops these points')
+        
+        
+    if genes is None:
+        genes = data.obs_vector('gene')
+    else:
         print('Subsetting genes...')
         if type(genes) != list:
             genes = [genes]
 
-        genes = [str.upper(str(i)) for i in genes]
+    genes = [str.upper(str(i)) for i in genes]
+        
+    points_in_cells = data.obs['cell'].astype(str).str.upper().isin(cells)
+    points_in_genes = data.obs['gene'].astype(str).str.upper().isin(genes)
+    points = data[points_in_cells & points_in_genes,:]
 
-    cells_mask = data.obs['cell'].astype(str).str.upper().isin(cells)
-    genes_mask = data.obs['gene'].astype(str).str.upper().isin(genes)
-    points = data[cells_mask & genes_mask,:]
-
+    
     # * Downsample points per cell
     if downsample < 1:
         print('Downsampling points...')
@@ -121,10 +132,12 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, dra
 
     points_df = pd.DataFrame(points.X, columns=['x', 'y'])
     points_df = pd.concat([points_df, points.obs.reset_index(drop=True)], axis=1)
+
     # * Plot raw points
     if style == 'points':
         print('Plotting points...')
 
+        print(points_df)
         variable_chart = alt.Chart(points_df).mark_circle(
             opacity=0.5,
             size=30,
@@ -158,16 +171,19 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, dra
 
     # * Plot mask outlines
     outline_chart = None
-    mask_cell_index = data.uns['masks']['cell']['gene'].index[data.uns['masks']['cell']['gene'].astype(str).isin(genes)]
     for mask in draw_masks:
 
         # Subset masks by gene
+        mask_select = cells
         strokeDash = []
+        
+        if mask == 'cell':
+            mask_select = data.uns['masks']['cell'].index.astype(str).isin(cells)
         if mask != 'cell': # use cell index to query other mask index
-            mask_cell_index = data.uns['masks'][mask]['cell'].isin(mask_cell_index)
+            mask_select = data.uns['mask_index'][mask]['cell'].str.isin(cells)
             strokeDash = [4, 2]
 
-        mask_df = data.uns['masks'][mask].loc[mask_cell_index].reset_index().rename(columns={
+        mask_df = data.uns['masks'][mask].loc[mask_select].reset_index().rename(columns={
             "index": mask})
 
 
