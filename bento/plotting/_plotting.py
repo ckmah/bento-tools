@@ -11,6 +11,7 @@ from shapely.affinity import translate
 from shapely import geometry
 
 import altair as alt
+import descartes
 
 
 alt.themes.enable('opaque')
@@ -74,7 +75,7 @@ def quality_metrics(data, width=900, height=250):
     return chart
 
 
-def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, draw_masks=['cell'], bins=200, tile=False, width=400, height=400):
+def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, draw_masks=['cell'], width=10, height=10):
     """
     Visualize distribution of variable in spatial coordinates.
     Parameters
@@ -92,9 +93,9 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, dra
        masks to draw outlines for. Will always include outline for union of `masks`.
     """
 
-    # * Subset points to specified cells and genes
     points = data
 
+    # Format cells input
     if cells is None:
         cells =  set(data.obs_vector('cell'))
     else:
@@ -107,7 +108,7 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, dra
     if -1 in cells:
         warnings.warn('Detected points outside of cells. TODO write clean fx that drops these points')
         
-        
+    # Format genes input
     if genes is None:
         genes = data.obs_vector('gene')
     else:
@@ -117,11 +118,11 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, dra
 
     genes = [str.upper(str(i)) for i in genes]
         
+    # Subset points to specified cells and genes
     points_in_cells = data.obs['cell'].astype(str).str.upper().isin(cells)
     points_in_genes = data.obs['gene'].astype(str).str.upper().isin(genes)
     points = data[points_in_cells & points_in_genes,:]
 
-    
     # * Downsample points per cell
     if downsample < 1:
         print('Downsampling points...')
@@ -129,95 +130,43 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, dra
         downsample_mask = downsample_mask.explode().dropna().tolist()
         points = points[downsample_mask,:]
 
-
+    # Format as long table format with points and annotations
     points_df = pd.DataFrame(points.X, columns=['x', 'y'])
     points_df = pd.concat([points_df, points.obs.reset_index(drop=True)], axis=1)
+
+    # Initialize figure
+    fig = plt.figure(figsize=(width,height))
+    ax = fig.add_subplot(111, frameon=False, xticks=[], yticks=[])
+
+    # Plot clipping mask
+    clip = data.uns['masks']['cell'].unary_union
+    clip = clip.envelope.symmetric_difference(clip)
+    clip_patch = descartes.PolygonPatch(clip, color='white')
+    ax.add_patch(clip_patch)
+    
+    bounds = clip.bounds
+    ax.set_xlim(bounds[0], bounds[2])
+    ax.set_ylim(bounds[1], bounds[3])
 
     # * Plot raw points
     if style == 'points':
         print('Plotting points...')
+        plt.scatter(x=points_df['x'], y=points_df['y'], c='teal', alpha=0.3, s=1)
+        
 
-        print(points_df)
-        variable_chart = alt.Chart(points_df).mark_circle(
-            opacity=0.5,
-            size=30,
-            stroke='black',
-            strokeWidth=1,
-        ).encode(
-            longitude='x:Q',
-            latitude='y:Q',
-            color='gene',
-            tooltip=['cell', 'gene']
-        )
-
-        # * Plot heatmap
+    # * Plot heatmap
     elif style == 'heatmap':
         print('Plotting heatmap...')
-
-        variable_chart = None
-
-        c = alt.Chart(points_df).mark_rect().encode(
-            alt.X('x:Q', bin=alt.Bin(maxbins=bins)),
-            alt.Y('y:Q', bin=alt.Bin(maxbins=bins)),
-            alt.Color('count(x):Q', scale=alt.Scale(scheme='tealblues'))
-        )
-
-        if variable_chart is None:
-            variable_chart = c
-        else:
-            variable_chart = variable_chart + c
-    else:
-        print('Variable ')
+        sns.kdeplot(x=points_df['x'], y=points_df['y'], 
+                    ax=ax, bw_adjust=0.1, shade_lowest=True,
+                    levels=100, fill=True, cbar=True, cmap='viridis')
 
     # * Plot mask outlines
-    outline_chart = None
     for mask in draw_masks:
-
-        # Subset masks by gene
-        mask_select = cells
-        strokeDash = []
-        
-        if mask == 'cell':
-            mask_select = data.uns['masks']['cell'].index.astype(str).isin(cells)
-        if mask != 'cell': # use cell index to query other mask index
-            mask_select = data.uns['mask_index'][mask]['cell'].str.isin(cells)
-            strokeDash = [4, 2]
-
-        mask_df = data.uns['masks'][mask].loc[mask_select].reset_index().rename(columns={
-            "index": mask})
-
-
-        c = alt.Chart(mask_df).mark_geoshape(
-            fill="transparent",
-            stroke="black",
-            strokeDash=strokeDash
-        )
-
-        if outline_chart is None:
-            outline_chart = c
-        else:
-            outline_chart = outline_chart + c
-
-    chart = alt.layer(variable_chart, outline_chart)
-
-    chart = chart.project(
-        type='identity',
-        reflectY=True
-    ).properties(
-        width=width,
-        height=height
-    )
-
-    if tile:
-        chart = chart.repeat(
-            column=cells
-        )
-
-    chart = chart.configure_view(
-        strokeWidth=0
-    )
-
-    return chart
+        mask_outline = data.uns['masks'][mask].boundary
+        mask_outline.plot(ax=ax, lw=1, color='black')
+    
+    return fig
 
 def pca(data, c1=0, c2=1, hue='gene', huetype='nominal', width=400, height=400, path=''):
     return _plot_dim(data, 'pca', hue=hue, huetype=huetype, c1=c1, c2=c2, width=width, height=height, path=path)
