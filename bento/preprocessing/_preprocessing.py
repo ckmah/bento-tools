@@ -459,8 +459,7 @@ def get_features():
 
     Returns
     -------
-    DataFrame
-        Formatted list of features.
+    dict
+        Feature names and descriptions.
     """
-    feature_table = pd.DataFrame(feature_set)
-    return feature_table
+    return {f'{k}: {feature_set[k]["description"]}' for k, v in feature_set.items()}
