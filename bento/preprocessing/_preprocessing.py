@@ -376,7 +376,7 @@ def _calc_indexes(cell_data, cell):
 
 
 def _rasterize(cell_data, cell):
-    output_size = 32
+    output_size = 64
     
     # Initialize base image
     base_img = np.zeros((output_size, output_size))
