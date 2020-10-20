@@ -31,7 +31,6 @@ def filter_cells(data, min_points=5):
         return data[filt_points, :]
 
 
-
 def filter_genes(data, min_points):
 
     def _filter_genes(obs_gene_df, min_points):
@@ -52,7 +51,7 @@ def filter_genes(data, min_points):
 
 
 def prepare_features(data, features=[]):
-    """Prepare features from raw data.
+    """Prepare features from raw data. This is the entry point to constructing uns.sample_data.
 
     Parameters
     ----------
@@ -63,8 +62,8 @@ def prepare_features(data, features=[]):
 
     Returns
     -------
-    [type]
-        [description]
+    adata : AnnData
+        Updated Anndata formatted spatial data. Unstructured data will have new entries, sample_index and sample_data.
     """
     adata = data.copy()
     # Initialize features dict
@@ -83,14 +82,19 @@ def prepare_features(data, features=[]):
     # Stack as single dataframe
     f = pd.concat(f.tolist(), keys=cells.tolist(), axis=0)
     
-    # Save sample -> cell, gene mapping
-    adata.uns['samples_annot'] = f.index.to_frame(index=False)
-    adata.uns['samples_annot'].columns = ['cell', 'gene']    
+    # Save sample -> (cell, gene) mapping
+    adata.uns['sample_index'] = f.index.to_frame(index=False)
+    adata.uns['sample_index'].columns = ['cell', 'gene']    
 
     # Save each feature as {feature : np.array} in adata.uns
     feature_dict = f.reset_index(drop=True).to_dict(orient='list')
     feature_dict = {key: np.array(values) for key, values in feature_dict.items()}
-    adata.uns.update(feature_dict)
+
+    # Save each feature to `sample_data` dictionary.
+    # Each feature follows {sample_id: feature_value} format, where sample_id corresponds to uns['sample_index'].index.
+    if 'sample_data' not in adata.uns:
+        adata.uns['sample_data'] = dict()
+    adata.uns['sample_data'].update(feature_dict)
 
     return adata
 
