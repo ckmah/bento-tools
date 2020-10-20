@@ -4,6 +4,8 @@ import geopandas
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import is_color_like, ListedColormap
+
 import seaborn as sns
 from .._utils import _quantify_variable
 
@@ -18,6 +20,9 @@ alt.themes.enable('opaque')
 alt.renderers.enable('default')
 alt.data_transformers.enable('json')
 
+# Masala color palette by Noor
+# Note: tested colorblind friendliness, did not do so well
+masala_palette = sns.color_palette([(1.0, .78, .27), (1.0, .33, .22), (.95, .6, .71), (0, .78, .86), (.39, .81, .63), (.25, .25, .25)])
 
 def quality_metrics(data, width=900, height=250):
     # Count points per cell
@@ -75,7 +80,7 @@ def quality_metrics(data, width=900, height=250):
     return chart
 
 
-def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, draw_masks=['cell'], width=10, height=10):
+def plot_cells(data, style='points', cells=None, genes=None, downsample=0.1, scatter_hue=None, scatter_palette='colorblind', power=1, heatmap_cmap='mako', draw_masks=['cell'], width=10, height=10):
     """
     Visualize distribution of variable in spatial coordinates.
     Parameters
@@ -89,6 +94,8 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, dra
         Select specified list of genes. Default value of None selects all genes.
     downsample: float (0,1]
         Fraction to downsample when plotting. Useful when dealing with large datasets.
+    scatter_hue: str
+        Name of column in data.obs to interpet for scatter plot color. First tries to interpret if values are matplotlib color-like. For categorical data, tries to plot a different color for each label. For numerical, scales color by numerical values (need to be between [0,1]). Returns error if outside range.
     draw_masks: list
        masks to draw outlines for. Will always include outline for union of `masks`.
     """
@@ -129,19 +136,20 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, dra
         downsample_mask = points.obs.groupby('cell').apply(lambda df: df.sample(frac=downsample).index.tolist())
         downsample_mask = downsample_mask.explode().dropna().tolist()
         points = points[downsample_mask,:]
-
+        
     # Format as long table format with points and annotations
     points_df = pd.DataFrame(points.X, columns=['x', 'y'])
     points_df = pd.concat([points_df, points.obs.reset_index(drop=True)], axis=1)
 
     # Initialize figure
-    fig = plt.figure(figsize=(width,height))
+    fig = plt.figure(figsize=(width,height), dpi=100)
     ax = fig.add_subplot(111, frameon=False, xticks=[], yticks=[])
-
+    
     # Plot clipping mask
     clip = data.uns['masks']['cell'].unary_union
     clip = clip.envelope.symmetric_difference(clip)
-    clip_patch = descartes.PolygonPatch(clip, color='white')
+    clip_patch = descartes.PolygonPatch(clip, color='black')
+    data.uns['masks']['cell'].plot(color='black', ax=ax)
     ax.add_patch(clip_patch)
     
     bounds = clip.bounds
@@ -151,21 +159,50 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=1.0, dra
     # * Plot raw points
     if style == 'points':
         print('Plotting points...')
-        plt.scatter(x=points_df['x'], y=points_df['y'], c='teal', alpha=0.3, s=1)
+        
+        # Default point color is teal
+        if scatter_hue is None: 
+            color = 'teal'
+            scatter_palette = None
+        else:
+            hue_values = points_df[scatter_hue]
+            if np.issubdtype(hue_values, np.number):
+            
+                # Scale point color by obs variable
+                if (hue_values >= 0).all() and (hue_values <= 1).all():
+                    color = np.expand_dims(points_df[scatter_hue].values, 1)**(1./power)
+                    color = [(max(0.3, x), 0.3, 0.3, max(0.3, x)) for x in color]
+                    scatter_cmap = ListedColormap(scatter_palette)
+                    ax.scatter(data=points_df, x='x', y='y', c=scatter_hue, s=3, cmap=scatter_cmap)
+                else:
+                    return ValueError('Numeric values for \'scatter_hue\' parameter must be in range [0,1].')
+                
+            else: 
+                # Try to interpret as matplotlib color
+                if is_color_like(hue_values.iloc[0]):
+                    color = hue_values.apply(is_color_like)
+                else:
+                    # Color points by category (custom _determinisitic_ color mapping)
+                    phenomap, color = pheno_to_color(points_df[scatter_hue], palette=scatter_palette)
+                
+                ax.scatter(data=points_df, x='x', y='y', c=color, s=3)
+
         
 
     # * Plot heatmap
     elif style == 'heatmap':
         print('Plotting heatmap...')
-        sns.kdeplot(x=points_df['x'], y=points_df['y'], 
-                    ax=ax, bw_adjust=0.1, shade_lowest=True,
-                    levels=100, fill=True, cbar=True, cmap='viridis')
+        sns.kdeplot(data=points_df, x='x', y='y', cmap=heatmap_cmap,
+                    ax=ax, bw_adjust=0.1, shade_lowest=False, 
+                    levels=100, fill=True)
 
     # * Plot mask outlines
     for mask in draw_masks:
         mask_outline = data.uns['masks'][mask].boundary
-        mask_outline.plot(ax=ax, lw=1, color='black')
+        mask_outline.plot(ax=ax, lw=1, color=(1,1,1,0.5))
     
+    ax.set_facecolor('black')
+
     return fig
 
 def pca(data, c1=0, c2=1, hue='gene', huetype='nominal', width=400, height=400, path=''):
@@ -210,4 +247,40 @@ def _plot_dim(data, dim_type, **kwargs):
         chart.save(kwargs["path"], scale_factor=2)
 
     return chart
+
+def pheno_to_color(pheno, palette=masala_palette):
+    '''
+    Maps list of categorical labels to a color palette.
+    Input values are first sorted alphanumerically least to greatest before mapping to colors. This ensures consistent colors regardless of input value order.
+    
+    Parameters
+    ----------
+    pheno : pd.Series
+        Categorical labels to map
+    palette : 
+    
+    Returns
+    -------
+    dict
+        Mapping of label to color in RGBA
+    tuples
+        List of converted colors for each sample, formatted as RGBA tuples.
+    
+    
+    list of RGBA tuples
+    
+    '''
+    if type(palette) is str:
+        palette = sns.color_palette(palette)
+    else:
+        palette = palette
+
+    values = pheno.unique()
+    values.sort()
+    n_colors = len(values)
+    palette = sns.color_palette(palette, n_colors=n_colors)
+    study2color = dict(zip(values, palette))
+    sample_colors = list(pheno.map(study2color))
+    return study2color, sample_colors
+
 
