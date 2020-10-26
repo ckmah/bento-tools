@@ -205,6 +205,7 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=0.1, sca
 
     return fig
 
+
 def pca(data, c1=0, c2=1, hue='gene', huetype='nominal', width=400, height=400, path=''):
     return _plot_dim(data, 'pca', hue=hue, huetype=huetype, c1=c1, c2=c2, width=width, height=height, path=path)
 
@@ -225,10 +226,12 @@ def _plot_dim(data, dim_type, **kwargs):
         'pca' or 'umap'
     """
 
-    df = data.uns[f'{dim_type}_components']
+    df = data.uns[f'sample_{dim_type}']
+
+    sns.scatter(df[:,0], df[:,1])
 
     # Map labels to points
-    if kwargs["hue"] == 'label':
+    if hue in kwargs["hue"] == 'label':
         df['label'] = data.uns['labels']['label']
 
     chart = alt.Chart(df).mark_circle(
@@ -248,7 +251,11 @@ def _plot_dim(data, dim_type, **kwargs):
 
     return chart
 
-def pheno_to_color(pheno, palette=masala_palette):
+# plot = Petal(bounds=[np.repeat(0,6), np.repeat(1.,6)], figsize=(30,5), cmap='Set1', labels=sf_pred_prob.columns.sort_values().tolist())
+# plot.add(sf_pred_prob[sf_pred_prob.columns.sort_values()].iloc[:6].values)
+# plot.show()
+
+def pheno_to_color(pheno):
     '''
     Maps list of categorical labels to a color palette.
     Input values are first sorted alphanumerically least to greatest before mapping to colors. This ensures consistent colors regardless of input value order.
@@ -257,7 +264,8 @@ def pheno_to_color(pheno, palette=masala_palette):
     ----------
     pheno : pd.Series
         Categorical labels to map
-    palette : 
+    palette : list
+        list of RGB tuples
     
     Returns
     -------
