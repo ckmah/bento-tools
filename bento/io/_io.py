@@ -35,6 +35,7 @@ def read_h5ad(filename):
         adata.uns['masks'][m] = geopandas.GeoDataFrame(
             adata.uns['masks'][m], geometry='geometry')
 
+    adata.obs.index = adata.obs.index.astype(str)
     # if 'labels' in adata.uns:
     #     adata.uns['labels'].index = pd.MultiIndex.from_tuples([literal_eval(i) for i in adata.uns['labels'].index], names=['cell', 'gene'])
 
@@ -52,7 +53,8 @@ def write_h5ad(adata, filename):
     """
     # Convert geometry from GeoSeries to list for h5ad serialization compatibility
     for m in adata.uns['masks']:
-        adata.uns['masks'][m]['geometry'] = adata.uns['masks'][m]['geometry'].apply(lambda x: x.wkt).astype(str)
+        if type(adata.uns['masks'][m]['geometry'][0]) != str:
+            adata.uns['masks'][m]['geometry'] = adata.uns['masks'][m]['geometry'].apply(lambda x: x.wkt).astype(str)
 
     # Write to h5ad
     adata.write(filename)

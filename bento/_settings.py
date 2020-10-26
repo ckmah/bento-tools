@@ -19,7 +19,7 @@ class BentoConfig:
     Config manager for bento.
     """
 
-    def __init__(self, n_cores=1, progress_bar=False):
+    def __init__(self, n_cores=1, progress_bar=False, device='auto'):
         self._n_cores = n_cores
         self._progress_bar = progress_bar
         pandarallel.initialize(nb_workers=self._n_cores, progress_bar=self._progress_bar)
@@ -52,5 +52,6 @@ class BentoConfig:
         _type_check(show, "progress_bar", bool)
         self._progress_bar = show
         pandarallel.initialize(nb_workers=self._n_cores, progress_bar=self._progress_bar)
+
 
 settings = BentoConfig()

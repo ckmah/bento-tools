@@ -7,14 +7,12 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import is_color_like, ListedColormap
 
 import seaborn as sns
-from .._utils import _quantify_variable
 
 from shapely.affinity import translate
 from shapely import geometry
 
 import altair as alt
 import descartes
-
 
 alt.themes.enable('opaque')
 alt.renderers.enable('default')
@@ -80,7 +78,7 @@ def quality_metrics(data, width=900, height=250):
     return chart
 
 
-def plot_cells(data, style='points', cells=None, genes=None, downsample=0.1, scatter_hue=None, scatter_palette='colorblind', power=1, heatmap_cmap='mako', draw_masks=['cell'], width=10, height=10):
+def plot_cells(data, style='points', cells=None, genes=None, subsample=0.1, scatter_hue=None, scatter_palette='colorblind', power=1, heatmap_cmap='mako', draw_masks=['cell'], width=10, height=10):
     """
     Visualize distribution of variable in spatial coordinates.
     Parameters
@@ -92,8 +90,8 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=0.1, sca
         Select specified list of cells. Default value of None selects all cells.
     genes: None, list
         Select specified list of genes. Default value of None selects all genes.
-    downsample: float (0,1]
-        Fraction to downsample when plotting. Useful when dealing with large datasets.
+    subsample: float (0,1]
+        Fraction to subsample when plotting. Useful when dealing with large datasets.
     scatter_hue: str
         Name of column in data.obs to interpet for scatter plot color. First tries to interpret if values are matplotlib color-like. For categorical data, tries to plot a different color for each label. For numerical, scales color by numerical values (need to be between [0,1]). Returns error if outside range.
     draw_masks: list
@@ -130,12 +128,12 @@ def plot_cells(data, style='points', cells=None, genes=None, downsample=0.1, sca
     points_in_genes = data.obs['gene'].astype(str).str.upper().isin(genes)
     points = data[points_in_cells & points_in_genes,:]
 
-    # * Downsample points per cell
-    if downsample < 1:
+    # * subsample points per cell
+    if subsample < 1:
         print('Downsampling points...')
-        downsample_mask = points.obs.groupby('cell').apply(lambda df: df.sample(frac=downsample).index.tolist())
-        downsample_mask = downsample_mask.explode().dropna().tolist()
-        points = points[downsample_mask,:]
+        subsample_mask = points.obs.groupby('cell').apply(lambda df: df.sample(frac=subsample).index.tolist())
+        subsample_mask = subsample_mask.explode().dropna().tolist()
+        points = points[subsample_mask,:]
         
     # Format as long table format with points and annotations
     points_df = pd.DataFrame(points.X, columns=['x', 'y'])
