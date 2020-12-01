@@ -27,7 +27,7 @@ def read_h5ad(filename):
         AnnData data object.
     """
     adata = anndata.read_h5ad(filename)
-
+    
     # Converts geometry column from str wkt format back to GeoSeries to enable GeoPandas functionality
     for m in adata.uns['masks']:
         adata.uns['masks'][m]['geometry'] = adata.uns['masks'][m]['geometry'].apply(
@@ -36,8 +36,6 @@ def read_h5ad(filename):
             adata.uns['masks'][m], geometry='geometry')
 
     adata.obs.index = adata.obs.index.astype(str)
-    # if 'labels' in adata.uns:
-    #     adata.uns['labels'].index = pd.MultiIndex.from_tuples([literal_eval(i) for i in adata.uns['labels'].index], names=['cell', 'gene'])
 
     return adata
 
@@ -84,7 +82,7 @@ def read_geodata(points, cell, other={}, index=True):
     print('Loading masks...')
     mask_paths = {'cell': cell, **other}
     masks = pd.Series(mask_paths).parallel_apply(_load_masks)
-
+    
     if index:
         # Index points for all masks
         print('Indexing points...')
@@ -109,6 +107,10 @@ def read_geodata(points, cell, other={}, index=True):
     obs = pd.DataFrame(point_index)
     obs['gene'] = points['gene']
 
+    # Cast cell and indexing references to str
+    obs.index = obs.index.astype(str)
+    obs['cell'] = obs['cell'].astype(int).astype(str)
+
     adata = AnnData(X=X, obs=obs, uns=uns)
 
     print('Done.')
@@ -129,6 +131,7 @@ def _load_masks(path):
         Contains masks as Polygons.
     """
     mask = geopandas.read_file(path)
+    mask.index = mask.index.astype(str)
 
     for i, poly in enumerate(mask['geometry']):
         if type(poly) == geometry.MultiPolygon:
@@ -154,7 +157,8 @@ def _index_masks(masks):
             index = index.sort_index()
             index = index.reset_index()['index_right']
             index.name = 'cell'
-            index = index.fillna(-1).astype(int)
+            index.index = index.index.astype(str)
+            index = index.fillna(-1).astype(str)
 
             mask_index[m] = pd.DataFrame(index)
 

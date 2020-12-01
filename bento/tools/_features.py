@@ -1,5 +1,7 @@
-
 import warnings
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
+
 from collections import defaultdict
 
 import cv2
@@ -7,17 +9,43 @@ import geopandas
 import matplotlib.path as mplPath
 import numpy as np
 import pandas as pd
+import torch
+import torchvision
 from astropy.stats import RipleysKEstimator
 from scipy.spatial import distance, distance_matrix
 from scipy.stats import spearmanr
 from scipy.stats.mstats import zscore
 from sklearn.metrics import mean_squared_error
-from tqdm.notebook import tqdm
+from tqdm.auto import tqdm
 
 from .._settings import pandarallel, settings
 
 # Parallelize by gene if many genes, otherwise by cell
 gene_parallel_threshold = 1000
+
+
+def rasterize_cells(data, imgdir):
+    """Rasterize points and cell masks to grayscale image. Writes directly to file.
+
+    Parameters
+    ----------
+    data : AnnData
+        AnnData formatted spatial data.
+    imgdir : str
+        Folder path where images will be stored.
+    """
+
+    # Get cells
+    cells = pd.Series(data.obs["cell"].unique())
+    if (cells == "-1").any():
+        print("Extracellular points detected. These will be ignored.")
+        cells = cells.loc[cells != "-1"]
+
+    # Prepare features for each cell separately
+    print(f"Writing to {imgdir} ...")
+    for cell in tqdm(cells.tolist(), desc=f"Processing {len(cells)} cells"):
+        _prepare_cell_features(data, ["raster"], cell, imgdir=imgdir)
+
 
 def prepare_features(data, features=[], copy=False):
     """Prepare features from raw data. This is the entry point to constructing uns.sample_data.
@@ -42,42 +70,54 @@ def prepare_features(data, features=[], copy=False):
         features = [features]
 
     # Get cells
-    cells = pd.Series(adata.obs['cell'].unique())
-    if (cells == -1).any():
-        print('Extracellular points detected. These will be ignored.')
-        cells = cells.loc[cells != -1]
+    cells = pd.Series(adata.obs["cell"].unique())
+    if (cells == "-1").any():
+        print("Extracellular points detected. These will be ignored.")
+        cells = cells.loc[cells != "-1"]
 
     # Prepare features for each cell separately
-    tqdm.pandas(desc='Processing cells')
-    f = cells.progress_apply(lambda cell: _prepare_cell_features(adata[adata.obs['cell'] == cell].copy(), features, cell))
+    f = []
+    for cell in tqdm(cells.tolist(), desc=f"Processing {len(cells)} cells"):
+        cell_data = _prepare_cell_features(adata, features, cell)
+        cell_data = pd.DataFrame(cell_data).T
+        cell_data.columns = features
+        cell_data.reset_index(inplace=True)
+        cell_data["cell"] = cell
+        f.append(cell_data)
 
     # Stack as single dataframe
-    f = pd.concat(f.tolist(), keys=cells.tolist(), axis=0)
-    
-    # Save sample -> (cell, gene) mapping
-    adata.uns['sample_index'] = f.index.to_frame(index=False)
-    adata.uns['sample_index'].columns = ['cell', 'gene']    
+    f = pd.concat(f, axis=0)
+    f = f.set_index(["cell", "gene"])
 
-    # Save obs mapping 
-    adata.obs = adata.obs.merge(adata.uns['sample_index'].reset_index(), how='left', on=['cell', 'gene'])
-    adata.obs.rename({'index': 'sample_id'}, axis=1, inplace=True)
-    adata.obs['sample_id'].fillna(-1, inplace=True)
-    adata.obs['sample_id'] = adata.obs['sample_id'].astype(int)
+    # Save sample -> (cell, gene) mapping
+    sample_index = f.index.to_frame(index=False)
+    sample_index.columns = ["cell", "gene"]
+    sample_index.index = sample_index.index.astype(str)
+    adata.uns["sample_index"] = sample_index
+
+    # Save obs mapping
+    obs = adata.obs.merge(
+        adata.uns["sample_index"].reset_index(), how="left", on=["cell", "gene"]
+    )
+    obs.rename({"index": "sample_id"}, axis=1, inplace=True)
+    obs["sample_id"].fillna("-1", inplace=True)
+    obs.index = obs.index.astype(str)
+    adata.obs = obs
 
     # Save each feature as {feature : np.array} in adata.uns
-    feature_dict = f.reset_index(drop=True).to_dict(orient='list')
+    feature_dict = f.to_dict(orient="list")
     feature_dict = {key: np.array(values) for key, values in feature_dict.items()}
 
     # Save each feature to `sample_data` dictionary.
     # Each feature follows {sample_id: feature_value} format, where sample_id corresponds to uns['sample_index'].index.
-    if 'sample_data' not in adata.uns:
-        adata.uns['sample_data'] = dict()
-    adata.uns['sample_data'].update(feature_dict)
+    if "sample_data" not in adata.uns:
+        adata.uns["sample_data"] = dict()
+    adata.uns["sample_data"] = feature_dict
 
     return adata if copy else None
 
 
-def _prepare_cell_features(cell_data, features, cell):
+def _prepare_cell_features(data, features, cell, **kwargs):
     """[summary]
 
     Parameters
@@ -94,19 +134,18 @@ def _prepare_cell_features(cell_data, features, cell):
     [type]
         [description]
     """
-
     # Compute each feature independently
     computed_features = []
     for feature in features:
         # Lookup function
-        fn = feature_set[feature]['function']
+        fn = feature_set[feature]["function"]
 
         # All functions should take two args: AnnData and index for cell
         # Execute function that returns DataFrame [genes x 1+] float
-        computed_features.append(fn(cell_data, cell))
+        cell_data = data[data.obs["cell"] == cell].copy()
+        computed_features.append(fn(cell_data, cell, **kwargs))
 
-    # print(computed_features)
-    return pd.concat(computed_features, axis=1)
+    return computed_features
 
 
 def _calc_ripley_features(cell_data, cell):
@@ -123,16 +162,17 @@ def _calc_ripley_features(cell_data, cell):
         l_4 : float
     """
 
-    cell_mask = cell_data.uns['masks']['cell'].loc[cell, 'geometry']
+    cell_mask = cell_data.uns["masks"]["cell"].loc[cell, "geometry"]
 
     # L/4 where length of the cell L is max dist between 2 points on polygon defining cell border
     cell_mask_points = np.array(cell_mask.exterior.coords.xy).T
-    l_4_dist = distance_matrix(
-        cell_mask_points, cell_mask_points).max() / 4
+    l_4_dist = distance_matrix(cell_mask_points, cell_mask_points).max() / 4
 
     def _calc(gene_data, cell):
         # Compute ripley function for r=(1, cell diameter / 2)
-        ripley_norm, radii = _ripley(gene_data.X, cell_mask, radii=np.linspace(1, l_4_dist*2, 100))
+        ripley_norm, radii = _ripley(
+            gene_data.X, cell_mask, radii=np.linspace(1, l_4_dist * 2, 100)
+        )
 
         # Max value of the L-function
         max_l = ripley_norm.max()
@@ -157,7 +197,9 @@ def _calc_ripley_features(cell_data, cell):
 
         return np.array([max_l, max_gradient, min_gradient, l_corr, l_4])
 
-    return cell_data.obs.groupby('gene').apply(lambda obs: _calc(cell_data[obs.index, :], cell))
+    return cell_data.obs.groupby("gene").apply(
+        lambda obs: _calc(cell_data[obs.index, :], cell)
+    )
 
 
 def _calc_norm_distance_quantile_features(cell_data, cell):
@@ -176,12 +218,12 @@ def _calc_norm_distance_quantile_features(cell_data, cell):
     """
 
     # Select cell mask
-    cell_mask = cell_data.uns['masks']['cell'].loc[cell, 'geometry']
+    cell_mask = cell_data.uns["masks"]["cell"].loc[cell, "geometry"]
 
     # Select nucleus mask
-    nucleus_index = cell_data.uns['mask_index']['nucleus']
-    n_index = nucleus_index[cell_data.uns['mask_index']['nucleus'] == cell].index[0]
-    nucleus_mask = cell_data.uns['masks']['nucleus'].loc[n_index, 'geometry']
+    nucleus_index = cell_data.uns["mask_index"]["nucleus"]
+    n_index = nucleus_index[cell_data.uns["mask_index"]["nucleus"] == cell].index[0]
+    nucleus_mask = cell_data.uns["masks"]["nucleus"].loc[n_index, "geometry"]
 
     def _calc(gene_data, cell):
 
@@ -190,17 +232,24 @@ def _calc_norm_distance_quantile_features(cell_data, cell):
 
         # Calculate normalized distances from points to centroids
         cell_centroid_dist = _calc_norm_dist_to_centroid(points, cell_mask)
-        nucleus_centroid_dist = _calc_norm_dist_to_centroid(
-            points, nucleus_mask)
+        nucleus_centroid_dist = _calc_norm_dist_to_centroid(points, nucleus_mask)
 
         # Calculate normalized distances from points to mask; distance = point to closest point on mask
         cell_mask_dist = _calc_norm_dist_to_mask(points, cell_mask)
         nucleus_mask_dist = _calc_norm_dist_to_mask(points, nucleus_mask)
 
-        features_raw = [cell_centroid_dist, nucleus_centroid_dist,
-                        cell_mask_dist, nucleus_mask_dist]
-        features_label_prefix = ['cell_centroid_distance', 'nucleus_centroid_distance',
-                                 'cell_mask_distance', 'nucleus_mask_distance']
+        features_raw = [
+            cell_centroid_dist,
+            nucleus_centroid_dist,
+            cell_mask_dist,
+            nucleus_mask_dist,
+        ]
+        features_label_prefix = [
+            "cell_centroid_distance",
+            "nucleus_centroid_distance",
+            "cell_mask_distance",
+            "nucleus_mask_distance",
+        ]
 
         # Get quantiles of each distance distribution
         features = []
@@ -208,11 +257,13 @@ def _calc_norm_distance_quantile_features(cell_data, cell):
         for feature, label in zip(features_raw, features_label_prefix):
             quantiles = [5, 10, 20, 50]
             features.extend(np.percentile(feature, quantiles))
-            features_labels.extend([f'{label}_q{q}' for q in quantiles])
+            features_labels.extend([f"{label}_q{q}" for q in quantiles])
 
         return np.array(features)
 
-    return cell_data.obs.groupby('gene').apply(lambda obs: _calc(cell_data[obs.index, :], cell))
+    return cell_data.obs.groupby("gene").apply(
+        lambda obs: _calc(cell_data[obs.index, :], cell)
+    )
 
 
 def _calc_norm_dist_to_centroid(points, mask):
@@ -253,32 +304,33 @@ def _calc_norm_dist_to_mask(points, mask):
 
 def _calc_morph_enrichment(cell_data, cell):
     # Select cell mask
-    cell_mask = cell_data.uns['masks']['cell'].loc[cell, 'geometry']
+    cell_mask = cell_data.uns["masks"]["cell"].loc[cell, "geometry"]
 
     # Morphological openings on cell mask
     # Mean cell radius size
     mean_cell_radius = distance.cdist(
-        np.array(cell_mask.centroid).reshape(1, 2), np.array(cell_mask.exterior.xy).T).mean()
+        np.array(cell_mask.centroid).reshape(1, 2), np.array(cell_mask.exterior.xy).T
+    ).mean()
 
     # Define proportion of radius to perform morph opening
-    proportions = [.1, .25]
+    proportions = [0.1, 0.25]
     morph_masks = {}
     for p in proportions:
         # Define proportion of radius
         d = mean_cell_radius * p
 
         # Compute morph opening
-        morph_masks[p] = cell_mask.buffer(
-            distance=-d).buffer(distance=d)
+        morph_masks[p] = cell_mask.buffer(distance=-d).buffer(distance=d)
 
     def _calc(gene_data, cell):
 
         enrichment = []
 
         # Create GeoDataFrame from points
-        points = pd.DataFrame(gene_data.X, columns=['x', 'y'])
+        points = pd.DataFrame(gene_data.X, columns=["x", "y"])
         points = geopandas.GeoDataFrame(
-            geometry=geopandas.points_from_xy(points.x, points.y))
+            geometry=geopandas.points_from_xy(points.x, points.y)
+        )
 
         # Count fraction of points in mask
         for p in proportions:
@@ -287,43 +339,47 @@ def _calc_morph_enrichment(cell_data, cell):
 
         return np.array(enrichment)
 
-    return cell_data.obs.groupby('gene').apply(lambda obs: _calc(cell_data[obs.index, :], cell))
+    return cell_data.obs.groupby("gene").apply(
+        lambda obs: _calc(cell_data[obs.index, :], cell)
+    )
 
 
 def _calc_nuclear_fraction(cell_data, cell):
     def _calc(gene_data, cell):
-        nucleus_index = cell_data.uns['mask_index']['nucleus']
-        n_index = nucleus_index[nucleus_index['cell'] == cell].index[0]
-        nuclear_count = sum(gene_data.obs['nucleus'] == n_index)
+        nucleus_index = cell_data.uns["mask_index"]["nucleus"]
+        n_index = nucleus_index[nucleus_index["cell"] == cell].index[0]
+        nuclear_count = sum(gene_data.obs["nucleus"] == n_index)
         ratio = float(nuclear_count) / len(gene_data)
         return ratio
 
-    return cell_data.obs.groupby('gene').apply(lambda obs: _calc(cell_data[obs.index, :], cell))
+    return cell_data.obs.groupby("gene").apply(
+        lambda obs: _calc(cell_data[obs.index, :], cell)
+    )
 
 
 def _calc_indexes(cell_data, cell):
-    """Calculate polarization index, dispersion index, and peripheral index. Requires both cell and nucleus.
-    """
+    """Calculate polarization index, dispersion index, and peripheral index. Requires both cell and nucleus."""
 
     # Calculate of cell-dependent only values
-    cell_mask = cell_data.uns['masks']['cell'].loc[cell, 'geometry']
+    cell_mask = cell_data.uns["masks"]["cell"].loc[cell, "geometry"]
     cell_centroid = np.array(cell_mask.centroid).reshape(1, 2)
     grid_points = _poly2grid(cell_mask)
     cell_centroid_array = np.tile(cell_centroid, len(grid_points))
     cell_centroid_array = cell_centroid_array.reshape(-1, 2)
     radius_of_gyration = mean_squared_error(grid_points, cell_centroid_array)
 
-    nucleus_index = cell_data.uns['mask_index']['nucleus']
-    n_index = nucleus_index[cell_data.uns['mask_index']['nucleus'] == cell].index[0]
+    nucleus_index = cell_data.uns["mask_index"]["nucleus"]
+    n_index = nucleus_index[cell_data.uns["mask_index"]["nucleus"] == cell].index[0]
     nucleus_centroid = np.array(
-        cell_data.uns['masks']['nucleus'].loc[n_index, 'geometry'].centroid).reshape(1, 2)
+        cell_data.uns["masks"]["nucleus"].loc[n_index, "geometry"].centroid
+    ).reshape(1, 2)
 
     # Calculate second moment of points with centroid as reference
     def _calc_second_moment(centroid, pts):
-        '''
+        """
         centroid : [1 x 2] float
         pts : [n x 2] float
-        '''
+        """
         radii = distance.cdist(centroid, pts)
         second_moment = np.sum(radii * radii / len(pts))
         return second_moment
@@ -341,22 +397,30 @@ def _calc_indexes(cell_data, cell):
         polarization_index = offset / radius_of_gyration
 
         # Calculate dispersion index; d-index = 2nd moment of spots, norm. by 2nd moment of uniform spots; moments relative to spot centroid
-        dispersion_index = _calc_second_moment(point_centroid, points) / \
-            _calc_second_moment(point_centroid, grid_points)
+        dispersion_index = _calc_second_moment(
+            point_centroid, points
+        ) / _calc_second_moment(point_centroid, grid_points)
 
         # Calculate peripheral distribution index; d-index = 2nd moment of spots, norm. by 2nd moment of uniform spots; moments relative to nucleus centroid
-        peripheral_distribution_index = _calc_second_moment(nucleus_centroid, points) / \
-            nuclear_moment
+        peripheral_distribution_index = (
+            _calc_second_moment(nucleus_centroid, points) / nuclear_moment
+        )
 
-        return np.array([polarization_index, dispersion_index, peripheral_distribution_index])
+        return np.array(
+            [polarization_index, dispersion_index, peripheral_distribution_index]
+        )
 
-    return cell_data.obs.groupby('gene').apply(lambda obs: _calc(cell_data[obs.index, :], cell))
+    return cell_data.obs.groupby("gene").apply(
+        lambda obs: _calc(cell_data[obs.index, :], cell)
+    )
 
 
 def _poly2grid(polygon):
     minx, miny, maxx, maxy = polygon.bounds
-    x, y = np.meshgrid(np.arange(minx, maxx, step=np.float(20)),
-                       np.arange(miny, maxy, step=np.float(20)))
+    x, y = np.meshgrid(
+        np.arange(minx, maxx, step=np.float(20)),
+        np.arange(miny, maxy, step=np.float(20)),
+    )
     x = x.flatten()
     y = y.flatten()
     xy = np.array([x, y]).T
@@ -383,66 +447,79 @@ def _ripley(points, mask, radii=None):
         ripley l function
     radii
     """
-    estimator = RipleysKEstimator(area=mask.area,
-                                  x_min=float(points[:, 0].min()), x_max=float(points[:, 0].max()),
-                                  y_min=float(points[:, 1].min()), y_max=float(points[:, 1].max()))
+    estimator = RipleysKEstimator(
+        area=mask.area,
+        x_min=float(points[:, 0].min()),
+        x_max=float(points[:, 0].max()),
+        y_min=float(points[:, 1].min()),
+        y_max=float(points[:, 1].max()),
+    )
 
     # https://docs.astropy.org/en/stable/api/astropy.stats.RipleysKEstimator.html#astropy.stats.RipleysKEstimator
     # if radii is None:
     #     radii = np.linspace(1, np.sqrt(mask.area / 2) ** 0.5, 200)
-    ripley = estimator.Hfunction(data=points, radii=radii, mode='none')
+    ripley = estimator.Hfunction(data=points, radii=radii, mode="none")
 
     return ripley, radii
 
 
+def _rasterize(cell_data, cell, imgdir):
+    # TODO WRITE TO FILE, do not store with anndata. Otherwise too big in memory
+    output_size = 32
 
-def _rasterize(cell_data, cell):
-    # TODO parameterize?
-    output_size = 64
-    
     # Initialize base image
     base_img = np.zeros((output_size, output_size))
-    
+
     ##### Cell mask
-    cell_xy = np.array(cell_data.uns['masks']['cell'].loc[cell, 'geometry'].exterior.xy).reshape(2, -1).T
+    cell_xy = (
+        np.array(cell_data.uns["masks"]["cell"].loc[cell, "geometry"].exterior.xy)
+        .reshape(2, -1)
+        .T
+    )
 
     # shift to 0
     offset = cell_xy.min(axis=0)
     cell_xy = cell_xy - offset
 
     # scale to res
-    scale_factor = (output_size*0.99) / cell_xy.max()
+    scale_factor = (output_size * 0.99) / cell_xy.max()
     cell_xy = cell_xy * scale_factor
 
     # Center
-    center_offset = (output_size/2) - cell_xy.max(axis=0) / 2
+    center_offset = (output_size / 2) - cell_xy.max(axis=0) / 2
     cell_xy = cell_xy + center_offset
 
     # Rasterize
     cell_xy = np.floor(cell_xy).astype(int)
 
     # Save to base image
+    # TODO HANDLE NO CELL MEMBRANE
     base_img = cv2.fillPoly(base_img, [cell_xy], 1)
 
-    ##### Nuclear mask
-    mask_index = cell_data.uns['mask_index']
-    
-    nucleus_i = mask_index['nucleus'].loc[mask_index['nucleus']['cell'] == cell].index[0]
-    nucleus = cell_data.uns['masks']['nucleus'].loc[nucleus_i, 'geometry']
-    nucleus_xy = np.array(nucleus.exterior.xy).reshape(2, -1).T
-    nucleus_xy = (nucleus_xy - offset) * scale_factor + center_offset
-    nucleus_xy = np.floor(nucleus_xy).astype(int)
+    ##### Get nucleus mask (optional)
+    mask_index = cell_data.uns["mask_index"]
+    if (mask_index["nucleus"]["cell"] == cell).any():
+        nucleus_i = (
+            mask_index["nucleus"].loc[mask_index["nucleus"]["cell"] == cell].index[0]
+        )
+        nucleus = cell_data.uns["masks"]["nucleus"].loc[nucleus_i, "geometry"]
 
-    # Save to base image
-    base_img = cv2.fillPoly(base_img, [nucleus_xy], 2)
+        # Scale coordinates
+        nucleus_xy = np.array(nucleus.exterior.xy).reshape(2, -1).T
+        nucleus_xy = (nucleus_xy - offset) * scale_factor + center_offset
+        nucleus_xy = np.floor(nucleus_xy).astype(int)
 
-    def _calc(gene_data, cell):
+        # Save to base image
+        base_img = cv2.fillPoly(base_img, [nucleus_xy], 2)
+
+    def _calc(gene_data, cell, gene):
+
         ##### Points
         points = gene_data.X
         points = (points - offset) * scale_factor + center_offset
         points = np.floor(points).astype(int)
-        points = np.clip(points, 0, output_size-1)
-        
+        points = np.clip(points, 0, output_size - 1)
+
         # To dense image; points values start at 3+
         pts_img = np.zeros((output_size, output_size))
         for coo in points:
@@ -453,21 +530,43 @@ def _rasterize(cell_data, cell):
 
         gene_img = base_img.copy()
         gene_img = np.where(pts_img > 0, pts_img, base_img).astype(np.float32)
-        # image = torch.from_numpy(image) # convert to Tensor
-        return pd.Series([gene_img], index=['raster'])
 
-    if len(cell_data.obs['gene']) > gene_parallel_threshold:
-        return cell_data.obs.groupby('gene').parallel_apply(lambda obs: _calc(cell_data[obs.index], cell))
+        gene_img = gene_img / 100
+        gene_img = torch.from_numpy(gene_img) # convert to Tensor
+        torchvision.utils.save_image(gene_img, f"{imgdir}/{cell}_{gene}.tif")
+        return gene_img
+
+    # Parallel if many genes per cell
+    if len(cell_data.obs["gene"]) > gene_parallel_threshold:
+        cell_data.obs.groupby("gene").parallel_apply(
+            lambda obs: _calc(cell_data[obs.index], cell, obs["gene"].values[0])
+        )
     else:
-        return cell_data.obs.groupby('gene').apply(lambda obs: _calc(cell_data[obs.index], cell))
+        cell_data.obs.groupby("gene").apply(
+            lambda obs: _calc(cell_data[obs.index], cell, obs["gene"].values[0])
+        )
+
 
 # Store feature names, descriptions, and respective functions.
-feature_set = dict({'ripley': {'description': 'ripley features', 'function': _calc_ripley_features},
-             'distance': {'description': 'distance features', 'function': _calc_norm_distance_quantile_features},
-             'morphology': {'description': 'morphology features', 'function': _calc_morph_enrichment},
-             'mask_fraction': {'description': 'ripley features', 'function': _calc_nuclear_fraction},
-             'indexes': {'description': 'index features', 'function': _calc_indexes},
-             'raster': {'description': 'rasterize to image', 'function': _rasterize}})
+feature_set = dict(
+    {
+        "ripley": {"description": "ripley features", "function": _calc_ripley_features},
+        "distance": {
+            "description": "distance features",
+            "function": _calc_norm_distance_quantile_features,
+        },
+        "morphology": {
+            "description": "morphology features",
+            "function": _calc_morph_enrichment,
+        },
+        "mask_fraction": {
+            "description": "ripley features",
+            "function": _calc_nuclear_fraction,
+        },
+        "indexes": {"description": "index features", "function": _calc_indexes},
+        "raster": {"description": "rasterize to image", "function": _rasterize},
+    }
+)
 
 
 def get_feature(data, feature):
@@ -486,9 +585,10 @@ def get_feature(data, feature):
         [description]
     """
     try:
-        return data.uns['sample_data'][feature]
+        return data.uns["sample_data"][feature]
     except KeyError:
         return None
+
 
 def list_features():
     """Return table of features.
@@ -499,4 +599,3 @@ def list_features():
         Feature names and descriptions.
     """
     return {f'{k}: {feature_set[k]["description"]}' for k, v in feature_set.items()}
-

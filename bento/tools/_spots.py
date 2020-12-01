@@ -1,11 +1,14 @@
 import bento
 import numpy as np
 import pandas as pd
+import pickle
 import skorch
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from torchvision import datasets, transforms
+
 from joblib import Parallel, delayed
 from skorch import NeuralNetClassifier
 from skorch.callbacks import Checkpoint
@@ -13,15 +16,17 @@ from tqdm.auto import tqdm
 
 from .._settings import settings
 
-def patterns(data, device='auto', copy=False):
+def spots(data, imagedir, device='auto', copy=False):
     """
     Detect and label localization patterns.
+    TODO change data to be iterable compatible with skorch.predict_proba
 
     Parameters
     ----------
     data : [type]
         [description]
-
+    imagedir : str
+        Folder for bento rasterized images.
     Returns
     -------
     [type]
@@ -32,38 +37,35 @@ def patterns(data, device='auto', copy=False):
     # Class names
     classes = ['cell2D', 'cellext', 'foci', 'nuc2D', 'polarized', 'random']
 
-    # Get features
-    X = bento.get_feature(adata, 'raster')
-        # Compute if missing; compute if number of samples does not match number of feature values
-    if X is None or X.shape[0] != adata.uns['sample_index'].shape[0]:
-        bento.tl.prepare_features(adata, ['raster'])
-        X = bento.get_feature(adata, 'raster')
-
-
-    # Model expects size 1 channel dimension
-    X = np.expand_dims(X, axis=1) 
-
-    binary_clfs = []
-
+    dataset = datasets.ImageFolder(
+        imagedir,
+        transform=transforms.Compose([transforms.Grayscale(), transforms.ToTensor()]),
+    )
+    
+    # Default to gpu if possible. Otherwise respect specified parameter
     if device == 'auto':
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    model_dir = '/'.join(bento.__file__.split('/')[:-1]) + '/models/patterns'
+    model_dir = '/'.join(bento.__file__.split('/')[:-1]) + '/models/spots'
+
+    # Load temperature values as list
+    with open(f'{model_dir}/temperature.txt', 'r') as f:
+        temperatures = f.read().splitlines()
 
     # Load ensemble model
-    for c in classes:
-        conv_net = NeuralNetClassifier(
+    binary_clfs = []
+    for i, c in enumerate(classes):
+
+        net = NeuralNetClassifier(
             module=SpotsNet,
-            lr=0.006740967460470117,
-            device=device
+            module__eval_prob=True,
+            module__temperature=temperatures[i]
         )
 
-        cp = Checkpoint(dirname=model_dir, fn_prefix=f'{c}_')
-
-        conv_net.initialize()
-        conv_net.load_params(checkpoint=cp)
-        binary_clfs.append(conv_net)
-
+        net.initialize()
+        cp = Checkpoint(dirname=f'{model_dir}', fn_prefix=f'{c}_')
+        net.load_params(checkpoint=cp)
+        binary_clfs.append(net)
 
     # TODO this could be faster if swap to iterate over chunks instead of interating over classifiers (no redundant sample IO)
     pred_prob = []
@@ -74,37 +76,52 @@ def patterns(data, device='auto', copy=False):
             results = parallel(delayed(clf.predict_proba)(chunk) for chunk in np.array_split(X, settings.n_cores))
             pred_prob.append(np.vstack(results)[:,1].flatten())
         else:
-            pred_prob.append(clf.predict_proba(X)[:,1])
+            pred_prob.append(clf.predict_proba(dataset)[:,1])
         
+    # Save multiclass probability
     pred_prob = np.array(pred_prob)
     pred_prob = np.transpose(pred_prob)
-
-    # Save multiclass probability
     pred_prob = pd.DataFrame(pred_prob, columns=classes)
+    pred_prob.index = pred_prob.astype(str)
     adata.uns['sample_data']['patterns_prob'] = pred_prob
 
     # Save mutliclass label
     pred_label = pred_prob.copy()
-    pred_label[pred_prob > 0.5] = 1
-    pred_label[pred_prob <= 0.5] = 0
+    pred_label[pred_prob >= 0.5] = 1
+    pred_label[pred_prob < 0.5] = 0
     adata.uns['sample_data']['patterns'] = pred_label
 
     # Map pattern probabilities to obs
     # TODO fails with extracellular points
-    for c in classes:
-        adata.obs[f'{c}_prob'] = pred_prob[c][adata.obs['sample_id']].values
-        adata.obs[f'{c}'] = pred_label[c][adata.obs['sample_id']].values
+    # TODOD use _map_to_obs
+    # for c in classes:
+    #     adata.obs[f'{c}_prob'] = pred_prob[c][adata.obs['sample_id']].values
+    #     adata.obs[f'{c}'] = pred_label[c][adata.obs['sample_id']].values
 
-    # TODO temperature scaling
 
     return adata if copy else None
+
+def get_conv_outsize(in_size, padding, dilation, kernel_size, stride):
+    outsize = 1 + (in_size + 2*padding - dilation*(kernel_size-1) -1) / stride
+    return int(outsize)
+
+def temperature_scale(logits, temp):
+    """
+    Perform temperature scaling on logits
+    """
+    # Expand temperature to match the size of logits
+    temperature = temp.unsqueeze(1).expand(logits.size(0), logits.size(1))
+    return logits / temperature
 
 class SpotsNet(nn.Module):
     '''
     3 2d-convolutional layers with dilation to increase receptive field size
     ''' 
-    def __init__(self):
+    def __init__(self, eval_prob=False, temperature=1):
         super(SpotsNet, self).__init__()
+        
+        self.eval_prob = eval_prob
+        self.temperature = nn.Parameter(torch.ones(1) * 1.5)
         self.kernel_size1 = 5
         self.dilation_size1 = 1
 
@@ -128,8 +145,8 @@ class SpotsNet(nn.Module):
         )
 
         # Calculate total size to flatten to FC layer
-        conv1_outsize = self.get_conv_outsize(64, 0, self.dilation_size1, self.kernel_size1, 1)
-        conv2_outsize = self.get_conv_outsize(conv1_outsize / 2, 0, self.dilation_size2, self.kernel_size2, 1)
+        conv1_outsize = get_conv_outsize(64, 0, self.dilation_size1, self.kernel_size1, 1)
+        conv2_outsize = get_conv_outsize(conv1_outsize / 2, 0, self.dilation_size2, self.kernel_size2, 1)
         fc1_input_size = int(16 * (conv2_outsize / 2) * (conv2_outsize / 2))
         
         # First FC layer flattens convolutions
@@ -150,8 +167,7 @@ class SpotsNet(nn.Module):
         
         # 3rd FC layer half size -> binary class probability with softmax
         self.fc3 = nn.Sequential(
-            nn.Linear(32, 2),
-            nn.Softmax(dim=-1)
+            nn.Linear(32, 2)
         )
         
     def forward(self, x, **kwargs):
@@ -160,10 +176,7 @@ class SpotsNet(nn.Module):
         x = self.fc1(x)
         x = self.fc2(x)
         x = self.fc3(x)
+        x = temperature_scale(x, self.temperature)
+        if self.eval_prob:
+            x = F.softmax(x, dim=-1)
         return x
-        
-    
-    def get_conv_outsize(self, in_size, padding, dilation, kernel_size, stride):
-        outsize = 1 + (in_size + 2*padding - dilation*(kernel_size-1) -1) / stride
-        return int(outsize)
-        
