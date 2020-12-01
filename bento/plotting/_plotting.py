@@ -1,18 +1,17 @@
 import warnings
-import geopandas
-
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.colors import is_color_like, ListedColormap
-
-import seaborn as sns
-
-from shapely.affinity import translate
-from shapely import geometry
 
 import altair as alt
 import descartes
+import geopandas
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from matplotlib.colors import ListedColormap, is_color_like
+from shapely import geometry
+from shapely.affinity import translate
+
+from ..tools._tools import subsample
 
 alt.themes.enable('opaque')
 alt.renderers.enable('default')
@@ -78,7 +77,7 @@ def quality_metrics(data, width=900, height=250):
     return chart
 
 
-def plot_cells(data, style='points', cells=None, genes=None, subsample=0.1, scatter_hue=None, scatter_palette='colorblind', power=1, heatmap_cmap='mako', draw_masks=['cell'], width=10, height=10):
+def plot_cells(data, style='points', cells=None, genes=None, fraction=0.1, scatter_hue=None, scatter_palette='colorblind', power=1, heatmap_cmap='mako', draw_masks=['cell'], width=10, height=10):
     """
     Visualize distribution of variable in spatial coordinates.
     Parameters
@@ -90,8 +89,8 @@ def plot_cells(data, style='points', cells=None, genes=None, subsample=0.1, scat
         Select specified list of cells. Default value of None selects all cells.
     genes: None, list
         Select specified list of genes. Default value of None selects all genes.
-    subsample: float (0,1]
-        Fraction to subsample when plotting. Useful when dealing with large datasets.
+    fraction: float (0,1]
+        Fraction to fraction when plotting. Useful when dealing with large datasets.
     scatter_hue: str
         Name of column in data.obs to interpet for scatter plot color. First tries to interpret if values are matplotlib color-like. For categorical data, tries to plot a different color for each label. For numerical, scales color by numerical values (need to be between [0,1]). Returns error if outside range.
     draw_masks: list
@@ -104,37 +103,31 @@ def plot_cells(data, style='points', cells=None, genes=None, subsample=0.1, scat
     if cells is None:
         cells =  set(data.obs_vector('cell'))
     else:
-        print('Subsetting cells...')
+        # print('Subsetting cells...')
         if type(cells) != list:
             cells = [cells]
 
-    cells = [str.upper(str(i)) for i in cells]
-
-    if -1 in cells:
+    if '-1' in cells:
         warnings.warn('Detected points outside of cells. TODO write clean fx that drops these points')
         
     # Format genes input
     if genes is None:
         genes = data.obs_vector('gene')
     else:
-        print('Subsetting genes...')
+        # print('Subsetting genes...')
         if type(genes) != list:
             genes = [genes]
-
-    genes = [str.upper(str(i)) for i in genes]
         
     # Subset points to specified cells and genes
-    points_in_cells = data.obs['cell'].astype(str).str.upper().isin(cells)
-    points_in_genes = data.obs['gene'].astype(str).str.upper().isin(genes)
+    points_in_cells = data.obs['cell'].isin(cells)
+    points_in_genes = data.obs['gene'].isin(genes)
     points = data[points_in_cells & points_in_genes,:]
+    
+    # * fraction points per cell
+    if fraction < 1:
+        # print('Downsampling points...')
+        points = subsample(points, fraction)
 
-    # * subsample points per cell
-    if subsample < 1:
-        print('Downsampling points...')
-        subsample_mask = points.obs.groupby('cell').apply(lambda df: df.sample(frac=subsample).index.tolist())
-        subsample_mask = subsample_mask.explode().dropna().tolist()
-        points = points[subsample_mask,:]
-        
     # Format as long table format with points and annotations
     points_df = pd.DataFrame(points.X, columns=['x', 'y'])
     points_df = pd.concat([points_df, points.obs.reset_index(drop=True)], axis=1)
@@ -143,11 +136,22 @@ def plot_cells(data, style='points', cells=None, genes=None, subsample=0.1, scat
     fig = plt.figure(figsize=(width,height), dpi=100)
     ax = fig.add_subplot(111, frameon=False, xticks=[], yticks=[])
     
+    # Subset masks to specified cells
+    mask_outlines = {}
+    for mask in draw_masks:
+        if mask == 'cell':
+            mask_outlines[mask] = data.uns['masks']['cell'].loc[cells]
+        else:
+            mask_index = data.uns['mask_index'][mask]
+            n_indices = mask_index[mask_index['cell'].isin(cells)].index
+            mask_outlines[mask] = data.uns['masks'][mask].loc[n_indices]
+
+
     # Plot clipping mask
-    clip = data.uns['masks']['cell'].unary_union
+    clip = mask_outlines['cell'].unary_union
     clip = clip.envelope.symmetric_difference(clip)
     clip_patch = descartes.PolygonPatch(clip, color='black')
-    data.uns['masks']['cell'].plot(color='black', ax=ax)
+    mask_outlines['cell'].plot(color='black', ax=ax)
     ax.add_patch(clip_patch)
     
     bounds = clip.bounds
@@ -156,31 +160,36 @@ def plot_cells(data, style='points', cells=None, genes=None, subsample=0.1, scat
 
     # * Plot raw points
     if style == 'points':
-        print('Plotting points...')
+        # print('Plotting points...')
         
         # Default point color is teal
         if scatter_hue is None: 
             color = 'teal'
             scatter_palette = None
+            ax.scatter(data=points_df, x='x', y='y', c=color, s=3)
+
+        # Handle coloring by variable
         else:
             hue_values = points_df[scatter_hue]
+
+            # Color by [0,1] range quantitative variable
             if np.issubdtype(hue_values, np.number):
-            
-                # Scale point color by obs variable
                 if (hue_values >= 0).all() and (hue_values <= 1).all():
                     color = np.expand_dims(points_df[scatter_hue].values, 1)**(1./power)
                     color = [(max(0.3, x), 0.3, 0.3, max(0.3, x)) for x in color]
                     scatter_cmap = ListedColormap(scatter_palette)
-                    ax.scatter(data=points_df, x='x', y='y', c=scatter_hue, s=3, cmap=scatter_cmap)
                 else:
                     return ValueError('Numeric values for \'scatter_hue\' parameter must be in range [0,1].')
+
+                ax.scatter(data=points_df, x='x', y='y', c=scatter_hue, s=3, cmap=scatter_cmap)
                 
+            # Color as qualitative variable
             else: 
                 # Try to interpret as matplotlib color
                 if is_color_like(hue_values.iloc[0]):
                     color = hue_values.apply(is_color_like)
+                # Color points by category (custom _determinisitic_ color mapping)
                 else:
-                    # Color points by category (custom _determinisitic_ color mapping)
                     phenomap, color = pheno_to_color(points_df[scatter_hue], palette=scatter_palette)
                 
                 ax.scatter(data=points_df, x='x', y='y', c=color, s=3)
@@ -189,18 +198,21 @@ def plot_cells(data, style='points', cells=None, genes=None, subsample=0.1, scat
 
     # * Plot heatmap
     elif style == 'heatmap':
-        print('Plotting heatmap...')
+        # print('Plotting heatmap...')
         sns.kdeplot(data=points_df, x='x', y='y', cmap=heatmap_cmap,
                     ax=ax, bw_adjust=0.1, shade_lowest=False, 
                     levels=100, fill=True)
 
     # * Plot mask outlines
     for mask in draw_masks:
-        mask_outline = data.uns['masks'][mask].boundary
-        mask_outline.plot(ax=ax, lw=1, color=(1,1,1,0.5))
-    
-    ax.set_facecolor('black')
+        mask_outline = mask_outlines[mask].boundary
+        if mask == 'cell':
+            mask_outline.plot(ax=ax, lw=1, color=(1,1,1,1))
+        else:
+            mask_outline.plot(ax=ax, lw=1, color=(1,1,1,0.5))
 
+    ax.set_facecolor('black')
+    # plt.close()
     return fig
 
 
