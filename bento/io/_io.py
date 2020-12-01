@@ -184,6 +184,33 @@ def _index_points(points, mask):
     index = index.drop_duplicates(subset='index', keep="first")
     index = index.sort_index()
     index = index.reset_index()['index_right']
-    index = index.fillna(-1).astype(int)
+    index = index.fillna(-1).astype(str)
 
     return pd.Series(index)
+
+
+def concatenate(adatas):
+    for i, adata in enumerate(adatas):
+        for mask in adata.uns['masks'].keys():
+            
+            adata.obs[mask] = [f'{i}-{x}' if x != '-1' else x for x in adata.obs[mask]]
+            adata.uns['masks'][mask].index = [f'{i}-{x}' for x in adata.uns['masks'][mask].index]
+            
+            if mask != 'cell':
+                adata.uns['mask_index'][mask].index = [f'{i}-{x}' for x in adata.uns['mask_index'][mask].index]
+                adata.uns['mask_index'][mask]['cell'] = [f'{i}-{x}' for x in adata.uns['mask_index'][mask]['cell']]
+            
+    uns = dict()
+    uns['masks'] = dict()
+    for mask in adatas[0].uns['masks'].keys():
+        # Concat mask GeoDataFrames
+        uns['masks'][mask] = pd.concat([adata.uns['masks'][mask] for adata in adatas])
+        
+        # Concat mask_index DataFrames
+        if mask != 'cell':
+            uns['mask_index'][mask] = pd.concat([adata.uns['mask_index'][mask] for adata in adatas])
+
+    new_adata = adatas[0].concatenate(adatas[1:])
+    new_adata.uns = uns
+
+    return new_adata
