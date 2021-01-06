@@ -4,6 +4,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 from collections import defaultdict
 
+import os
 import cv2
 import geopandas
 import matplotlib.path as mplPath
@@ -32,7 +33,7 @@ def rasterize_cells(data, imgdir):
     data : AnnData
         AnnData formatted spatial data.
     imgdir : str
-        Folder path where images will be stored.
+        Folder path wherisfilee images will be stored.
     """
 
     # Get cells
@@ -42,6 +43,8 @@ def rasterize_cells(data, imgdir):
         cells = cells.loc[cells != "-1"]
 
     # Prepare features for each cell separately
+    if not os.path.isdir(imgdir):
+        os.makedirs(imgdir)
     print(f"Writing to {imgdir} ...")
     for cell in tqdm(cells.tolist(), desc=f"Processing {len(cells)} cells"):
         _prepare_cell_features(data, ["raster"], cell, imgdir=imgdir)
@@ -537,14 +540,14 @@ def _rasterize(cell_data, cell, imgdir):
         return gene_img
 
     # Parallel if many genes per cell
-    if len(cell_data.obs["gene"]) > gene_parallel_threshold:
-        cell_data.obs.groupby("gene").parallel_apply(
-            lambda obs: _calc(cell_data[obs.index], cell, obs["gene"].values[0])
-        )
-    else:
-        cell_data.obs.groupby("gene").apply(
-            lambda obs: _calc(cell_data[obs.index], cell, obs["gene"].values[0])
-        )
+#     if len(cell_data.obs["gene"]) > gene_parallel_threshold:
+#         cell_data.obs.groupby("gene").parallel_apply(
+#             lambda obs: _calc(cell_data[obs.index], cell, obs["gene"].values[0])
+#         )
+#     else:
+    cell_data.obs.groupby("gene").apply(
+        lambda obs: _calc(cell_data[obs.index], cell, obs["gene"].values[0])
+    )
 
 
 # Store feature names, descriptions, and respective functions.

@@ -14,6 +14,8 @@ from skorch import NeuralNetClassifier
 from skorch.callbacks import Checkpoint
 from tqdm.auto import tqdm
 
+import optuna
+
 from .._settings import settings
 
 def spots(data, imagedir, device='auto', copy=False):
@@ -37,11 +39,6 @@ def spots(data, imagedir, device='auto', copy=False):
     # Class names
     classes = ['cell2D', 'cellext', 'foci', 'nuc2D', 'polarized', 'random']
 
-    dataset = datasets.ImageFolder(
-        imagedir,
-        transform=transforms.Compose([transforms.Grayscale(), transforms.ToTensor()]),
-    )
-    
     # Default to gpu if possible. Otherwise respect specified parameter
     if device == 'auto':
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -56,24 +53,41 @@ def spots(data, imagedir, device='auto', copy=False):
     binary_clfs = []
     for i, c in enumerate(classes):
 
+        study = optuna.load_study(
+            study_name=f"spots_20210104",
+            storage=f"sqlite:///{model_dir}/{c}.db",
+        )
+            # Reload model with temperature and softmax
         net = NeuralNetClassifier(
-            module=SpotsNet,
+            module=SpotsModule,
+            module__params=study.best_params,
             module__eval_prob=True,
             module__temperature=temperatures[i]
         )
-
+        cp = Checkpoint(
+            dirname=f'{model_dir}',
+            fn_prefix=f'{c}_'
+        )
+    
+        # Load model
         net.initialize()
-        cp = Checkpoint(dirname=f'{model_dir}', fn_prefix=f'{c}_')
         net.load_params(checkpoint=cp)
+
         binary_clfs.append(net)
 
     # TODO this could be faster if swap to iterate over chunks instead of interating over classifiers (no redundant sample IO)
+    dataset = datasets.ImageFolder(
+        imagedir,
+        transform=transforms.Compose([transforms.Grayscale(), transforms.ToTensor()]),
+    )
+    
     pred_prob = []
+    print('pointing to dataset')
     for clf in tqdm(binary_clfs, desc='Detecting patterns'):
-
+        print('iterating through classifiers')
         if settings.n_cores > 1:
             parallel = Parallel(n_jobs=settings.n_cores, max_nbytes=None)
-            results = parallel(delayed(clf.predict_proba)(chunk) for chunk in np.array_split(X, settings.n_cores))
+            results = parallel(delayed(clf.predict_proba)(chunk) for chunk in np.array_split(dataset, settings.n_cores))
             pred_prob.append(np.vstack(results)[:,1].flatten())
         else:
             pred_prob.append(clf.predict_proba(dataset)[:,1])
@@ -113,70 +127,62 @@ def temperature_scale(logits, temp):
     temperature = temp.unsqueeze(1).expand(logits.size(0), logits.size(1))
     return logits / temperature
 
-class SpotsNet(nn.Module):
-    '''
-    3 2d-convolutional layers with dilation to increase receptive field size
-    ''' 
-    def __init__(self, eval_prob=False, temperature=1):
-        super(SpotsNet, self).__init__()
-        
+class SpotsModule(nn.Module):
+    def __init__(self, params, eval_prob=False, temperature=1) -> None:
+        super().__init__()
         self.eval_prob = eval_prob
         self.temperature = nn.Parameter(torch.ones(1) * 1.5)
-        self.kernel_size1 = 5
-        self.dilation_size1 = 1
-
-        self.kernel_size2 = 5
-        self.dilation_size2 = 2
-
-        # Convolution block 1
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(1, 8, kernel_size=self.kernel_size1, dilation=self.dilation_size1),
-            nn.BatchNorm2d(8),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2)
-        )
-
-        # Convolution block 2
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(8, 16, kernel_size=self.kernel_size2, dilation=self.dilation_size2),
-            nn.BatchNorm2d(16),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2)
-        )
-
-        # Calculate total size to flatten to FC layer
-        conv1_outsize = get_conv_outsize(64, 0, self.dilation_size1, self.kernel_size1, 1)
-        conv2_outsize = get_conv_outsize(conv1_outsize / 2, 0, self.dilation_size2, self.kernel_size2, 1)
-        fc1_input_size = int(16 * (conv2_outsize / 2) * (conv2_outsize / 2))
         
-        # First FC layer flattens convolutions
-        self.fc1 = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(fc1_input_size, 128),
-            nn.Dropout(),
-            nn.ReLU()
-        )
+        n_conv_layers = params["n_convs"]
+        conv_layers = []
+
+        in_channels = 1
+        in_dim = 32
+
+        for i in range(n_conv_layers):
+            out_channels = params[f"out_channels_{i}"]
+            kernel_size = 3
+
+            conv_layers.append(
+                nn.Conv2d(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    kernel_size=kernel_size
+                )
+            )
+            conv_layers.append(nn.BatchNorm2d(out_channels))
+            conv_layers.append(nn.ReLU())
+
+            in_dim = get_conv_outsize(in_dim, padding=0, dilation=1, kernel_size=kernel_size, stride=1)
+
+            in_channels = out_channels
+
+        conv_layers.append(nn.MaxPool2d(2, 2))
+        in_dim = int(in_dim / 2)
+
+        # We optimize the number of layers, hidden units and dropout ratio in each layer.
+        n_fc_layers = params["n_fc_layers"]
+        fc_layers = [nn.Flatten()]
+
+        in_features = out_channels * in_dim * in_dim
+        for i in range(n_fc_layers):
+            out_features = params[f"n_units_l{i}"]
+            fc_layers.append(nn.Linear(in_features, out_features))
+            fc_layers.append(nn.ReLU())
+            p = params[f"dropout_l{i}"]
+            fc_layers.append(nn.Dropout(p))
+
+            in_features = out_features
+
+        fc_layers.append(nn.Linear(in_features, 2))
+
+        self.model = nn.Sequential(*[*conv_layers, *fc_layers])
+
+    def forward(self, x):
+        x = self.model(x)
         
-        # Second FC layer
-        self.fc2 = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(128, 32),
-            nn.Dropout(),
-            nn.ReLU()
-        )
-        
-        # 3rd FC layer half size -> binary class probability with softmax
-        self.fc3 = nn.Sequential(
-            nn.Linear(32, 2)
-        )
-        
-    def forward(self, x, **kwargs):
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.fc1(x)
-        x = self.fc2(x)
-        x = self.fc3(x)
         x = temperature_scale(x, self.temperature)
         if self.eval_prob:
             x = F.softmax(x, dim=-1)
+            
         return x

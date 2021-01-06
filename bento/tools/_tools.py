@@ -13,6 +13,7 @@ from umap import UMAP
 
 from .._settings import pandarallel, settings
 
+from tqdm.auto import tqdm
 
 def subsample(data, fraction, copy=False):
     """Randomly subsample data stratified by cell.
@@ -63,36 +64,21 @@ def _test_gene(data, groupby):
     results = []
     for c in ["cell2D", "cellext", "foci", "nuc2D", "polarized", "random"]:
 
-        # Contingency table [groups x is_pattern]
-        cont_table = data[[groupby, c]].value_counts().unstack()
-
-        if True not in cont_table.columns:
-            log2fc_groups = pd.Series([0] * cont_table.shape[0], index=cont_table.index)
-            group_freq = pd.Series([0] * cont_table.shape[0], index=cont_table.index)
-        else:
-            # Overall pattern fraction
-            avg_fraction = (cont_table[True].sum()) / cont_table.sum().sum()
-
-            # Group specific pattern fractions (pseudocount 1)
-            group_fractions = (cont_table[True]) / cont_table.sum(axis=1)
-
-            # log2 fold change (group/avg)
-            log2fc_groups = np.log2(group_fractions / avg_fraction)
-
-            # Group frequency
-            group_freq = cont_table[True]
-
-        log2fc_groups.index = [f"{_}_log2fc" for _ in log2fc_groups.index]
-        group_freq.index = [f"{_}_n_cells" for _ in group_freq.index]
-        chi2, pvalue, dof, expected = stats.chi2_contingency(cont_table)
-        results.append([c, chi2, pvalue, dof, *log2fc_groups.values, *group_freq.values])
-    return pd.DataFrame(
-        results,
-        columns=["pattern", "statistic", "pvalue", "dof", *log2fc_groups.index, *group_freq.index],
+        # Make dummy columns and add to table
+        group_dummies = pd.get_dummies(data[groupby])
+        group_names = group_dummies.columns.tolist()
+        group_data = pd.concat([data, group_dummies], axis=1)
+        
+        cont_table_empty = pd.DataFrame([[0,0], [0,0]])
+        for g in group_names:
+            cont_table = pd.crosstab(group_data[g], group_data[c]).fillna(0).add(cont_table_empty, fill_value=0)
+            oddsratio, p_value = stats.fisher_exact(cont_table)
+            results.append([c, g, oddsratio, p_value])
+    return pd.DataFrame(results, columns=["pattern", "group", "oddsratio", "pvalue"],
     )
 
 
-def test_phenotype(data, groupby, copy=False):
+def diff_spots(data, groupby, copy=False):
     """Test for differential localization across phenotype of interest.
 
     Parameters
@@ -108,17 +94,18 @@ def test_phenotype(data, groupby, copy=False):
 
     # with warnings.catch_warnings():
     #     warnings.simplefilter("ignore")
-    group_data = adata.uns['sample_index'].reset_index().join(adata.uns['sample_data']['patterns'])
+    group_data = adata.uns['sample_index'].reset_index(drop=True).join(adata.uns['sample_data']['patterns'])
 
     if type(groupby) is pd.Series:
-        group_data = group_data.reset_index().join(groupby)
+        group_data = group_data.reset_index(drop=True).join(groupby)
     else:
-        group_data = group_data.reset_index().join(adata.uns['sample_data'][groupby])
+        group_data = group_data.reset_index(drop=True).join(adata.uns['sample_data'][groupby])
     
     if settings.n_cores > 1:
         results = group_data.groupby("gene").parallel_apply(lambda gene_df: _test_gene(gene_df, groupby))
     else:
-        results = group_data.groupby("gene").apply(lambda gene_df: _test_gene(gene_df, groupby))
+        tqdm.pandas(desc=f'Testing {groupby}')
+        results = group_data.groupby("gene").progress_apply(lambda gene_df: _test_gene(gene_df, groupby))
         
     # Formatting
     results = results.reset_index().drop("level_1", axis=1)
@@ -200,8 +187,9 @@ def score_genes_cell_cycle(data, copy=False, **kwargs):
     sc_obs['cell'] = sc_obs['cell'].astype(str)
 
     # Save to spatial anndata object
-    adata.uns['sample_data']['cell_cycle'] = adata.uns['sample_index'].merge(sc_obs, on='cell', how='left')[['S_score', 'G2M_score', 'phase']]
-    
+    _init_sample_info(adata)
+    adata.uns['sample_data']['cell_cycle'] = adata.uns['sample_index'].merge(sc_obs, on='cell', how='left')[['phase']]
+    adata.uns['sample_data']['cell_cycle'].columns = ['cell_cycle']
     return adata if copy else None
 
 
@@ -266,3 +254,12 @@ def _map_to_obs(data, name):
         
     data.obs[name] = data.uns['sample_data'][name][adata.obs['sample_id']]
     
+    
+def _init_sample_info(data):
+    if 'sample_index' not in data.uns.keys():
+        sample_index = data.obs[['cell', 'gene']].value_counts().index.to_frame(index=False)
+        sample_index.columns = ['cell', 'gene']
+        sample_index.index = sample_index.index.astype(str)
+        data.uns['sample_index'] = sample_index
+        data.uns['sample_data'] = dict()
+        
