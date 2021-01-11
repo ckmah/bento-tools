@@ -82,21 +82,14 @@ def spots(data, imagedir, device='auto', copy=False):
     )
     
     pred_prob = []
-    print('pointing to dataset')
     for clf in tqdm(binary_clfs, desc='Detecting patterns'):
-        print('iterating through classifiers')
-        if settings.n_cores > 1:
-            parallel = Parallel(n_jobs=settings.n_cores, max_nbytes=None)
-            results = parallel(delayed(clf.predict_proba)(chunk) for chunk in np.array_split(dataset, settings.n_cores))
-            pred_prob.append(np.vstack(results)[:,1].flatten())
-        else:
             pred_prob.append(clf.predict_proba(dataset)[:,1])
         
     # Save multiclass probability
     pred_prob = np.array(pred_prob)
     pred_prob = np.transpose(pred_prob)
     pred_prob = pd.DataFrame(pred_prob, columns=classes)
-    pred_prob.index = pred_prob.astype(str)
+    pred_prob.index = pred_prob.index.astype(str)
     adata.uns['sample_data']['patterns_prob'] = pred_prob
 
     # Save mutliclass label
