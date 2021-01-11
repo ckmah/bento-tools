@@ -501,7 +501,7 @@ def _rasterize(cell_data, cell, imgdir):
 
     ##### Get nucleus mask (optional)
     mask_index = cell_data.uns["mask_index"]
-    if (mask_index["nucleus"]["cell"] == cell).any():
+    if 'nucleus' in cell_data.uns['masks']:
         nucleus_i = (
             mask_index["nucleus"].loc[mask_index["nucleus"]["cell"] == cell].index[0]
         )
