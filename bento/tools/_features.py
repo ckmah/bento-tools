@@ -536,6 +536,12 @@ def _rasterize(cell_data, cell, imgdir):
 
         gene_img = gene_img / 100
         gene_img = torch.from_numpy(gene_img) # convert to Tensor
+        
+        if 'labels' in gene_data.uns:
+            label = gene_data.uns['labels'][cell]
+            os.makedirs(f'{imgdir}/{label}', exist_ok=True)
+            torchvision.utils.save_image(gene_img, f"{imgdir}/{label}/{cell}_{gene}.tif")
+        else:
         torchvision.utils.save_image(gene_img, f"{imgdir}/{cell}_{gene}.tif")
         return gene_img
 
