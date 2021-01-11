@@ -542,7 +542,7 @@ def _rasterize(cell_data, cell, imgdir):
             os.makedirs(f'{imgdir}/{label}', exist_ok=True)
             torchvision.utils.save_image(gene_img, f"{imgdir}/{label}/{cell}_{gene}.tif")
         else:
-        torchvision.utils.save_image(gene_img, f"{imgdir}/{cell}_{gene}.tif")
+            torchvision.utils.save_image(gene_img, f"{imgdir}/{cell}_{gene}.tif")
         return gene_img
 
     # Parallel if many genes per cell

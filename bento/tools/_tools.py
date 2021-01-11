@@ -8,6 +8,7 @@ import scanpy as sc
 from sklearn.decomposition import PCA
 from statsmodels.stats.multitest import multipletests
 import scipy.stats as stats
+from joblib import Parallel, delayed
 
 from umap import UMAP
 
@@ -39,7 +40,7 @@ def subsample(data, fraction, copy=False):
         return data[keep, :]
 
 
-def _test_gene(data, groupby):
+def _test_gene(gene, data, groupby):
     """Perform pairwise comparison between groupby and every class.
 
     Parameters
@@ -73,9 +74,10 @@ def _test_gene(data, groupby):
         for g in group_names:
             cont_table = pd.crosstab(group_data[g], group_data[c]).fillna(0).add(cont_table_empty, fill_value=0)
             oddsratio, p_value = stats.fisher_exact(cont_table)
-            results.append([c, g, oddsratio, p_value])
-    return pd.DataFrame(results, columns=["pattern", "group", "oddsratio", "pvalue"],
-    )
+            results.append([gene, c, g, oddsratio, p_value])
+            
+    results = pd.DataFrame(results, columns=["gene", "pattern", "group", "oddsratio", "pvalue"])
+    return results
 
 
 def diff_spots(data, groupby, copy=False):
@@ -101,15 +103,16 @@ def diff_spots(data, groupby, copy=False):
     else:
         group_data = group_data.reset_index(drop=True).join(adata.uns['sample_data'][groupby])
     
+    # Test each gene independently
     if settings.n_cores > 1:
-        results = group_data.groupby("gene").parallel_apply(lambda gene_df: _test_gene(gene_df, groupby))
+        parallel = Parallel(n_jobs=settings.n_cores, verbose=0)
+        results = parallel(delayed(_test_gene)(gene, gene_df, groupby) for gene, gene_df in tqdm(group_data.groupby("gene")))
+        results = pd.concat(results)
     else:
         tqdm.pandas(desc=f'Testing {groupby}')
-        results = group_data.groupby("gene").progress_apply(lambda gene_df: _test_gene(gene_df, groupby))
+        results = group_data.groupby("gene").progress_apply(lambda gene_df: _test_gene(gene_df.name, gene_df, groupby))
+        results = results.reset_index(drop=True)
         
-    # Formatting
-    results = results.reset_index().drop("level_1", axis=1)
-
     # FDR correction
     results_adj = []
     for _, df in results.groupby("pattern"):
@@ -123,7 +126,10 @@ def diff_spots(data, groupby, copy=False):
     results_adj["-log10p"] = -np.log10(results_adj["pvalue"])
     results_adj["-log10padj"] = -np.log10(results_adj["padj"])
 
-    return results_adj.sort_values('pvalue')
+    results_adj = results_adj.sort_values('pvalue')
+    
+    adata.uns['sample_data'][f'dl_{groupby}'] = results_adj
+    return adata if copy else None
 
 
 def score_genes_cell_cycle(data, copy=False, **kwargs):
