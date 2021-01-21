@@ -77,7 +77,7 @@ def quality_metrics(data, width=900, height=250):
     return chart
 
 
-def plot_cells(data, style='points', cells=None, genes=None, fraction=0.1, scatter_hue=None, scatter_palette='colorblind', power=1, heatmap_cmap='mako', draw_masks=['cell'], width=10, height=10):
+def plot_cells(data, style='points', cells=None, genes=None, fraction=0.1, scatter_hue=None, scatter_palette=['red', 'grey'], s=3, alpha=1, power=1, heatmap_cmap='mako', draw_masks=['cell'], width=10, height=10):
     """
     Visualize distribution of variable in spatial coordinates.
     Parameters
@@ -166,7 +166,7 @@ def plot_cells(data, style='points', cells=None, genes=None, fraction=0.1, scatt
         if scatter_hue is None: 
             color = 'teal'
             scatter_palette = None
-            ax.scatter(data=points_df, x='x', y='y', c=color, s=3)
+            ax.scatter(data=points_df, x='x', y='y', c=color, s=s, alpha=alpha)
 
         # Handle coloring by variable
         else:
@@ -181,7 +181,7 @@ def plot_cells(data, style='points', cells=None, genes=None, fraction=0.1, scatt
                 else:
                     return ValueError('Numeric values for \'scatter_hue\' parameter must be in range [0,1].')
 
-                ax.scatter(data=points_df, x='x', y='y', c=scatter_hue, s=3, cmap=scatter_cmap)
+                ax.scatter(data=points_df, x='x', y='y', c=scatter_hue, s=s, alpha=alpha, cmap=scatter_cmap)
                 
             # Color as qualitative variable
             else: 
@@ -192,7 +192,7 @@ def plot_cells(data, style='points', cells=None, genes=None, fraction=0.1, scatt
                 else:
                     phenomap, color = pheno_to_color(points_df[scatter_hue], palette=scatter_palette)
                 
-                ax.scatter(data=points_df, x='x', y='y', c=color, s=3)
+                ax.scatter(data=points_df, x='x', y='y', c=color, s=s, alpha=alpha)
 
         
 
