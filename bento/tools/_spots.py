@@ -46,23 +46,24 @@ def spots(data, imagedir, device='auto', copy=False):
     model_dir = '/'.join(bento.__file__.split('/')[:-1]) + '/models/spots'
 
     # Load temperature values as list
-    with open(f'{model_dir}/temperature.txt', 'r') as f:
-        temperatures = f.read().splitlines()
+    # with open(f'{model_dir}/temperature.txt', 'r') as f:
+    #     temperatures = f.read().splitlines()
+    study = optuna.load_study(
+        study_name=f"spots_20210117",
+        storage=f"sqlite:///{model_dir}/optuna.db",
+    )
 
     # Load ensemble model
     binary_clfs = []
     for i, c in enumerate(classes):
 
-        study = optuna.load_study(
-            study_name=f"spots_20210104",
-            storage=f"sqlite:///{model_dir}/{c}.db",
-        )
+
             # Reload model with temperature and softmax
         net = NeuralNetClassifier(
             module=SpotsModule,
             module__params=study.best_params,
             module__eval_prob=True,
-            module__temperature=temperatures[i]
+            # module__temperature=temperatures[i]
         )
         cp = Checkpoint(
             dirname=f'{model_dir}',
@@ -126,16 +127,18 @@ class SpotsModule(nn.Module):
         self.eval_prob = eval_prob
         self.temperature = nn.Parameter(torch.ones(1) * 1.5)
         
-        n_conv_layers = params["n_convs"]
+#         n_conv_layers = params["n_convs"]
+        n_conv_layers = 2
         conv_layers = []
 
         in_channels = 1
         in_dim = 32
 
+        # Stack convolutions + batchnorm + activation
         for i in range(n_conv_layers):
-            out_channels = params[f"out_channels_{i}"]
-            kernel_size = 3
-
+            out_channels = 16
+            kernel_size = 5
+    
             conv_layers.append(
                 nn.Conv2d(
                     in_channels=in_channels,
@@ -145,28 +148,29 @@ class SpotsModule(nn.Module):
             )
             conv_layers.append(nn.BatchNorm2d(out_channels))
             conv_layers.append(nn.ReLU())
+            conv_layers.append(nn.MaxPool2d(2, 2))
 
+            # Compute convolved output dimensions
             in_dim = get_conv_outsize(in_dim, padding=0, dilation=1, kernel_size=kernel_size, stride=1)
-
+            
+            in_dim = int(in_dim / 2)
             in_channels = out_channels
 
-        conv_layers.append(nn.MaxPool2d(2, 2))
-        in_dim = int(in_dim / 2)
-
         # We optimize the number of layers, hidden units and dropout ratio in each layer.
-        n_fc_layers = params["n_fc_layers"]
         fc_layers = [nn.Flatten()]
 
+        # Compute flatten size
         in_features = out_channels * in_dim * in_dim
+        n_fc_layers=2
+        
         for i in range(n_fc_layers):
             out_features = params[f"n_units_l{i}"]
             fc_layers.append(nn.Linear(in_features, out_features))
+            fc_layers.append(nn.Dropout())
             fc_layers.append(nn.ReLU())
-            p = params[f"dropout_l{i}"]
-            fc_layers.append(nn.Dropout(p))
 
-            in_features = out_features
-
+            in_features = out_features            
+            
         fc_layers.append(nn.Linear(in_features, 2))
 
         self.model = nn.Sequential(*[*conv_layers, *fc_layers])
