@@ -16,7 +16,7 @@ from astropy.stats import RipleysKEstimator
 from scipy.spatial import distance, distance_matrix
 from scipy.stats import spearmanr
 from scipy.stats.mstats import zscore
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, pairwise_distances
 from tqdm.auto import tqdm
 
 from .._settings import pandarallel, settings
@@ -150,6 +150,14 @@ def _prepare_cell_features(data, features, cell, **kwargs):
 
     return computed_features
 
+
+def _gene_distance(cell_data, cell):
+    df = pd.DataFrame(cell_data.X)
+    gpoints = df.groupby(cell_data.obs['gene'].values).apply(lambda df: df.values).values
+    # gpoints shape = [genes x n_points x 2], where n_points is different for each gene
+
+    # calculate gene-gene distance 
+    return
 
 def _calc_ripley_features(cell_data, cell):
     """
