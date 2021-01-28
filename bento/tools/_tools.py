@@ -21,99 +21,7 @@ from .._settings import pandarallel, settings
 warnings.simplefilter("ignore", ConvergenceWarning)
 
 
-def subsample(data, fraction, copy=False):
-    """Randomly subsample data stratified by cell.
-    Parameters
-    ----------
-    data : AnnData
-        AnnData formatted spatial transcriptomics data.
-    fraction : float
-        Float between (0, 1] to subsample data.
-    copy : bool
-        Return view of AnnData if False, return copy if True. Default False.
-    Returns
-    -------
-    AnnData
-        Returns subsampled view of original AnnData object.
-    """
-    keep = (
-        data.obs.groupby("cell")
-        .apply(lambda df: df.sample(frac=fraction))
-        .index.droplevel(0)
-    )
-
-    if copy:
-        return data[keep, :].copy()
-    else:
-        return data[keep, :]
-
-
-def _test_gene(gene, data, phenotype, continuous):
-    """Perform pairwise comparison between groupby and every class.
-
-    Parameters
-    ----------
-    data : DataFrame
-        Phenotype and localization pattern labels across cells for a single gene.
-    groupby : str
-        Variable grouping cells for differential analysis. Should be present in data.columns.
-
-    Returns
-    -------
-    DataFrame
-        Differential localization test results. [# of patterns, ]
-    """
-    results = []
-
-    # Make dummy columns and add to table
-    classes = [c for c in data.columns if c in ['cell2D', 'cellext', 'foci', 'nuc2D', 'polarized', 'random']]
-    if not continuous:
-        group_dummies = pd.get_dummies(data[phenotype])
-        group_names = group_dummies.columns.tolist()
-        group_data = pd.concat([data, group_dummies], axis=1)
-
-        for g in group_names:
-            for c in classes:
-                try:
-                    res = sfm.logit(formula=f"{g} ~ {c}", data=group_data).fit(disp=0)
-                    r = res.get_margeff().summary_frame()
-                    r["gene"] = gene
-                    r["phenotype"] = g
-                    r["pattern"] = c
-                    r.columns = [
-                        "dy/dx",
-                        "std_err",
-                        "z",
-                        "pvalue",
-                        "ci_low",
-                        "ci_high",
-                        "gene",
-                        "phenotype",
-                        "pattern",
-                    ]
-                    r = r.reset_index(drop=True)
-                    results.append(r)
-                except (np.linalg.LinAlgError, PerfectSeparationError):
-                    continue
-        results = pd.concat(results)
-    else:
-        for c in classes:
-            corr, p = stats.spearmanr(data[phenotype], data[c])
-            results.append(
-                pd.Series(
-                    [corr, p, gene, continuous],
-                    index=["r", "pvalue", "gene", "phenotype"],
-                )
-                .to_frame()
-                .T
-            )
-        results = pd.concat(results)
-        results["pattern"] = classes
-
-    return results
-
-
-def diff_loc(data, groups=None, continuous=None, copy=False):
+def spots_diff(data, groups=None, continuous=None, copy=False):
     """Test for differential localization across phenotype of interest.
 
     Parameters
@@ -190,6 +98,75 @@ def diff_loc(data, groups=None, continuous=None, copy=False):
     adata.uns["sample_data"][f"dl_{phenotype}"] = results_adj
 
     return adata if copy else None
+
+
+def _test_gene(gene, data, phenotype, continuous):
+    """Perform pairwise comparison between groupby and every class.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Phenotype and localization pattern labels across cells for a single gene.
+    groupby : str
+        Variable grouping cells for differential analysis. Should be present in data.columns.
+
+    Returns
+    -------
+    DataFrame
+        Differential localization test results. [# of patterns, ]
+    """
+    results = []
+
+    # Make dummy columns and add to table
+    classes = [
+        c
+        for c in data.columns
+        if c in ["cell2D", "cellext", "foci", "nuc2D", "polarized", "random"]
+    ]
+    if not continuous:
+        group_dummies = pd.get_dummies(data[phenotype])
+        group_names = group_dummies.columns.tolist()
+        group_data = pd.concat([data, group_dummies], axis=1)
+
+        for g in group_names:
+            for c in classes:
+                try:
+                    res = sfm.logit(formula=f"{g} ~ {c}", data=group_data).fit(disp=0)
+                    r = res.get_margeff().summary_frame()
+                    r["gene"] = gene
+                    r["phenotype"] = g
+                    r["pattern"] = c
+                    r.columns = [
+                        "dy/dx",
+                        "std_err",
+                        "z",
+                        "pvalue",
+                        "ci_low",
+                        "ci_high",
+                        "gene",
+                        "phenotype",
+                        "pattern",
+                    ]
+                    r = r.reset_index(drop=True)
+                    results.append(r)
+                except (np.linalg.LinAlgError, PerfectSeparationError):
+                    continue
+        results = pd.concat(results)
+    else:
+        for c in classes:
+            corr, p = stats.spearmanr(data[phenotype], data[c])
+            results.append(
+                pd.Series(
+                    [corr, p, gene, continuous],
+                    index=["r", "pvalue", "gene", "phenotype"],
+                )
+                .to_frame()
+                .T
+            )
+        results = pd.concat(results)
+        results["pattern"] = classes
+
+    return results
 
 
 def score_genes_cell_cycle(data, copy=False, **kwargs):
@@ -342,3 +319,30 @@ def _init_sample_info(data):
         sample_index.index = sample_index.index.astype(str)
         data.uns["sample_index"] = sample_index
         data.uns["sample_data"] = dict()
+
+
+def subsample(data, fraction, copy=False):
+    """Randomly subsample data stratified by cell.
+    Parameters
+    ----------
+    data : AnnData
+        AnnData formatted spatial transcriptomics data.
+    fraction : float
+        Float between (0, 1] to subsample data.
+    copy : bool
+        Return view of AnnData if False, return copy if True. Default False.
+    Returns
+    -------
+    AnnData
+        Returns subsampled view of original AnnData object.
+    """
+    keep = (
+        data.obs.groupby("cell")
+        .apply(lambda df: df.sample(frac=fraction))
+        .index.droplevel(0)
+    )
+
+    if copy:
+        return data[keep, :].copy()
+    else:
+        return data[keep, :]
