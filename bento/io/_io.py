@@ -113,6 +113,11 @@ def read_geodata(points, cell, other={}, index=True):
 
     adata = AnnData(X=X, obs=obs, uns=uns)
 
+    # Convert geometry from GeoSeries to list for h5ad serialization compatibility
+    for m in adata.uns['masks']:
+        if type(adata.uns['masks'][m]['geometry'][0]) != str:
+            adata.uns['masks'][m]['geometry'] = adata.uns['masks'][m]['geometry'].apply(lambda x: x.wkt).astype(str)
+
     print('Done.')
     return adata
 
