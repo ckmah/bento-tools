@@ -335,13 +335,21 @@ def plot_cells(
     # Plot clipping mask
     clip = mask_outlines["cell"].unary_union
     clip = clip.envelope.symmetric_difference(clip)
-    clip_patch = descartes.PolygonPatch(clip, color="black")
-    mask_outlines["cell"].plot(color="black", ax=ax)
-    ax.add_patch(clip_patch)
+    # clip_patch = descartes.PolygonPatch(clip, color="white")
+    # mask_outlines["cell"].plot(color="white", ax=ax)
+    # ax.add_patch(clip_patch)
 
     bounds = clip.bounds
     ax.set_xlim(bounds[0], bounds[2])
     ax.set_ylim(bounds[1], bounds[3])
+
+    # * Plot mask faces
+    for mask in draw_masks:
+        if mask == "cell":
+            mask_outlines[mask].plot(ax=ax, facecolor='black', lw=0, alpha=0.1)
+        else:
+            mask_outlines[mask].plot(ax=ax, facecolor='tab:blue', lw=0, alpha=0.1)
+
 
     # * Plot raw points
     if style == "points":
@@ -349,7 +357,7 @@ def plot_cells(
 
         # Default point color is teal
         if scatter_hue is None:
-            color = "teal"
+            color = "tab:red"
             scatter_palette = None
             ax.scatter(data=points_df, x="x", y="y", c=color, s=s, alpha=alpha)
 
@@ -395,29 +403,27 @@ def plot_cells(
 
     # * Plot heatmap
     elif style == "heatmap":
-        # print('Plotting heatmap...')
         sns.kdeplot(
             data=points_df,
             x="x",
             y="y",
-            cmap=heatmap_cmap,
+            cmap=sns.color_palette("light:darkred", as_cmap=True),
             ax=ax,
-            bw_adjust=0.1,
+            bw_adjust=0.15,
             shade_lowest=False,
-            levels=100,
+            levels=50,
             fill=True,
+            alpha=alpha
         )
 
-    # * Plot mask outlines
+    # Plot mask outlines
     for mask in draw_masks:
-        mask_outline = mask_outlines[mask].boundary
         if mask == "cell":
-            mask_outline.plot(ax=ax, lw=1, color=(1, 1, 1, 1))
+            mask_outlines[mask].boundary.plot(ax=ax, lw=0.5, edgecolor=(0,0,0,1))
         else:
-            mask_outline.plot(ax=ax, lw=1, color=(1, 1, 1, 0.5))
+            mask_outlines[mask].boundary.plot(ax=ax, lw=0.5, edgecolor='tab:blue')
 
-    ax.set_facecolor("black")
-    # plt.close()
+
     return fig
 
 
