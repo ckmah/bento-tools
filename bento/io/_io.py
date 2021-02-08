@@ -207,6 +207,7 @@ def concatenate(adatas):
             
     uns = dict()
     uns['masks'] = dict()
+    uns['mask_index'] = dict()
     for mask in adatas[0].uns['masks'].keys():
         # Concat mask GeoDataFrames
         uns['masks'][mask] = pd.concat([adata.uns['masks'][mask] for adata in adatas])

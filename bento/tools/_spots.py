@@ -91,6 +91,10 @@ def detect_spots(data, imagedir, device='auto', copy=False):
     pred_prob = np.transpose(pred_prob)
     pred_prob = pd.DataFrame(pred_prob, columns=classes)
     pred_prob.index = pred_prob.index.astype(str)
+
+    if 'sample_data' not in adata.uns:
+        adata.uns['sample_data'] = dict()
+        
     adata.uns['sample_data']['patterns_prob'] = pred_prob
 
     # Save mutliclass label

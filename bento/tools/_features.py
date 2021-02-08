@@ -25,7 +25,7 @@ from .._settings import pandarallel, settings
 gene_parallel_threshold = 1000
 
 
-def rasterize_cells(data, imgdir):
+def rasterize_cells(data, imgdir, copy=False):
     """Rasterize points and cell masks to grayscale image. Writes directly to file.
 
     Parameters
@@ -35,9 +35,10 @@ def rasterize_cells(data, imgdir):
     imgdir : str
         Folder path wherisfilee images will be stored.
     """
+    adata = data.copy() if copy else data
 
     # Get cells
-    cells = pd.Series(data.obs["cell"].unique())
+    cells = pd.Series(adata.obs["cell"].unique())
     if (cells == "-1").any():
         print("Extracellular points detected. These will be ignored.")
         cells = cells.loc[cells != "-1"]
@@ -47,7 +48,12 @@ def rasterize_cells(data, imgdir):
         os.makedirs(imgdir)
     print(f"Writing to {imgdir} ...")
     for cell in tqdm(cells.tolist(), desc=f"Processing {len(cells)} cells"):
-        _prepare_cell_features(data, ["raster"], cell, imgdir=imgdir)
+        _prepare_cell_features(adata, ["raster"], cell, imgdir=imgdir)
+        
+    if 'sample_index' not in adata.uns:
+        adata.uns['sample_index'] = adata.obs[['cell', 'gene']].drop_duplicates().reset_index(drop=True)
+        
+    return adata if copy else None
 
 
 def prepare_features(data, features=[], copy=False):
@@ -510,18 +516,22 @@ def _rasterize(cell_data, cell, imgdir):
     ##### Get nucleus mask (optional)
     mask_index = cell_data.uns["mask_index"]
     if 'nucleus' in cell_data.uns['masks']:
-        nucleus_i = (
-            mask_index["nucleus"].loc[mask_index["nucleus"]["cell"] == cell].index[0]
-        )
-        nucleus = cell_data.uns["masks"]["nucleus"].loc[nucleus_i, "geometry"]
 
-        # Scale coordinates
-        nucleus_xy = np.array(nucleus.exterior.xy).reshape(2, -1).T
-        nucleus_xy = (nucleus_xy - offset) * scale_factor + center_offset
-        nucleus_xy = np.floor(nucleus_xy).astype(int)
+        try:
+            nucleus_i = (
+                mask_index["nucleus"].loc[mask_index["nucleus"]["cell"] == cell].index[0]
+            )
+            nucleus = cell_data.uns["masks"]["nucleus"].loc[nucleus_i, "geometry"]
 
-        # Save to base image
-        base_img = cv2.fillPoly(base_img, [nucleus_xy], 2)
+            # Scale coordinates
+            nucleus_xy = np.array(nucleus.exterior.xy).reshape(2, -1).T
+            nucleus_xy = (nucleus_xy - offset) * scale_factor + center_offset
+            nucleus_xy = np.floor(nucleus_xy).astype(int)
+
+            # Save to base image
+            base_img = cv2.fillPoly(base_img, [nucleus_xy], 2)
+        except IndexError:
+            pass
 
     def _calc(gene_data, cell, gene):
 
