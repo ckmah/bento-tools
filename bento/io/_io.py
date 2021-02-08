@@ -1,16 +1,15 @@
-import numpy as np
-import pandas as pd
-import geopandas
-from shapely import geometry, wkt
-from shapely.ops import unary_union
-
 from ast import literal_eval
 
 import anndata
+import geopandas
+import numpy as np
+import pandas as pd
+import scanpy as sc
 from anndata import AnnData
+from shapely import geometry, wkt
+from shapely.ops import unary_union
 
-from .._settings import settings
-from .._settings import pandarallel
+from .._settings import pandarallel, settings
 
 
 def read_h5ad(filename):
@@ -220,3 +219,31 @@ def concatenate(adatas):
     new_adata.uns = uns
 
     return new_adata
+
+def to_scanpy(data):
+    # Extract points
+    expression = pd.DataFrame(
+        data.X, index=pd.MultiIndex.from_frame(data.obs[["cell", "gene"]])
+    )
+
+    # Aggregate points to counts
+    expression = (
+        data.obs[["cell", "gene"]]
+        .groupby(["cell", "gene"])
+        .apply(lambda x: x.shape[0])
+        .to_frame()
+    )
+    expression = expression.reset_index()
+
+    # Remove extracellular points
+    expression = expression.loc[expression["cell"] != "-1"]
+
+    # Format as dense cell x gene counts matrix
+    expression = expression.pivot(index="cell", columns="gene").fillna(0)
+    expression.columns = expression.columns.droplevel(0)
+    expression.columns = expression.columns.str.upper()
+
+    # Create scanpy anndata object to use scoring function
+    sc_data = sc.AnnData(expression)
+
+    return sc_data
