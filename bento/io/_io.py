@@ -138,7 +138,7 @@ def read_geodata(points, cell, other={}):
     print("Processing expression...")
     cellxgene = expression.pivot_table(index=["cell"], columns=["gene"], aggfunc="sum")
     cellxgene.columns = cellxgene.columns.get_level_values("gene")
-
+    
     # Add splice data
     if "nucleus" in uns_points.columns:
         print("Processing splicing...")
@@ -149,6 +149,7 @@ def read_geodata(points, cell, other={}):
 
     # Create scanpy anndata object
     adata = sc.AnnData(X=cellxgene)
+    mask_geoms = mask_geoms.reindex(adata.obs.index)
     adata.obs = pd.concat([adata.obs, mask_geoms], axis=1)
     adata.obs.index = adata.obs.index.astype(str)
 
