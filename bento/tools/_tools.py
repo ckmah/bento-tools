@@ -291,7 +291,7 @@ def pca(data, features, n_components=2, copy=False):
 
 def umap(data, n_components=2, n_neighbors=15, **kwargs):
     """"""
-    fit = u.UMAP(n_components=n_components, n_neighbors=n_neighbors, **kwargs)
+    fit = UMAP(n_components=n_components, n_neighbors=n_neighbors, **kwargs)
     umap_components = fit.fit_transform(data.uns["features"])
     columns = [str(c) for c in range(0, umap_components.shape[1])]
     umap_components = pd.DataFrame(
@@ -301,6 +301,7 @@ def umap(data, n_components=2, n_neighbors=15, **kwargs):
     return data
 
 
+# TODO how to expose this
 def _map_to_obs(data, name):
 
     if name not in data.uns["sample_data"].keys():
@@ -321,12 +322,12 @@ def _init_sample_info(data):
         data.uns["sample_data"] = dict()
 
 
-def subsample(data, fraction, copy=False):
+def subsample_points(data, fraction):
     """Randomly subsample data stratified by cell.
     Parameters
     ----------
-    data : AnnData
-        AnnData formatted spatial transcriptomics data.
+    data : DataFrame
+        DataFrame with columns x, y, cell, gene annotations.
     fraction : float
         Float between (0, 1] to subsample data.
     copy : bool
@@ -337,12 +338,10 @@ def subsample(data, fraction, copy=False):
         Returns subsampled view of original AnnData object.
     """
     keep = (
-        data.obs.groupby("cell")
+        data.groupby("cell")
         .apply(lambda df: df.sample(frac=fraction))
         .index.droplevel(0)
     )
+     
+    return data.loc[keep]
 
-    if copy:
-        return data[keep, :].copy()
-    else:
-        return data[keep, :]
