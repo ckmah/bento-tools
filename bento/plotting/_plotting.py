@@ -502,7 +502,7 @@ def _plot_dim(data, dim_type, **kwargs):
 # plot.show()
 
 
-def pheno_to_color(pheno):
+def pheno_to_color(pheno, palette):
     """
     Maps list of categorical labels to a color palette.
     Input values are first sorted alphanumerically least to greatest before mapping to colors. This ensures consistent colors regardless of input value order.
@@ -511,8 +511,8 @@ def pheno_to_color(pheno):
     ----------
     pheno : pd.Series
         Categorical labels to map
-    palette : list
-        list of RGB tuples
+    palette: None, string, or sequence, optional
+        Name of palette or None to return current palette. If a sequence, input colors are used but possibly cycled and desaturated. Taken from sns.color_palette() documentation.
 
     Returns
     -------
@@ -521,9 +521,6 @@ def pheno_to_color(pheno):
     tuples
         List of converted colors for each sample, formatted as RGBA tuples.
 
-
-    list of RGBA tuples
-
     """
     if type(palette) is str:
         palette = sns.color_palette(palette)
@@ -531,9 +528,8 @@ def pheno_to_color(pheno):
         palette = palette
 
     values = pheno.unique()
-    values.sort()
-    n_colors = len(values)
-    palette = sns.color_palette(palette, n_colors=n_colors)
+    values = values.sort_values()
+    palette = sns.color_palette(palette, n_colors=len(values))
     study2color = dict(zip(values, palette))
-    sample_colors = list(pheno.map(study2color))
+    sample_colors = [study2color[v] for v in pheno]
     return study2color, sample_colors
