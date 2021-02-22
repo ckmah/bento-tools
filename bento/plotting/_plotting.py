@@ -11,7 +11,8 @@ from matplotlib.colors import ListedColormap, is_color_like
 from shapely import geometry
 from shapely.affinity import translate
 
-from ..tools._tools import subsample
+from ..tools._tools import subsample_points
+from ..io import get_points
 
 alt.themes.enable("opaque")
 alt.renderers.enable("default")
@@ -129,7 +130,7 @@ def spots_diff(data, groups):
     plt.ylim(-0.05, 3)
 
 
-def spots_freq(data, gene, groups=None, relative=True, stacked=False):
+def spots_freq(data, gene=None, groups=None, relative=True, stacked=False):
     """Plot SPOTS localization pattern frequencies for a given gene.
 
     Parameters
@@ -145,7 +146,15 @@ def spots_freq(data, gene, groups=None, relative=True, stacked=False):
     stacked : bool, optional
         Whether to use a single plot or multiple plots for each category, by default False.
     """
-    gene_mask = (data.uns["sample_index"]["gene"] == gene).values
+    if gene is None:
+        gene_mask = ~data.uns["sample_index"]["gene"].isna()
+    else:
+        gene_mask = (data.uns["sample_index"]["gene"] == gene).values
+
+    if sum(gene_mask) == 0:
+        print(f"Gene {gene} not found.")
+        return
+
     classes = data.uns["sample_data"]["patterns"].columns.tolist()
 
     if groups:
@@ -202,7 +211,7 @@ def spots_freq(data, gene, groups=None, relative=True, stacked=False):
             ax.tick_params(axis="x", labelsize="small")
 
             # Format r ticks
-            ax.yaxis.set_major_locator(plt.MaxNLocator(4, prune='lower'))
+            ax.yaxis.set_major_locator(plt.MaxNLocator(4, prune="lower"))
             ax.tick_params(axis="y", labelsize="x-small")
 
             ax.grid(True, linestyle=":")
@@ -244,23 +253,22 @@ def spots_freq(data, gene, groups=None, relative=True, stacked=False):
         fig = plt.figure()
         ax = fig.add_subplot(111, polar=True)
         polar_gene(stats.iloc[0], ax)
+        ax.set_title(gene)
 
 
 def plot_cells(
     data,
-    style="points",
+    kind="points",
     cells=None,
     genes=None,
     fraction=0.1,
-    scatter_hue=None,
-    scatter_palette=["red", "grey"],
-    s=3,
+    hue=None,
+    palette="Reds",
+    size=3,
     alpha=1,
     power=1,
-    heatmap_cmap="mako",
-    draw_masks=["cell"],
-    width=10,
-    height=10,
+    masks="all",
+    dim=5,
 ):
     """
     Visualize distribution of variable in spatial coordinates.
@@ -277,19 +285,19 @@ def plot_cells(
         Fraction to fraction when plotting. Useful when dealing with large datasets.
     scatter_hue: str
         Name of column in data.obs to interpet for scatter plot color. First tries to interpret if values are matplotlib color-like. For categorical data, tries to plot a different color for each label. For numerical, scales color by numerical values (need to be between [0,1]). Returns error if outside range.
-    draw_masks: list
+    draw_masks: str, list
        masks to draw outlines for. Will always include outline for union of `masks`.
     """
 
-    points = data
-
     # Format cells input
     if cells is None:
-        cells = set(data.obs_vector("cell"))
+        cells = data.obs.index.unique().tolist()
     else:
         # print('Subsetting cells...')
         if type(cells) != list:
             cells = [cells]
+
+        cells = set(cells)
 
     if "-1" in cells:
         warnings.warn(
@@ -298,42 +306,32 @@ def plot_cells(
 
     # Format genes input
     if genes is None:
-        genes = data.obs_vector("gene")
+        genes = data.var_names
     else:
         # print('Subsetting genes...')
         if type(genes) != list:
             genes = [genes]
 
-    # Subset points to specified cells and genes
-    points_in_cells = data.obs["cell"].isin(cells)
-    points_in_genes = data.obs["gene"].isin(genes)
-    points = data[points_in_cells & points_in_genes, :]
+        genes = set(genes)
 
-    # * fraction points per cell
-    if fraction < 1:
-        # print('Downsampling points...')
-        points = subsample(points, fraction)
+    # Add all masks if 'all'
+    if masks == "all":
+        masks = data.obs.columns[data.obs.columns.str.endswith("shape")]
+    else:
+        masks = [f'{m}_shape' for m in masks]
 
-    # Format as long table format with points and annotations
-    points_df = pd.DataFrame(points.X, columns=["x", "y"])
-    points_df = pd.concat([points_df, points.obs.reset_index(drop=True)], axis=1)
+    # Convert draw_masks to list
+    masks = [masks] if type(masks) is str else masks
 
     # Initialize figure
-    fig = plt.figure(figsize=(width, height), dpi=100)
+    fig = plt.figure(figsize=(dim, dim), dpi=100)
     ax = fig.add_subplot(111, frameon=False, xticks=[], yticks=[])
 
     # Subset masks to specified cells
-    mask_outlines = {}
-    for mask in draw_masks:
-        if mask == "cell":
-            mask_outlines[mask] = data.uns["masks"]["cell"].loc[cells]
-        else:
-            mask_index = data.uns["mask_index"][mask]
-            n_indices = mask_index[mask_index["cell"].isin(cells)].index
-            mask_outlines[mask] = data.uns["masks"][mask].loc[n_indices]
+    cell_shapes = geopandas.GeoSeries(data.obs.loc[cells, "cell_shape"])
 
     # Plot clipping mask
-    clip = mask_outlines["cell"].unary_union
+    clip = cell_shapes.unary_union
     clip = clip.envelope.symmetric_difference(clip)
     # clip_patch = descartes.PolygonPatch(clip, color="white")
     # mask_outlines["cell"].plot(color="white", ax=ax)
@@ -344,48 +342,69 @@ def plot_cells(
     ax.set_ylim(bounds[1], bounds[3])
 
     # * Plot mask faces
-    for mask in draw_masks:
-        if mask == "cell":
-            mask_outlines[mask].plot(ax=ax, facecolor='black', lw=0, alpha=0.1)
+    for mask in masks:
+        if mask == "cell_shape":
+            geopandas.GeoDataFrame(data.obs).set_geometry("cell_shape").plot(
+                ax=ax, facecolor="black", lw=0, alpha=0.1
+            )
         else:
-            mask_outlines[mask].plot(ax=ax, facecolor='tab:blue', lw=0, alpha=0.1)
+            geopandas.GeoDataFrame(data.obs).set_geometry("nucleus_shape").plot(
+                ax=ax, facecolor="tab:blue", lw=0, alpha=0.1
+            )
 
+    # Subset points to specified cells and genes
+    points = get_points(data, cells=cells, genes=genes)
+
+    # * fraction points per cell
+    if fraction < 1:
+        # print('Downsampling points...')
+        points = subsample_points(points, fraction)
 
     # * Plot raw points
-    if style == "points":
-        # print('Plotting points...')
+    if kind == "points":
+
+        # Format point size
+        if str(size).isnumeric():
+            size = [size] * points.shape[0]
 
         # Default point color is teal
-        if scatter_hue is None:
+        if hue is None:
             color = "tab:red"
-            scatter_palette = None
-            ax.scatter(data=points_df, x="x", y="y", c=color, s=s, alpha=alpha)
+            sns.scatterplot(
+                data=points,
+                x="x",
+                y="y",
+                color=color,
+                size=size,
+                sizes=(size[0], size[0]),
+                linewidth=0,
+                alpha=alpha,
+                ax=ax,
+            )
 
         # Handle coloring by variable
         else:
-            hue_values = points_df[scatter_hue]
-
+            hue_values = points[hue]
             # Color by [0,1] range quantitative variable
-            if np.issubdtype(hue_values, np.number):
+            if hue_values.str.isnumeric().all():
                 if (hue_values >= 0).all() and (hue_values <= 1).all():
-                    color = np.expand_dims(points_df[scatter_hue].values, 1) ** (
-                        1.0 / power
-                    )
+                    color = np.expand_dims(hue_values.values, 1) ** (1.0 / power)
                     color = [(max(0.3, x), 0.3, 0.3, max(0.3, x)) for x in color]
-                    scatter_cmap = ListedColormap(scatter_palette)
+                    scatter_cmap = ListedColormap(palette)
                 else:
                     return ValueError(
                         "Numeric values for 'scatter_hue' parameter must be in range [0,1]."
                     )
 
-                ax.scatter(
-                    data=points_df,
+                sns.scatterplot(
+                    data=points,
                     x="x",
                     y="y",
-                    c=scatter_hue,
-                    s=s,
+                    hue=hue,
+                    size=size,
+                    sizes=(size[0], size[0]),
                     alpha=alpha,
-                    cmap=scatter_cmap,
+                    cmap=palette,
                 )
 
             # Color as qualitative variable
@@ -395,35 +414,46 @@ def plot_cells(
                     color = hue_values.apply(is_color_like)
                 # Color points by category (custom _determinisitic_ color mapping)
                 else:
-                    phenomap, color = pheno_to_color(
-                        points_df[scatter_hue], palette=scatter_palette
-                    )
-
-                ax.scatter(data=points_df, x="x", y="y", c=color, s=s, alpha=alpha)
+                    phenomap, color = pheno_to_color(hue_values, palette=palette)
+                sns.scatterplot(
+                    data=points,
+                    x="x",
+                    y="y",
+                    c=color,
+                    size=size,
+                    sizes=(size[0], size[0]),
+                    alpha=alpha,
+                    linewidth=0,
+                    ax=ax,
+                )
 
     # * Plot heatmap
-    elif style == "heatmap":
+    elif kind == "heatmap":
         sns.kdeplot(
-            data=points_df,
+            data=points,
             x="x",
             y="y",
-            cmap=sns.color_palette("light:darkred", as_cmap=True),
+            cmap=sns.color_palette(palette, as_cmap=True),
             ax=ax,
             bw_adjust=0.15,
             shade_lowest=False,
             levels=50,
             fill=True,
-            alpha=alpha
+            alpha=alpha,
         )
 
     # Plot mask outlines
-    for mask in draw_masks:
-        if mask == "cell":
-            mask_outlines[mask].boundary.plot(ax=ax, lw=0.5, edgecolor=(0,0,0,1))
+    for mask in masks:
+        if mask == "cell_shape":
+            geopandas.GeoDataFrame(data.obs).set_geometry("cell_shape").plot(
+                ax=ax, facecolor="none", lw=0.5, edgecolor=(0,0,0,1)
+            )
         else:
-            mask_outlines[mask].boundary.plot(ax=ax, lw=0.5, edgecolor='tab:blue')
+            geopandas.GeoDataFrame(data.obs).set_geometry("nucleus_shape").plot(
+                ax=ax, facecolor="none", lw=0.5, edgecolor="tab:blue"
+            )
 
-
+    plt.close()
     return fig
 
 
