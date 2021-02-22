@@ -2,19 +2,20 @@ import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
+import os
 from collections import defaultdict
 
-import os
 import cv2
 import geopandas
 import matplotlib.path as mplPath
 import numpy as np
+import ot
 import pandas as pd
 import torch
 import torchvision
 from astropy.stats import RipleysKEstimator
 from scipy.spatial import distance, distance_matrix
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr, wasserstein_distance
 from scipy.stats.mstats import zscore
 from sklearn.metrics import mean_squared_error, pairwise_distances
 from tqdm.auto import tqdm
@@ -24,7 +25,7 @@ from .._settings import pandarallel, settings
 # Parallelize by gene if many genes, otherwise by cell
 gene_parallel_threshold = 1000
 
-
+# TODO need physical unit size of coordinate system to standardize rendering resolution
 def rasterize_cells(data, imgdir, copy=False):
     """Rasterize points and cell masks to grayscale image. Writes directly to file.
 
@@ -49,10 +50,12 @@ def rasterize_cells(data, imgdir, copy=False):
     print(f"Writing to {imgdir} ...")
     for cell in tqdm(cells.tolist(), desc=f"Processing {len(cells)} cells"):
         _prepare_cell_features(adata, ["raster"], cell, imgdir=imgdir)
-        
-    if 'sample_index' not in adata.uns:
-        adata.uns['sample_index'] = adata.obs[['cell', 'gene']].drop_duplicates().reset_index(drop=True)
-        
+
+    if "sample_index" not in adata.uns:
+        adata.uns["sample_index"] = (
+            adata.obs[["cell", "gene"]].drop_duplicates().reset_index(drop=True)
+        )
+
     return adata if copy else None
 
 
@@ -84,7 +87,7 @@ def prepare_features(data, features=[], copy=False):
         print("Extracellular points detected. These will be ignored.")
         cells = cells.loc[cells != "-1"]
 
-    # Prepare features for each cell separately
+    # Prepare features for each cell
     f = []
     for cell in tqdm(cells.tolist(), desc=f"Processing {len(cells)} cells"):
         cell_data = _prepare_cell_features(adata, features, cell)
@@ -98,6 +101,7 @@ def prepare_features(data, features=[], copy=False):
     f = pd.concat(f, axis=0)
     f = f.set_index(["cell", "gene"])
 
+    # TODO when to overwrite/update?
     # Save sample -> (cell, gene) mapping
     sample_index = f.index.to_frame(index=False)
     sample_index.columns = ["cell", "gene"]
@@ -108,6 +112,9 @@ def prepare_features(data, features=[], copy=False):
     obs = adata.obs.merge(
         adata.uns["sample_index"].reset_index(), how="left", on=["cell", "gene"]
     )
+
+    if 'sample_id' in obs.keys():
+        obs.drop('sample_id', axis=1, inplace=True)
     obs.rename({"index": "sample_id"}, axis=1, inplace=True)
     obs["sample_id"].fillna("-1", inplace=True)
     obs.index = obs.index.astype(str)
@@ -159,11 +166,43 @@ def _prepare_cell_features(data, features, cell, **kwargs):
 
 def _gene_distance(cell_data, cell):
     df = pd.DataFrame(cell_data.X)
-    gpoints = df.groupby(cell_data.obs['gene'].values).apply(lambda df: df.values).values
-    # gpoints shape = [genes x n_points x 2], where n_points is different for each gene
 
-    # calculate gene-gene distance 
-    return
+    # gpoints shape = [genes x n_points x 2], where n_points is different for each gene
+    gpoints = (
+        df.groupby(cell_data.obs["gene"].values).apply(lambda df: df.values).values
+    )
+
+    # Determine bounds of cell's coordinates for centering histograms
+    minrange = cell_data.X.min(axis=0)
+    maxrange = cell_data.X.max(axis=0)
+    bounds = np.array([minrange, maxrange]).T
+
+    # Calculate reference cell density
+    hist_bins = 32
+    cell_density = np.histogram2d(
+        *cell_data.X.T, density=True, bins=hist_bins, range=bounds
+    )[0]
+    cell_density = cell_density / cell_density.sum().sum()
+
+    # Rasterize
+    # Need to benchmark against manually implementation in bento.tl.rasterize_cells()
+    g_densities = []
+    for g in gpoints:
+        h = np.histogram2d(*g.T, density=True, bins=hist_bins, range=bounds)[0]
+        h = h / h.sum().sum()
+        g_densities.append(h)
+
+    g_densities = np.array(g_densities)
+
+    gene_dists = []
+    for s in g_densities:
+        d = ot.emd2([], [], ot.dist(s, cell_density))
+        gene_dists.append(d)
+
+    gene_dists = pd.Series(gene_dists, index=cell_data.obs["gene"].unique())
+    gene_dists.index.name = "gene"
+    return gene_dists
+
 
 def _calc_ripley_features(cell_data, cell):
     """
@@ -515,11 +554,13 @@ def _rasterize(cell_data, cell, imgdir):
 
     ##### Get nucleus mask (optional)
     mask_index = cell_data.uns["mask_index"]
-    if 'nucleus' in cell_data.uns['masks']:
+    if "nucleus" in cell_data.uns["masks"]:
 
         try:
             nucleus_i = (
-                mask_index["nucleus"].loc[mask_index["nucleus"]["cell"] == cell].index[0]
+                mask_index["nucleus"]
+                .loc[mask_index["nucleus"]["cell"] == cell]
+                .index[0]
             )
             nucleus = cell_data.uns["masks"]["nucleus"].loc[nucleus_i, "geometry"]
 
@@ -553,22 +594,24 @@ def _rasterize(cell_data, cell, imgdir):
         gene_img = np.where(pts_img > 0, pts_img, base_img).astype(np.float32)
 
         gene_img = gene_img / 100
-        gene_img = torch.from_numpy(gene_img) # convert to Tensor
-        
-        if 'labels' in gene_data.uns:
-            label = gene_data.uns['labels'][cell]
-            os.makedirs(f'{imgdir}/{label}', exist_ok=True)
-            torchvision.utils.save_image(gene_img, f"{imgdir}/{label}/{cell}_{gene}.tif")
+        gene_img = torch.from_numpy(gene_img)  # convert to Tensor
+
+        if "labels" in gene_data.uns:
+            label = gene_data.uns["labels"][cell]
+            os.makedirs(f"{imgdir}/{label}", exist_ok=True)
+            torchvision.utils.save_image(
+                gene_img, f"{imgdir}/{label}/{cell}_{gene}.tif"
+            )
         else:
             torchvision.utils.save_image(gene_img, f"{imgdir}/{cell}_{gene}.tif")
         return gene_img
 
     # Parallel if many genes per cell
-#     if len(cell_data.obs["gene"]) > gene_parallel_threshold:
-#         cell_data.obs.groupby("gene").parallel_apply(
-#             lambda obs: _calc(cell_data[obs.index], cell, obs["gene"].values[0])
-#         )
-#     else:
+    #     if len(cell_data.obs["gene"]) > gene_parallel_threshold:
+    #         cell_data.obs.groupby("gene").parallel_apply(
+    #             lambda obs: _calc(cell_data[obs.index], cell, obs["gene"].values[0])
+    #         )
+    #     else:
     cell_data.obs.groupby("gene").apply(
         lambda obs: _calc(cell_data[obs.index], cell, obs["gene"].values[0])
     )
@@ -591,7 +634,10 @@ feature_set = dict(
             "function": _calc_nuclear_fraction,
         },
         "indexes": {"description": "index features", "function": _calc_indexes},
-        "raster": {"description": "rasterize to image", "function": _rasterize},
+        "gene_dist": {
+            "description": "gene-wise wasserstein distance",
+            "function": _gene_distance,
+        },
     }
 )
 
