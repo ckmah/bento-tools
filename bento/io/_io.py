@@ -247,3 +247,19 @@ def to_scanpy(data):
     sc_data = sc.AnnData(expression)
 
     return sc_data
+
+
+def get_points(data, cells=None, genes=None):
+    points = data.uns["points"].copy()
+
+    if cells is not None:
+        cells = [cells] if type(cells) is str else cells
+        in_cells = points["cell"].isin(cells)
+        points = points.loc[in_cells]
+
+    if genes is not None:
+        genes = [genes] if type(genes) is str else genes
+        in_genes = points["gene"].isin(genes)
+        points = points.loc[in_genes]
+
+    return points
