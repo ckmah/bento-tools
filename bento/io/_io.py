@@ -29,21 +29,19 @@ def read_h5ad(filename):
     """
     adata = anndata.read_h5ad(filename)
 
-    # Converts geometry column from str wkt format back to GeoSeries to enable GeoPandas functionality
-    for m in adata.uns["masks"]:
-        adata.uns["masks"][m]["geometry"] = adata.uns["masks"][m]["geometry"].apply(
-            wkt.loads
+    # Load obs columns that are shapely geometries
+    adata.obs = adata.obs.apply(
+        lambda col: geopandas.GeoSeries(
+            col.apply(lambda val: wkt.loads(val) if val != "None" else None)
         )
-        adata.uns["masks"][m] = geopandas.GeoDataFrame(
-            adata.uns["masks"][m], geometry="geometry"
-        )
-
-    adata.obs.index = adata.obs.index.astype(str)
+        if col.str.startswith("POLYGON").any()
+        else geopandas.GeoSeries(col)
+    )
 
     return adata
 
 
-def write_h5ad(adata, filename):
+def write_h5ad(data, filename):
     """Write AnnData to h5ad. Casts each GeoDataFrame in adata.uns['masks'] for h5ad compatibility.
 
     Parameters
@@ -54,12 +52,15 @@ def write_h5ad(adata, filename):
         File name to write data file.
     """
     # Convert geometry from GeoSeries to list for h5ad serialization compatibility
-    # TODO don't do this inplace
-    for m in adata.uns["masks"]:
-        if type(adata.uns["masks"][m]["geometry"][0]) != str:
-            adata.uns["masks"][m]["geometry"] = (
-                adata.uns["masks"][m]["geometry"].apply(lambda x: x.wkt).astype(str)
-            )
+    adata = data.copy()
+
+    adata.obs = adata.obs.apply(
+        lambda col: col.apply(lambda val: val.wkt if val is not None else val).astype(
+            str
+        )
+        if col.dtype == "geometry"
+        else col
+    )
 
     # Write to h5ad
     adata.write(filename)
@@ -138,7 +139,7 @@ def read_geodata(points, cell, other={}):
     print("Processing expression...")
     cellxgene = expression.pivot_table(index=["cell"], columns=["gene"], aggfunc="sum")
     cellxgene.columns = cellxgene.columns.get_level_values("gene")
-    
+
     # Add splice data
     if "nucleus" in uns_points.columns:
         print("Processing splicing...")
