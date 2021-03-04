@@ -17,8 +17,7 @@ def cell_aspect_ratio(data, copy=False):
         # return long / short ratio
         return length / width
 
-    ar = adata.uns['masks']['cell']['geometry'].apply(lambda poly: _aspect_ratio(poly))
-    ar = ar.reindex(adata.obs.index)
+    ar = adata.obs['cell_shape'].apply(lambda poly: _aspect_ratio(poly))
     adata.obs['aspect-ratio'] = ar
 
     return adata if copy else None
@@ -29,8 +28,7 @@ def cell_area(data, copy=False):
 
     # Calculate pixel-wise area 
     # TODO: unit scale?
-    area = adata.uns['masks']['cell']['geometry'].area
-    area = area.reindex(adata.obs.index)
+    area = adata.obs['cell_shape'].area
     adata.obs['area'] = area
 
     return adata if copy else None

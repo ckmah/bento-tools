@@ -164,23 +164,23 @@ def _prepare_cell_features(data, features, cell, **kwargs):
     return computed_features
 
 
-def _gene_distance(cell_data, cell):
-    df = pd.DataFrame(cell_data.X)
+def gene_distance(data):
+    points = data.uns['points']
 
     # gpoints shape = [genes x n_points x 2], where n_points is different for each gene
     gpoints = (
-        df.groupby(cell_data.obs["gene"].values).apply(lambda df: df.values).values
+        points.groupby(points["gene"].values).apply(lambda df: df.values).values
     )
 
     # Determine bounds of cell's coordinates for centering histograms
-    minrange = cell_data.X.min(axis=0)
-    maxrange = cell_data.X.max(axis=0)
+    minrange = points.min(axis=0)
+    maxrange = points.max(axis=0)
     bounds = np.array([minrange, maxrange]).T
 
     # Calculate reference cell density
     hist_bins = 32
     cell_density = np.histogram2d(
-        *cell_data.X.T, density=True, bins=hist_bins, range=bounds
+        *points.values.T, density=True, bins=hist_bins, range=bounds
     )[0]
     cell_density = cell_density / cell_density.sum().sum()
 
@@ -199,7 +199,7 @@ def _gene_distance(cell_data, cell):
         d = ot.emd2([], [], ot.dist(s, cell_density))
         gene_dists.append(d)
 
-    gene_dists = pd.Series(gene_dists, index=cell_data.obs["gene"].unique())
+    gene_dists = pd.Series(gene_dists, index=points["gene"].unique())
     gene_dists.index.name = "gene"
     return gene_dists
 
@@ -636,7 +636,7 @@ feature_set = dict(
         "indexes": {"description": "index features", "function": _calc_indexes},
         "gene_dist": {
             "description": "gene-wise wasserstein distance",
-            "function": _gene_distance,
+            "function": gene_distance,
         },
     }
 )
