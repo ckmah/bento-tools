@@ -268,7 +268,9 @@ def plot_cells(
     alpha=1,
     power=1,
     masks="all",
+    bw_adjust=1,
     dim=5,
+    ax=None
 ):
     """
     Visualize distribution of variable in spatial coordinates.
@@ -297,7 +299,7 @@ def plot_cells(
         if type(cells) != list:
             cells = [cells]
 
-        cells = set(cells)
+        cells = list(set(cells))
 
     if "-1" in cells:
         warnings.warn(
@@ -312,7 +314,7 @@ def plot_cells(
         if type(genes) != list:
             genes = [genes]
 
-        genes = set(genes)
+        genes = list(set(genes))
 
     # Add all masks if 'all'
     if masks == "all":
@@ -324,18 +326,19 @@ def plot_cells(
     masks = [masks] if type(masks) is str else masks
 
     # Initialize figure
-    fig = plt.figure(figsize=(dim, dim), dpi=100)
-    ax = fig.add_subplot(111, frameon=False, xticks=[], yticks=[])
+    if ax is None:
+        fig = plt.figure(figsize=(dim, dim), dpi=100)
+        ax = fig.add_subplot(111, frameon=False, xticks=[], yticks=[])
 
+    data = data[cells, genes]
     # Subset masks to specified cells
     cell_shapes = geopandas.GeoSeries(data.obs.loc[cells, "cell_shape"])
 
     # Plot clipping mask
     clip = cell_shapes.unary_union
     clip = clip.envelope.symmetric_difference(clip)
-    # clip_patch = descartes.PolygonPatch(clip, color="white")
-    # mask_outlines["cell"].plot(color="white", ax=ax)
-    # ax.add_patch(clip_patch)
+    clip_patch = descartes.PolygonPatch(clip, color="white")
+    ax.add_patch(clip_patch)
 
     bounds = clip.bounds
     ax.set_xlim(bounds[0], bounds[2])
@@ -344,12 +347,12 @@ def plot_cells(
     # * Plot mask faces
     for mask in masks:
         if mask == "cell_shape":
-            geopandas.GeoDataFrame(data.obs).set_geometry("cell_shape").plot(
-                ax=ax, facecolor="black", lw=0, alpha=0.1
+            geopandas.GeoDataFrame(data.obs.loc[cells]).set_geometry("cell_shape").plot(
+                ax=ax, facecolor="white", lw=0, alpha=1
             )
         else:
-            geopandas.GeoDataFrame(data.obs).set_geometry("nucleus_shape").plot(
-                ax=ax, facecolor="tab:blue", lw=0, alpha=0.1
+            geopandas.GeoDataFrame(data.obs.loc[cells]).set_geometry("nucleus_shape").plot(
+                ax=ax, facecolor="tab:blue", lw=0, alpha=0.3
             )
 
     # Subset points to specified cells and genes
@@ -367,7 +370,7 @@ def plot_cells(
         if str(size).isnumeric():
             size = [size] * points.shape[0]
 
-        # Default point color is teal
+        # Default point color is red
         if hue is None:
             color = "tab:red"
             sns.scatterplot(
@@ -379,7 +382,8 @@ def plot_cells(
                 sizes=(size[0], size[0]),
                 linewidth=0,
                 alpha=alpha,
-                ax=ax,
+                legend=None,
+                ax=ax
             )
 
         # Handle coloring by variable
@@ -435,8 +439,8 @@ def plot_cells(
             y="y",
             cmap=sns.color_palette(palette, as_cmap=True),
             ax=ax,
-            bw_adjust=0.15,
-            shade_lowest=False,
+            bw_adjust=bw_adjust,
+            thresh=None,
             levels=50,
             fill=True,
             alpha=alpha,
@@ -445,16 +449,15 @@ def plot_cells(
     # Plot mask outlines
     for mask in masks:
         if mask == "cell_shape":
-            geopandas.GeoDataFrame(data.obs).set_geometry("cell_shape").plot(
-                ax=ax, facecolor="none", lw=0.5, edgecolor=(0,0,0,1)
+            geopandas.GeoDataFrame(data.obs).set_geometry("cell_shape").boundary.plot(
+                ax=ax, lw=0.5, edgecolor="black"
             )
         else:
-            geopandas.GeoDataFrame(data.obs).set_geometry("nucleus_shape").plot(
-                ax=ax, facecolor="none", lw=0.5, edgecolor="tab:blue"
+            geopandas.GeoDataFrame(data.obs).set_geometry("nucleus_shape").boundary.plot(
+                ax=ax, lw=0.5, edgecolor="tab:blue"
             )
 
-    plt.close()
-    return fig
+    return ax
 
 
 
@@ -488,8 +491,8 @@ def pheno_to_color(pheno, palette):
     else:
         palette = palette
 
-    values = pheno.unique()
-    values = values.sort_values()
+    values = list(set(pheno))
+    values.sort()
     palette = sns.color_palette(palette, n_colors=len(values))
     study2color = dict(zip(values, palette))
     sample_colors = [study2color[v] for v in pheno]
