@@ -32,9 +32,9 @@ def read_h5ad(filename):
     # Load obs columns that are shapely geometries
     adata.obs = adata.obs.apply(
         lambda col: geopandas.GeoSeries(
-            col.apply(lambda val: wkt.loads(val) if val != "None" else None)
+            col.astype(str).apply(lambda val: wkt.loads(val) if val != "None" else None)
         )
-        if col.str.startswith("POLYGON").any()
+        if col.astype(str).str.startswith("POLYGON").any()
         else geopandas.GeoSeries(col)
     )
 
@@ -58,7 +58,7 @@ def write_h5ad(data, filename):
         lambda col: col.apply(lambda val: val.wkt if val is not None else val).astype(
             str
         )
-        if col.dtype == "geometry"
+        if col.astype(str).str.startswith('POLYGON').any()
         else col
     )
 
@@ -137,7 +137,7 @@ def read_geodata(points, cell, other={}):
 
     # Create cell x gene matrix
     print("Processing expression...")
-    cellxgene = expression.pivot_table(index=["cell"], columns=["gene"], aggfunc="sum")
+    cellxgene = expression.pivot_table(index=["cell"], columns=["gene"], aggfunc="sum").fillna(0)
     cellxgene.columns = cellxgene.columns.get_level_values("gene")
 
     # Add splice data
@@ -260,37 +260,15 @@ def _index_points(points, mask):
 
 
 def concatenate(adatas):
+    uns_points = []
     for i, adata in enumerate(adatas):
-        for mask in adata.uns["masks"].keys():
-
-            adata.obs[mask] = [f"{i}-{x}" if x != "-1" else x for x in adata.obs[mask]]
-            adata.uns["masks"][mask].index = [
-                f"{i}-{x}" for x in adata.uns["masks"][mask].index
-            ]
-
-            if mask != "cell":
-                adata.uns["mask_index"][mask].index = [
-                    f"{i}-{x}" for x in adata.uns["mask_index"][mask].index
-                ]
-                adata.uns["mask_index"][mask]["cell"] = [
-                    f"{i}-{x}" for x in adata.uns["mask_index"][mask]["cell"]
-                ]
-
-    uns = dict()
-    uns["masks"] = dict()
-    uns["mask_index"] = dict()
-    for mask in adatas[0].uns["masks"].keys():
-        # Concat mask GeoDataFrames
-        uns["masks"][mask] = pd.concat([adata.uns["masks"][mask] for adata in adatas])
-
-        # Concat mask_index DataFrames
-        if mask != "cell":
-            uns["mask_index"][mask] = pd.concat(
-                [adata.uns["mask_index"][mask] for adata in adatas]
-            )
-
+        points = adata.uns['points'].copy()
+        points['cell'] = points['cell'].astype(str) + f'-{i}'
+        points['batch'] = i
+        uns_points.append(points)
+        
     new_adata = adatas[0].concatenate(adatas[1:])
-    new_adata.uns = uns
+    new_adata.uns['points'] = pd.concat(uns_points)
 
     return new_adata
 
@@ -304,7 +282,9 @@ def _to_spliced_expression(expression):
 
     def to_splice_layers(cell_df):
         unspliced_index = (
-            cell_df.index.get_level_values("nucleus").drop(spliced_index).tolist()
+            cell_df.index.get_level_values("nucleus")
+            .drop(spliced_index, errors="ignore")
+            .tolist()
         )
 
         unspliced.append(
@@ -313,12 +293,19 @@ def _to_spliced_expression(expression):
             .to_frame()
             .T.reset_index(drop=True)
         )
-        spliced.append(
-            cell_df.xs(spliced_index, level="nucleus").reset_index(drop=True)
-        )
 
-    tqdm.pandas()
-    cell_nucleus.groupby("cell").progress_apply(to_splice_layers)
+        # Extract spliced counts for this gene if there are any.
+        if spliced_index in cell_df.index.get_level_values("nucleus"):
+            spliced.append(
+                cell_df.xs(spliced_index, level="nucleus").reset_index(drop=True)
+            )
+        else:
+            # Initialize empty zeros
+            spliced.append(
+                pd.DataFrame(np.zeros((1, cell_df.shape[1])), columns=cell_df.columns)
+            )
+
+    cell_nucleus.groupby("cell").apply(to_splice_layers)
 
     cells = cell_nucleus.index.get_level_values("cell").unique()
 
