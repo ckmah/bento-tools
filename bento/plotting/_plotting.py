@@ -266,7 +266,6 @@ def plot_cells(
     palette="Reds",
     size=3,
     alpha=1,
-    power=1,
     masks="all",
     bw_adjust=1,
     dim=5,
