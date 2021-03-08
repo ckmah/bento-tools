@@ -364,71 +364,17 @@ def plot_cells(
 
     # * Plot raw points
     if kind == "points":
-
-        # Format point size
-        if str(size).isnumeric():
-            size = [size] * points.shape[0]
-
-        # Default point color is red
-        if hue is None:
-            color = "tab:red"
-            sns.scatterplot(
-                data=points,
-                x="x",
-                y="y",
-                color=color,
-                size=size,
-                sizes=(size[0], size[0]),
-                linewidth=0,
-                alpha=alpha,
-                legend=None,
-                ax=ax
-            )
-
-        # Handle coloring by variable
-        else:
-            hue_values = points[hue]
-            # Color by [0,1] range quantitative variable
-            if hue_values.str.isnumeric().all():
-                if (hue_values >= 0).all() and (hue_values <= 1).all():
-                    color = np.expand_dims(hue_values.values, 1) ** (1.0 / power)
-                    color = [(max(0.3, x), 0.3, 0.3, max(0.3, x)) for x in color]
-                    scatter_cmap = ListedColormap(palette)
-                else:
-                    return ValueError(
-                        "Numeric values for 'scatter_hue' parameter must be in range [0,1]."
-                    )
-
-                sns.scatterplot(
-                    data=points,
-                    x="x",
-                    y="y",
-                    hue=hue,
-                    size=size,
-                    sizes=(size[0], size[0]),
-                    alpha=alpha,
-                    cmap=palette,
-                )
-
-            # Color as qualitative variable
-            else:
-                # Try to interpret as matplotlib color
-                if is_color_like(hue_values.iloc[0]):
-                    color = hue_values.apply(is_color_like)
-                # Color points by category (custom _determinisitic_ color mapping)
-                else:
-                    phenomap, color = pheno_to_color(hue_values, palette=palette)
-                sns.scatterplot(
-                    data=points,
-                    x="x",
-                    y="y",
-                    c=color,
-                    size=size,
-                    sizes=(size[0], size[0]),
-                    alpha=alpha,
-                    linewidth=0,
-                    ax=ax,
-                )
+        sns.scatterplot(
+            data=points,
+            x="x",
+            y="y",
+            hue=hue,
+            s=size,
+            alpha=alpha,
+            linewidth=0,
+            palette=palette,
+            ax=ax,
+        )
 
     # * Plot heatmap
     elif kind == "heatmap":
@@ -437,12 +383,12 @@ def plot_cells(
             x="x",
             y="y",
             cmap=sns.color_palette(palette, as_cmap=True),
-            ax=ax,
             bw_adjust=bw_adjust,
             thresh=None,
             levels=50,
             fill=True,
             alpha=alpha,
+            ax=ax,
         )
 
     # Plot mask outlines
