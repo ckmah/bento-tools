@@ -1,18 +1,26 @@
 import warnings
+from functools import reduce
+from mmap import ACCESS_DEFAULT
 
-import altair as alt
-import descartes
+import datashader as ds
+import datashader.transfer_functions as tf
 import geopandas
+import holoviews as hv
+import holoviews.operation.datashader as hd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import spatialpandas as spd
 from matplotlib.colors import ListedColormap, is_color_like
 from shapely import geometry
 from shapely.affinity import translate
+from holoviews import opts
 
-from ..tools._tools import subsample_points
 from ..io import get_points
+from ..tools._tools import subsample_points
+
+hv.extension("bokeh", "matplotlib")
 
 
 # Masala color palette by Noor
@@ -189,11 +197,11 @@ def plot_cells(
     hue=None,
     palette="Reds",
     size=3,
-    alpha=1,
+    min_alpha=1,
     masks="all",
     bw_adjust=1,
     dim=5,
-    ax=None
+    ax=None,
 ):
     """
     Visualize distribution of variable in spatial coordinates.
@@ -243,96 +251,66 @@ def plot_cells(
     if masks == "all":
         masks = data.obs.columns[data.obs.columns.str.endswith("shape")]
     else:
-        masks = [f'{m}_shape' for m in masks]
+        masks = [f"{m}_shape" for m in masks]
 
     # Convert draw_masks to list
     masks = [masks] if type(masks) is str else masks
 
-    # Initialize figure
-    if ax is None:
-        fig = plt.figure(figsize=(dim, dim), dpi=100)
-        ax = fig.add_subplot(111, frameon=False, xticks=[], yticks=[])
-
+    # Subset adata info by genes and cells
     data = data[cells, genes]
-    # Subset masks to specified cells
-    cell_shapes = geopandas.GeoSeries(data.obs.loc[cells, "cell_shape"])
-
-    # Plot clipping mask
-    clip = cell_shapes.unary_union
-    clip = clip.envelope.symmetric_difference(clip)
-    clip_patch = descartes.PolygonPatch(clip, color="white")
-    ax.add_patch(clip_patch)
-
-    bounds = clip.bounds
-    ax.set_xlim(bounds[0], bounds[2])
-    ax.set_ylim(bounds[1], bounds[3])
-
-    # * Plot mask faces
-    for mask in masks:
-        if mask == "cell_shape":
-            geopandas.GeoDataFrame(data.obs.loc[cells]).set_geometry("cell_shape").plot(
-                ax=ax, facecolor="white", lw=0, alpha=1
-            )
-        else:
-            geopandas.GeoDataFrame(data.obs.loc[cells]).set_geometry("nucleus_shape").plot(
-                ax=ax, facecolor="tab:blue", lw=0, alpha=0.3
-            )
-
-    # Subset points to specified cells and genes
     points = get_points(data, cells=cells, genes=genes)
 
-    # * fraction points per cell
-    if fraction < 1:
-        # print('Downsampling points...')
-        points = subsample_points(points, fraction)
+    # Get masks and points
+    shapes = geopandas.GeoDataFrame(data.obs[masks], geometry="cell_shape")
+    shapes = shapes.dropna(axis=1)
+    masks = shapes.columns.tolist()
 
-    # * Plot raw points
-    if kind == "points":
-        sns.scatterplot(
-            data=points,
-            x="x",
-            y="y",
-            hue=hue,
-            s=size,
-            alpha=alpha,
-            linewidth=0,
-            palette=palette,
-            ax=ax,
-        )
+    bounds = shapes.bounds
+    minx, miny, maxx, maxy = (
+        np.floor(bounds["minx"].min()),
+        np.floor(bounds["miny"].min()),
+        np.ceil(bounds["maxx"].max()),
+        np.ceil(bounds["maxy"].max()),
+    )
 
-    # * Plot heatmap
-    elif kind == "heatmap":
-        sns.kdeplot(
-            data=points,
-            x="x",
-            y="y",
-            cmap=sns.color_palette(palette, as_cmap=True),
-            bw_adjust=bw_adjust,
-            thresh=None,
-            levels=50,
-            fill=True,
-            alpha=alpha,
-            ax=ax,
-        )
+    scale_factor = 3
+    canvas_dim = max(maxx - minx, maxy - miny)
+    canvas_dim = int(canvas_dim / scale_factor)
+    render_dim = dict(width=canvas_dim, height=canvas_dim)
 
-    # Plot mask outlines
+    shapes = spd.GeoDataFrame(shapes)
+
+    bg = []
     for mask in masks:
-        if mask == "cell_shape":
-            geopandas.GeoDataFrame(data.obs).set_geometry("cell_shape").boundary.plot(
-                ax=ax, lw=0.5, edgecolor="black"
+        hv.Path(shapes[[mask]])
+        bg.append(
+            hd.datashade(
+                hv.Polygons(shapes[[mask]]),
+                aggregator="any",
+                cmap="black",
+                alpha=20,
+                min_alpha=0,
+                **render_dim,
             )
-        else:
-            geopandas.GeoDataFrame(data.obs).set_geometry("nucleus_shape").boundary.plot(
-                ax=ax, lw=0.5, edgecolor="tab:blue"
-            )
+        )
 
-    return ax
+    bg = reduce(lambda m1, m2: m1 * m2, bg)
 
+    pts = hv.Points(points)
+    if hue is None:
+        fg = hd.datashade(pts, **render_dim)
+    else:
+        fg = hd.datashade(pts, min_alpha=100, aggregator=ds.count_cat(hue), **render_dim)
+    fg = hd.dynspread(fg, threshold=0.5, shape="circle", how="over")
 
+    # Hover functionality
+    # quadmesh = hv.QuadMesh(
+    #     hd.aggregate(pts, width=200, height=200, dynamic=False)
+    # ).opts(tools=["hover"], alpha=0, hover_alpha=0.5)
+    # img = (bg * fg * quadmesh).opts(width=800, height=800)
 
-# plot = Petal(bounds=[np.repeat(0,6), np.repeat(1.,6)], figsize=(30,5), cmap='Set1', labels=sf_pred_prob.columns.sort_values().tolist())
-# plot.add(sf_pred_prob[sf_pred_prob.columns.sort_values()].iloc[:6].values)
-# plot.show()
+    img = (bg * fg).opts(width=int(1.5*canvas_dim), height=int(1.5*canvas_dim))
+    return img
 
 
 def pheno_to_color(pheno, palette):
