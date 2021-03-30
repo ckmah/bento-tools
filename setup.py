@@ -21,6 +21,7 @@ setup(name='bento',
                         'pandarallel>=1.5.2',
                         'pandas>=1.2.0',
                         'pygeos>=0.8',
+                        'rasterio>=1.2.1',
                         'seaborn>=0.10.1',
                         'scanpy>=1.6.0',
                         'scikit-learn>=0.22.2.post1'

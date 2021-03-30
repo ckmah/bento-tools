@@ -9,22 +9,98 @@ import geopandas
 import matplotlib.path as mplPath
 import numpy as np
 import pandas as pd
+import rasterio
 import torch
 import torchvision
 from astropy.stats import RipleysKEstimator
+from rasterio import features
 from scipy.spatial import distance, distance_matrix
-from scipy.stats import spearmanr, wasserstein_distance
-from scipy.stats.mstats import zscore
+from scipy.stats import spearmanr
+from shapely import geometry
+from shapely.affinity import translate
 from sklearn.metrics import mean_squared_error, pairwise_distances
+from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
 
 from joblib import Parallel, delayed
+import concurrent.futures
+import multiprocessing
+import threading
 
 # Parallelize by gene if many genes, otherwise by cell
 gene_parallel_threshold = 1000
 
+
+def coloc_dist(data, radius=3, copy=False):
+    """Calculate pairwise gene distances using a KNN approach.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Anndata formatted spatial data.
+    radius : int, optional
+        Number of pixels to search for neighbors, by default 3
+    """
+    adata = data.copy() if copy else data
+    points = adata.uns["points"]
+    counts = adata.to_df()
+
+    points.groupby("cell").progress_apply(
+        lambda p: coloc_dist(p, counts.loc[p.name], radius=3)
+    )
+
+    xy = points[["x", "y"]].values
+
+    # Get k nearest neighbors to every point
+    nn = NearestNeighbors(radius=radius).fit(xy)
+    distances, indices = nn.radius_neighbors(xy, return_distance=True)
+
+    # Enumerate point-wise gene labels
+    gene_labels = points["gene"].reset_index(drop=True)
+    neighbors = pd.Series(indices, index=gene_labels.tolist())
+
+    neighbor_pairs = []
+    for gene, neighbors, n_dists in zip(gene_labels.values, indices, distances):
+        for neighbor, d in zip(neighbors, n_dists):
+            neighbor_pairs.append([gene, neighbor, d])
+
+    # Count pairwise gene neighbors
+    neighbor_pairs = pd.DataFrame(neighbor_pairs, columns=["g1", "g2", "distances"])
+    neighbor_pairs["g2"] = neighbor_pairs["g2"].map(gene_labels)
+    metrics = (
+        neighbor_pairs.groupby(["g1", "g2"])
+        .agg({"distances": ["count", "mean"]})
+        .reset_index()
+    )
+    metrics.columns = ["g1", "g2", "nn", "distances"]
+
+    cell_count1 = counts.loc[metrics["g1"].values].values
+    cell_count2 = counts.loc[metrics["g2"].values].values
+    delta_count = np.array(cell_count2 - cell_count1)
+    metrics["delta_dir"] = delta_count > 0
+    metrics["delta_dir"] = metrics["delta_dir"].replace({True: 1, False: -1})
+
+    warnings.filterwarnings("ignore")
+    metrics["delta_count"] = delta_count
+
+    # Colocalization distance
+    metrics["d"] = metrics["nn"] / metrics["delta_count"]
+
+    d_na = metrics["d"] == np.inf
+    metrics["d"][d_na] = (metrics["delta_dir"] * metrics["nn"])[d_na]
+
+    metrics["log_nn"] = np.log2(metrics["nn"] + 2)
+    metrics["log_delta_count"] = (
+        metrics["delta_dir"] * np.log2(abs(metrics["delta_count"]))
+    ).replace(np.inf, 0)
+
+    adata.uns["coloc_dist"] = metrics
+
+
 # TODO need physical unit size of coordinate system to standardize rendering resolution
-def rasterize_cells(data, imgdir, copy=False):
+def rasterize_cells(
+    data, imgdir, scale_factor=15, out_dim=64, min_count=5, n_cores=1, copy=False
+):
     """Rasterize points and cell masks to grayscale image. Writes directly to file.
 
     Parameters
@@ -32,27 +108,96 @@ def rasterize_cells(data, imgdir, copy=False):
     data : AnnData
         AnnData formatted spatial data.
     imgdir : str
-        Folder path wherisfilee images will be stored.
+        Directory where images will be stored.
     """
     adata = data.copy() if copy else data
 
-    # Get cells
-    cells = pd.Series(adata.obs["cell"].unique())
-    if (cells == "-1").any():
-        print("Extracellular points detected. These will be ignored.")
-        cells = cells.loc[cells != "-1"]
+    os.makedirs(f"{imgdir}/foo", exist_ok=True)
 
-    # Prepare features for each cell separately
-    if not os.path.isdir(imgdir):
-        os.makedirs(imgdir)
-    print(f"Writing to {imgdir} ...")
-    for cell in tqdm(cells.tolist(), desc=f"Processing {len(cells)} cells"):
-        _prepare_cell_features(adata, ["raster"], cell, imgdir=imgdir)
-
-    if "sample_index" not in adata.uns:
-        adata.uns["sample_index"] = (
-            adata.obs[["cell", "gene"]].drop_duplicates().reset_index(drop=True)
+    shapes = adata.obs["cell_shape"]
+    nucleus = adata.obs["nucleus_shape"]
+    points = [
+        geopandas.GeoDataFrame(
+            df, geometry=geopandas.points_from_xy(x=df["x"], y=df["y"])
         )
+        for name, df in list(adata.uns["points"].groupby("cell"))
+    ]
+
+    for cell_name, s, n, p in tqdm(
+        zip(shapes.index, shapes, nucleus, points), total=len(shapes)
+    ):
+        # Get bounds and size of cell in raw coordinate space
+        bounds = s.bounds
+        width = bounds[2] - bounds[0]
+        height = bounds[3] - bounds[1]
+
+        # Define top left corner for centering/scaling transform
+        west = bounds[0] + width / 2 - (out_dim / 2 * scale_factor)
+        north = bounds[3] - height / 2 + (out_dim / 2 * scale_factor)
+
+        # Define transform
+        tf_origin = rasterio.transform.from_origin(
+            west, north, scale_factor, scale_factor
+        )
+
+        # Rasterize cell
+        base_raster = features.rasterize(
+            [s],
+            fill=0,
+            default_value=20,
+            out_shape=(out_dim, out_dim),
+            transform=tf_origin,
+        )
+        # Rasterize nucleus
+        if n is not None:
+            features.rasterize(
+                [n], default_value=40, transform=tf_origin, out=base_raster
+            )
+
+        warnings.filterwarnings(
+            action="ignore", category=rasterio.errors.NotGeoreferencedWarning
+        )
+
+        # Rasterize and write points
+        def write_img(gene):
+            # for gene in genes:
+            cg_points = p.loc[p["gene"] == gene]
+            if cg_points.shape[0] < min_count:
+                return
+
+            gene_raster = base_raster.copy()
+
+            # Set base as 40
+            features.rasterize(
+                shapes=cg_points.geometry,
+                default_value=40,
+                transform=tf_origin,
+                out=gene_raster,
+            )
+
+            # Plus 20 per point
+            features.rasterize(
+                shapes=cg_points.geometry,
+                default_value=20,
+                transform=tf_origin,
+                merge_alg=rasterio.enums.MergeAlg("ADD"),
+                out=gene_raster,
+            )
+
+            gene_raster = torch.from_numpy(
+                gene_raster.astype(np.float32)
+            )  # convert to Tensor
+            torchvision.utils.save_image(
+                gene_raster, f"{imgdir}/foo/{cell_name}_{gene}.tif"
+            )
+
+        # Parallelize points
+        genes = p["gene"].unique().tolist()
+        Parallel(n_jobs=n_cores)(
+            delayed(write_img)(gene) for gene in genes
+        )
+
+    # TODO write filepaths to adata
 
     return adata if copy else None
 
@@ -111,8 +256,8 @@ def prepare_features(data, features=[], copy=False):
         adata.uns["sample_index"].reset_index(), how="left", on=["cell", "gene"]
     )
 
-    if 'sample_id' in obs.keys():
-        obs.drop('sample_id', axis=1, inplace=True)
+    if "sample_id" in obs.keys():
+        obs.drop("sample_id", axis=1, inplace=True)
     obs.rename({"index": "sample_id"}, axis=1, inplace=True)
     obs["sample_id"].fillna("-1", inplace=True)
     obs.index = obs.index.astype(str)
@@ -163,12 +308,10 @@ def _prepare_cell_features(data, features, cell, **kwargs):
 
 
 def gene_distance(data):
-    points = data.uns['points']
+    points = data.uns["points"]
 
     # gpoints shape = [genes x n_points x 2], where n_points is different for each gene
-    gpoints = (
-        points.groupby(points["gene"].values).apply(lambda df: df.values).values
-    )
+    gpoints = points.groupby(points["gene"].values).apply(lambda df: df.values).values
 
     # Determine bounds of cell's coordinates for centering histograms
     minrange = points.min(axis=0)
