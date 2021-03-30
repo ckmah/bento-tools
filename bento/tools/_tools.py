@@ -16,12 +16,10 @@ from statsmodels.tools.sm_exceptions import ConvergenceWarning, PerfectSeparatio
 from tqdm.auto import tqdm
 from umap import UMAP
 
-from .._settings import pandarallel, settings
-
 warnings.simplefilter("ignore", ConvergenceWarning)
 
 
-def spots_diff(data, groups=None, continuous=None, copy=False):
+def spots_diff(data, groups=None, continuous=None, copy=False, n_cores=1):
     """Test for differential localization across phenotype of interest.
 
     Parameters
@@ -62,8 +60,8 @@ def spots_diff(data, groups=None, continuous=None, copy=False):
     )
 
     # Test each gene independently
-    if settings.n_cores > 1:
-        parallel = Parallel(n_jobs=settings.n_cores, verbose=0)
+    if n_cores > 1:
+        parallel = Parallel(n_jobs=n_cores, verbose=0)
         results = parallel(
             delayed(_test_gene)(gene, gene_df, phenotype, continuous)
             for gene, gene_df in tqdm(diff_data.groupby("gene"))
