@@ -14,9 +14,6 @@ from shapely.affinity import translate
 from ..tools._tools import subsample_points
 from ..io import get_points
 
-alt.themes.enable("opaque")
-alt.renderers.enable("default")
-alt.data_transformers.enable("json")
 
 # Masala color palette by Noor
 # Note: tested colorblind friendliness, did not do so well
@@ -30,79 +27,6 @@ masala_palette = sns.color_palette(
         (0.25, 0.25, 0.25),
     ]
 )
-
-
-def quality_metrics(data, width=900, height=250):
-    # Count points per cell
-    n_points = data.obs["cell"].value_counts().to_frame().reset_index()
-    n_points.columns = ["Cell ID", "Transcript Count"]
-    # Plot points per cell
-    cell_count_chart = (
-        alt.Chart(n_points)
-        .mark_area(opacity=0.5, interpolate="step")
-        .encode(
-            alt.X(
-                "Transcript Count:Q",
-                bin=alt.Bin(maxbins=25),
-                axis=alt.Axis(title="Transcript Count"),
-            ),
-            alt.Y("count()", stack=None, axis=alt.Axis(title="Number of Cells")),
-        )
-        .properties(title="Transcripts / cell", width=width / 3, height=height)
-    )
-
-    # Count genes per cell
-    n_genes = (
-        data.obs.groupby("cell")
-        .apply(lambda df: len(df["gene"].unique()))
-        .reset_index()
-    )
-    n_genes.columns = ["Cell ID", "Gene Count"]
-    # Plot genes per cell
-    gene_count_chart = (
-        alt.Chart(n_genes)
-        .mark_area(opacity=0.5, interpolate="step")
-        .encode(
-            alt.X(
-                "Gene Count", bin=alt.Bin(maxbins=25), axis=alt.Axis(title="Gene Count")
-            ),
-            alt.Y("count()", stack=None, axis=alt.Axis(title="Number of Cells")),
-        )
-        .properties(title="Genes / cell", width=width / 3, height=height)
-    )
-
-    # Count points per gene per cell
-    n_points_per_gc = (
-        data.obs.groupby(["cell", "gene"]).apply(len).to_frame().reset_index()
-    )
-    n_points_per_gc.columns = ["Cell", "Gene", "Transcript Count"]
-    # Plot points per gene per cell
-    gene_by_cell_count_chart = (
-        alt.Chart(n_points_per_gc)
-        .mark_area(opacity=0.5, interpolate="step")
-        .encode(
-            alt.X(
-                "Transcript Count:Q",
-                bin=alt.Bin(maxbins=50),
-                axis=alt.Axis(title="Transcript Count"),
-            ),
-            alt.Y(
-                "count()",
-                stack=None,
-                scale=alt.Scale(type="log"),
-                axis=alt.Axis(title="Samples"),
-            ),
-        )
-        .properties(
-            title="Gene expression distribution", width=width / 3, height=height
-        )
-    )
-
-    chart = (
-        cell_count_chart | gene_count_chart | gene_by_cell_count_chart
-    ).configure_view(strokeWidth=0)
-
-    return chart
 
 
 def spots_diff(data, groups):

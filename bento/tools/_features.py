@@ -5,11 +5,9 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 import os
 from collections import defaultdict
 
-import cv2
 import geopandas
 import matplotlib.path as mplPath
 import numpy as np
-import ot
 import pandas as pd
 import torch
 import torchvision
@@ -20,7 +18,7 @@ from scipy.stats.mstats import zscore
 from sklearn.metrics import mean_squared_error, pairwise_distances
 from tqdm.auto import tqdm
 
-from .._settings import pandarallel, settings
+from joblib import Parallel, delayed
 
 # Parallelize by gene if many genes, otherwise by cell
 gene_parallel_threshold = 1000
@@ -517,104 +515,6 @@ def _ripley(points, mask, radii=None):
     ripley = estimator.Hfunction(data=points, radii=radii, mode="none")
 
     return ripley, radii
-
-
-def _rasterize(cell_data, cell, imgdir):
-    # TODO WRITE TO FILE, do not store with anndata. Otherwise too big in memory
-    output_size = 32
-
-    # Initialize base image
-    base_img = np.zeros((output_size, output_size))
-
-    ##### Cell mask
-    cell_xy = (
-        np.array(cell_data.uns["masks"]["cell"].loc[cell, "geometry"].exterior.xy)
-        .reshape(2, -1)
-        .T
-    )
-
-    # shift to 0
-    offset = cell_xy.min(axis=0)
-    cell_xy = cell_xy - offset
-
-    # scale to res
-    scale_factor = (output_size * 0.99) / cell_xy.max()
-    cell_xy = cell_xy * scale_factor
-
-    # Center
-    center_offset = (output_size / 2) - cell_xy.max(axis=0) / 2
-    cell_xy = cell_xy + center_offset
-
-    # Rasterize
-    cell_xy = np.floor(cell_xy).astype(int)
-
-    # Save to base image
-    # TODO HANDLE NO CELL MEMBRANE
-    base_img = cv2.fillPoly(base_img, [cell_xy], 1)
-
-    ##### Get nucleus mask (optional)
-    mask_index = cell_data.uns["mask_index"]
-    if "nucleus" in cell_data.uns["masks"]:
-
-        try:
-            nucleus_i = (
-                mask_index["nucleus"]
-                .loc[mask_index["nucleus"]["cell"] == cell]
-                .index[0]
-            )
-            nucleus = cell_data.uns["masks"]["nucleus"].loc[nucleus_i, "geometry"]
-
-            # Scale coordinates
-            nucleus_xy = np.array(nucleus.exterior.xy).reshape(2, -1).T
-            nucleus_xy = (nucleus_xy - offset) * scale_factor + center_offset
-            nucleus_xy = np.floor(nucleus_xy).astype(int)
-
-            # Save to base image
-            base_img = cv2.fillPoly(base_img, [nucleus_xy], 2)
-        except IndexError:
-            pass
-
-    def _calc(gene_data, cell, gene):
-
-        ##### Points
-        points = gene_data.X
-        points = (points - offset) * scale_factor + center_offset
-        points = np.floor(points).astype(int)
-        points = np.clip(points, 0, output_size - 1)
-
-        # To dense image; points values start at 3+
-        pts_img = np.zeros((output_size, output_size))
-        for coo in points:
-            if pts_img[coo[1], coo[0]] == 0:
-                pts_img[coo[1], coo[0]] = 3
-            else:
-                pts_img[coo[1], coo[0]] += 1
-
-        gene_img = base_img.copy()
-        gene_img = np.where(pts_img > 0, pts_img, base_img).astype(np.float32)
-
-        gene_img = gene_img / 100
-        gene_img = torch.from_numpy(gene_img)  # convert to Tensor
-
-        if "labels" in gene_data.uns:
-            label = gene_data.uns["labels"][cell]
-            os.makedirs(f"{imgdir}/{label}", exist_ok=True)
-            torchvision.utils.save_image(
-                gene_img, f"{imgdir}/{label}/{cell}_{gene}.tif"
-            )
-        else:
-            torchvision.utils.save_image(gene_img, f"{imgdir}/{cell}_{gene}.tif")
-        return gene_img
-
-    # Parallel if many genes per cell
-    #     if len(cell_data.obs["gene"]) > gene_parallel_threshold:
-    #         cell_data.obs.groupby("gene").parallel_apply(
-    #             lambda obs: _calc(cell_data[obs.index], cell, obs["gene"].values[0])
-    #         )
-    #     else:
-    cell_data.obs.groupby("gene").apply(
-        lambda obs: _calc(cell_data[obs.index], cell, obs["gene"].values[0])
-    )
 
 
 # Store feature names, descriptions, and respective functions.

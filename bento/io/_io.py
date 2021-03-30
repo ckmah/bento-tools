@@ -9,7 +9,6 @@ from anndata import AnnData
 from shapely import geometry, wkt
 from shapely.ops import unary_union
 
-from .._settings import pandarallel, settings
 
 from tqdm.auto import tqdm
 

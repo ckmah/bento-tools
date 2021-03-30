@@ -14,11 +14,8 @@ from skorch import NeuralNetClassifier
 from skorch.callbacks import Checkpoint
 from tqdm.auto import tqdm
 
-import optuna
 
-from .._settings import settings
-
-def detect_spots(data, imagedir, device='auto', copy=False):
+def detect_spots(data, imagedir, device="auto", copy=False):
     """
     Detect and label localization patterns.
     TODO change data to be iterable compatible with skorch.predict_proba
