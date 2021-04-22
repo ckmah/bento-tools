@@ -125,7 +125,14 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
 
 # TODO need physical unit size of coordinate system to standardize rendering resolution
 def rasterize_cells(
-    data, imgdir, scale_factor=15, out_dim=64, min_count=5, n_cores=1, copy=False
+    data,
+    imgdir,
+    label_layer=None,
+    scale_factor=15,
+    out_dim=64,
+    n_cores=1,
+    overwrite=True,
+    copy=False,
 ):
     """Rasterize points and cell masks to grayscale image. Writes directly to file.
 
@@ -138,20 +145,10 @@ def rasterize_cells(
     """
     adata = data.copy() if copy else data
 
-    os.makedirs(f"{imgdir}/foo", exist_ok=True)
+    os.makedirs(f"{imgdir}", exist_ok=True)
 
-    shapes = adata.obs["cell_shape"]
-    nucleus = adata.obs["nucleus_shape"]
-    points = [
-        geopandas.GeoDataFrame(
-            df, geometry=geopandas.points_from_xy(x=df["x"], y=df["y"])
-        )
-        for name, df in list(adata.uns["points"].groupby("cell"))
-    ]
+    def write_img(s, n, p, cell_name):
 
-    for cell_name, s, n, p in tqdm(
-        zip(shapes.index, shapes, nucleus, points), total=len(shapes)
-    ):
         # Get bounds and size of cell in raw coordinate space
         bounds = s.bounds
         width = bounds[2] - bounds[0]
@@ -174,6 +171,7 @@ def rasterize_cells(
             out_shape=(out_dim, out_dim),
             transform=tf_origin,
         )
+
         # Rasterize nucleus
         if n is not None:
             features.rasterize(
@@ -185,16 +183,35 @@ def rasterize_cells(
         )
 
         # Rasterize and write points
-        def write_img(gene):
-            # for gene in genes:
-            cg_points = p.loc[p["gene"] == gene]
-            if cg_points.shape[0] < min_count:
+        genes = p["gene"].unique().tolist()
+
+        if label_layer:
+            labels = dict(
+                zip(genes, list(adata[cell_name, genes].layers[label_layer].flatten()))
+            )
+        else:
+            labels = dict(zip(genes, ["foo"] * len(genes)))
+
+        p = geopandas.GeoDataFrame(p, geometry=geopandas.points_from_xy(p["x"], p["y"]))
+
+        for gene in genes:
+            label = labels[gene]
+            gene_name = adata.uns["point_gene_index"][gene]
+
+            os.makedirs(f"{imgdir}/{label}", exist_ok=True)
+
+            # TODO implement overwrite param
+            if not overwrite and os.path.exists(
+                f"{imgdir}/{label}/{cell_name}_{gene_name}.tif"
+            ):
                 return
+
+            cg_points = p.loc[p["gene"] == gene]
 
             gene_raster = base_raster.copy()
 
             # Set base as 40
-            features.rasterize(
+            gene_raster = features.rasterize(
                 shapes=cg_points.geometry,
                 default_value=40,
                 transform=tf_origin,
@@ -210,18 +227,23 @@ def rasterize_cells(
                 out=gene_raster,
             )
 
-            gene_raster = torch.from_numpy(
-                gene_raster.astype(np.float32)
-            )  # convert to Tensor
+            # Convert to tensor
+            gene_raster = torch.from_numpy(gene_raster.astype(np.float32) / 255)
+
             torchvision.utils.save_image(
-                gene_raster, f"{imgdir}/foo/{cell_name}_{gene}.tif"
+                gene_raster, f"{imgdir}/{label}/{cell_name}_{gene_name}.tif"
             )
 
-        # Parallelize points
-        genes = p["gene"].unique().tolist()
-        Parallel(n_jobs=n_cores)(
-            delayed(write_img)(gene) for gene in genes
+    # Parallelize points
+    Parallel(n_jobs=n_cores)(
+        delayed(write_img)(
+            adata.obs.loc[cell_name, "cell_shape"],
+            adata.obs.loc[cell_name, "nucleus_shape"],
+            get_points(adata, cells=cell_name),
+            cell_name,
         )
+        for cell_name in tqdm(adata.obs_names.tolist())
+    )
 
     # TODO write filepaths to adata
 
