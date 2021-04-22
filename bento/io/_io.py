@@ -7,7 +7,6 @@ import pandas as pd
 import scanpy as sc
 from anndata import AnnData
 from shapely import geometry, wkt
-from shapely.ops import unary_union
 
 
 from tqdm.auto import tqdm
@@ -37,6 +36,13 @@ def read_h5ad(filename):
         else geopandas.GeoSeries(col)
     )
 
+    # Make sure indexes load as {int: value}
+    adata.uns["point_gene_index"] = {
+        int(k): v for k, v in adata.uns["point_gene_index"].items()
+    }
+    adata.uns["point_cell_index"] = {
+        int(k): v for k, v in adata.uns["point_cell_index"].items()
+    }
     return adata
 
 
@@ -57,7 +63,7 @@ def write_h5ad(data, filename):
         lambda col: col.apply(lambda val: val.wkt if val is not None else val).astype(
             str
         )
-        if col.astype(str).str.startswith('POLYGON').any()
+        if col.astype(str).str.startswith("POLYGON").any()
         else col
     )
 
@@ -87,13 +93,11 @@ def read_geodata(points, cell, other={}):
     # Load masks
     print("Loading masks...")
     mask_paths = {"cell": cell, **other}
-    masks = pd.Series(mask_paths).parallel_apply(_load_masks)
+    masks = pd.Series(mask_paths).apply(_load_masks)
 
     # Index points for all masks
     print("Indexing points...")
-    point_index = masks.parallel_apply(
-        lambda mask: _index_points(points[["geometry"]], mask)
-    ).T
+    point_index = masks.apply(lambda mask: _index_points(points[["geometry"]], mask)).T
 
     # Index masks to cell
     print("Indexing masks...")
@@ -108,11 +112,8 @@ def read_geodata(points, cell, other={}):
         axis=1,
     )
 
-    # Cast cell and indexing references to str
-    uns_points.index = uns_points.index.astype(str)
-
     # Remove extracellular points
-    uns_points = uns_points.loc[~(uns_points["cell"].astype(str) == "-1")]
+    uns_points = uns_points.loc[uns_points["cell"] != "-1"]
 
     # Aggregate points to counts
     print("Formatting AnnData object...")
@@ -136,7 +137,9 @@ def read_geodata(points, cell, other={}):
 
     # Create cell x gene matrix
     print("Processing expression...")
-    cellxgene = expression.pivot_table(index=["cell"], columns=["gene"], aggfunc="sum").fillna(0)
+    cellxgene = expression.pivot_table(
+        index=["cell"], columns=["gene"], aggfunc="sum"
+    ).fillna(0)
     cellxgene.columns = cellxgene.columns.get_level_values("gene")
 
     # Add splice data
@@ -144,7 +147,6 @@ def read_geodata(points, cell, other={}):
         print("Processing splicing...")
         spliced, unspliced = _to_spliced_expression(expression)
 
-    # {cell : {gene: array(points)}}
     print("Processing point coordinates...")
 
     # Create scanpy anndata object
@@ -158,10 +160,25 @@ def read_geodata(points, cell, other={}):
         adata.layers["spliced"] = spliced
         adata.layers["unspliced"] = unspliced
 
-    # Save indexed points and mask shapes and index to uns
+    # Map cell and gene names to positional index
+    point_cell_index = {cell: i for i, cell in enumerate(adata.obs_names)}
+    point_gene_index = {gene: i for i, gene in enumerate(adata.var_names)}
+
+    # Replace cell and gene names with positional index to save memory
+    uns_points["cell"] = uns_points["cell"].map(point_cell_index).astype(int)
+    uns_points["gene"] = uns_points["gene"].map(point_gene_index).astype(int)
+    uns_points["nucleus"] = uns_points["nucleus"].astype(int)
+
+    # Reverse for lookup (position: cell)
+    point_cell_index = {int(v): k for k, v in point_cell_index.items()}
+    point_gene_index = {int(v): k for k, v in point_gene_index.items()}
+
     adata.uns = {
         "points": uns_points,
+        "point_cell_index": point_cell_index,
+        "point_gene_index": point_gene_index,
     }
+
     print("Done.")
     return adata
 
@@ -261,13 +278,38 @@ def _index_points(points, mask):
 def concatenate(adatas):
     uns_points = []
     for i, adata in enumerate(adatas):
-        points = adata.uns['points'].copy()
-        points['cell'] = points['cell'].astype(str) + f'-{i}'
-        points['batch'] = i
+        points = adata.uns["points"].copy()
+        point_cell_index = adata.uns["point_cell_index"]
+        points["cell"] = points["cell"].map(point_cell_index).astype(str) + f"-{i}"
+
+        point_gene_index = adata.uns["point_gene_index"]
+        points["gene"] = points["gene"].map(point_gene_index).astype(str)
+        points["batch"] = i
         uns_points.append(points)
-        
+
+    uns_points = pd.concat(uns_points)
+
     new_adata = adatas[0].concatenate(adatas[1:])
-    new_adata.uns['points'] = pd.concat(uns_points)
+
+    # Map cell and gene names to positional index
+    point_cell_index = {cell: i for i, cell in enumerate(new_adata.obs_names)}
+    point_gene_index = {gene: i for i, gene in enumerate(new_adata.var_names)}
+
+    uns_points = uns_points.loc[uns_points["cell"].isin(point_cell_index.keys())]
+    uns_points = uns_points.loc[uns_points["gene"].isin(point_gene_index.keys())]
+
+    # Replace cell and gene names with positional index to save memory
+    uns_points["cell"] = uns_points["cell"].map(point_cell_index).astype(int)
+    uns_points["gene"] = uns_points["gene"].map(point_gene_index).astype(int)
+    uns_points["nucleus"] = uns_points["nucleus"].astype(int)
+
+    # Reverse for lookup (position: cell)
+    point_cell_index = {int(v): k for k, v in point_cell_index.items()}
+    point_gene_index = {int(v): k for k, v in point_gene_index.items()}
+
+    new_adata.uns["points"] = uns_points
+    new_adata.uns["point_cell_index"] = point_cell_index
+    new_adata.uns["point_gene_index"] = point_gene_index
 
     return new_adata
 
