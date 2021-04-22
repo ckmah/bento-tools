@@ -348,17 +348,27 @@ def to_scanpy(data):
     return sc_data
 
 
+def set_points(data, cells=None, genes=None, copy=False):
+    adata = data.copy() if copy else data
+    points = get_points(adata, cells, genes)
+    adata.uns["points"] = points
+    return adata if copy else None
+
+
 def get_points(data, cells=None, genes=None):
-    points = data.uns["points"].copy()
+
+    points = data.uns["points"]
 
     if cells is not None:
         cells = [cells] if type(cells) is str else cells
-        in_cells = points["cell"].isin(cells)
-        points = points.loc[in_cells]
+
+        in_cells = [k for k, v in data.uns["point_cell_index"].items() if v in cells]
+        points = points.loc[points["cell"].isin(in_cells)]
 
     if genes is not None:
         genes = [genes] if type(genes) is str else genes
-        in_genes = points["gene"].isin(genes)
-        points = points.loc[in_genes]
+
+        in_genes = [k for k, v in data.uns["point_gene_index"].items() if v in genes]
+        points = points.loc[points["gene"].isin(in_genes)]
 
     return points
