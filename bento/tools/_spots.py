@@ -10,6 +10,8 @@ from torchvision import datasets, transforms
 from skorch import NeuralNetClassifier
 from skorch.callbacks import Checkpoint
 
+from sklearn.preprocessing import OneHotEncoder
+
 
 def detect_spots(data, imagedir, device="auto", copy=False):
     """
@@ -51,38 +53,32 @@ def detect_spots(data, imagedir, device="auto", copy=False):
         transform=transforms.Compose([transforms.Grayscale(), transforms.ToTensor()]),
     )
 
+    # Sample by n_classes
     pred_prob = net.predict_proba(dataset)
 
-    pred = pred_prob >= 0.5
-    pred = pred.astype(int)
+    # pred = pred_prob >= 0.5
+    # pred = pred.astype(int)
 
-    # Class names
-    classes = ["cell2D", "cellext", "foci", "nuc2D", "polarized", "random"]
-    classes = [f"spots_{c}" for c in classes]
+    encoder = OneHotEncoder(handle_unknown="ignore").fit(
+        np.array(["cell2D", "cellext", "foci", "nuc2D", "polarized", "random"]).reshape(
+            -1, 1
+        )
+    )
 
-    spots_pred_long = [
+    # Cell gene names
+    sample_names = [
         str(path).split("/")[-1].split(".")[0].split("_") for path, _ in dataset.imgs
     ]
-    spots_pred_long = pd.DataFrame(spots_pred_long, columns=["cell", "gene"])
-    spots_pred_long[classes] = pred_prob
-    # spots_pred_long[[f'{c}_prob' for c in classes]] = pred
+    spots_pred_long = pd.DataFrame(sample_names, columns=["cell", "gene"])
+    spots_pred_long["label"] = encoder.inverse_transform(pred_prob >= 0.5)
 
-    for c in classes:
-        df = (
-            spots_pred_long[["cell", "gene", c]]
-            .pivot(index="cell", columns="gene", values=c)
-            .fillna(-1)
-            .reindex(columns=adata.var_names, fill_value=-1)
-            .astype(np.float64)
-        )
+    pattern_labels = (
+        spots_pred_long.pivot(index="cell", columns="gene", values="label")
+        .fillna('none')
+        .reindex(index=adata.obs_names, columns=adata.var_names, fill_value='none')
+    )
 
-        adata.layers[f"{c}_prob"] = df
-
-        # Convert prob to label
-        df[df >= 0.5] = 1
-        df[(df < 0.5) & (df >= 0)] = 0
-        df = df.astype(np.int8)
-        adata.layers[c] = df
+    adata.layers["pattern"] = pattern_labels
 
     return adata if copy else None
 
@@ -91,6 +87,23 @@ def get_conv_dim(in_size, padding, dilation, kernel_size, stride):
     outsize = 1 + (in_size + 2 * padding - dilation * (kernel_size - 1) - 1) / stride
     return int(outsize)
 
+
+class DataFlatten:
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        X = X.reshape(X.shape[0], -1)
+        return X
+
+
+class DataReshape:
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        X = X.reshape(X.shape[0], 1, 64, 64)
+        return X
 
 class SpotsModule(nn.Module):
     def __init__(
