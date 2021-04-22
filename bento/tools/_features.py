@@ -3,7 +3,6 @@ import warnings
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 import os
-from collections import defaultdict
 
 import geopandas
 import matplotlib.path as mplPath
@@ -13,88 +12,115 @@ import rasterio
 import torch
 import torchvision
 from astropy.stats import RipleysKEstimator
+from joblib import Parallel, delayed
 from rasterio import features
 from scipy.spatial import distance, distance_matrix
 from scipy.stats import spearmanr
-from shapely import geometry
-from shapely.affinity import translate
-from sklearn.metrics import mean_squared_error, pairwise_distances
+from sklearn.metrics import mean_squared_error
 from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
-
-from joblib import Parallel, delayed
-import concurrent.futures
-import multiprocessing
-import threading
-
-# Parallelize by gene if many genes, otherwise by cell
-gene_parallel_threshold = 1000
+from ..io import get_points
 
 
-def coloc_dist(data, radius=3, copy=False):
-    """Calculate pairwise gene distances using a KNN approach.
+def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
+    """Calculate pairwise gene colocalization similarity using a KNN approach.
 
     Parameters
     ----------
     adata : AnnData
         Anndata formatted spatial data.
-    radius : int, optional
+    outer_radius : int, optional
         Number of pixels to search for neighbors, by default 3
+    Returns
+    -------
+    adata : AnnData
+        .uns['coloc_sim']: Pairwise gene colocalization similarity within each cell.
     """
     adata = data.copy() if copy else data
-    points = adata.uns["points"]
+
+    # Filter points and counts by min_count
     counts = adata.to_df()
 
-    points.groupby("cell").progress_apply(
-        lambda p: coloc_dist(p, counts.loc[p.name], radius=3)
+    # Helper function to apply per cell
+    def cell_coloc_sim(p, g_density, name):
+
+        # Get xy coordinates
+        xy = p[["x", "y"]].values
+
+        # Get neighbors within fixed outer_radius for every point
+        nn = NearestNeighbors(radius=radius).fit(xy)
+        distances, point_index = nn.radius_neighbors(xy, return_distance=True)
+
+        # Enumerate point-wise gene labels
+        gene_index = p["gene"].reset_index(drop=True)
+
+        # Convert to adjacency list of points, no double counting
+        neighbor_pairs = []
+        for g1, neighbors, n_dists in zip(gene_index.values, point_index, distances):
+            for g2, d in zip(neighbors, n_dists):
+                neighbor_pairs.append([g1, g2, d])
+
+        # Calculate pair-wise gene similarity
+        neighbor_pairs = pd.DataFrame(neighbor_pairs, columns=["g1", "g2", "p_dist"])
+
+        # Keep minimum distance to g2 point
+        neighbor_pairs = neighbor_pairs.groupby(["g1", "g2"]).agg("min").reset_index()
+        neighbor_pairs.columns = ["g1", "g2", "point_dist"]
+
+        # Map to gene index
+        neighbor_pairs["g2"] = neighbor_pairs["g2"].map(gene_index)
+
+        # Count number of points within distance of increasing radius
+        r_step = 0.5
+        expected_counts = [
+            lambda dists: (dists <= r).sum()
+            for r in np.arange(r_step, radius + r_step, r_step)
+        ]
+        metrics = (
+            neighbor_pairs.groupby(["g1", "g2"])
+            .agg({"point_dist": expected_counts})
+            .reset_index()
+        )
+
+        metrics["g1"] = metrics["g1"].map(adata.uns["point_gene_index"])
+        metrics["g2"] = metrics["g2"].map(adata.uns["point_gene_index"])
+
+        # Colocalization metric: max of L_ij(r) for r <= radius
+        g2_density = g_density.loc[metrics["g2"].tolist()].values
+        metrics["coloc_sim"] = (
+            (metrics["point_dist"].divide(g2_density * np.pi, axis=0))
+            .pow(0.5)
+            .max(axis=1)
+        )
+        metrics["cell"] = name
+
+        # Ignore self colocalization
+        metrics = metrics.loc[metrics["g1"] != metrics["g2"]]
+
+        return metrics[["cell", "g1", "g2", "coloc_sim"]]
+
+    # Only keep genes >= min_count in each cell
+    gene_densities = []
+    counts.apply(lambda row: gene_densities.append(row[row >= min_count]), axis=1)
+    # Calculate point density per gene per cell
+    gene_densities /= adata.obs["cell_area"]
+    gene_densities = gene_densities.values
+
+    cell_metrics = Parallel(n_jobs=n_cores)(
+        delayed(cell_coloc_sim)(
+            get_points(adata, cells=g_density.name, genes=g_density.index.tolist()),
+            g_density,
+            g_density.name,
+        )
+        for g_density in tqdm(gene_densities)
     )
 
-    xy = points[["x", "y"]].values
+    cell_metrics = pd.concat(cell_metrics)
 
-    # Get k nearest neighbors to every point
-    nn = NearestNeighbors(radius=radius).fit(xy)
-    distances, indices = nn.radius_neighbors(xy, return_distance=True)
+    # Save coloc similarity
+    adata.uns["coloc_sim"] = cell_metrics
 
-    # Enumerate point-wise gene labels
-    gene_labels = points["gene"].reset_index(drop=True)
-    neighbors = pd.Series(indices, index=gene_labels.tolist())
-
-    neighbor_pairs = []
-    for gene, neighbors, n_dists in zip(gene_labels.values, indices, distances):
-        for neighbor, d in zip(neighbors, n_dists):
-            neighbor_pairs.append([gene, neighbor, d])
-
-    # Count pairwise gene neighbors
-    neighbor_pairs = pd.DataFrame(neighbor_pairs, columns=["g1", "g2", "distances"])
-    neighbor_pairs["g2"] = neighbor_pairs["g2"].map(gene_labels)
-    metrics = (
-        neighbor_pairs.groupby(["g1", "g2"])
-        .agg({"distances": ["count", "mean"]})
-        .reset_index()
-    )
-    metrics.columns = ["g1", "g2", "nn", "distances"]
-
-    cell_count1 = counts.loc[metrics["g1"].values].values
-    cell_count2 = counts.loc[metrics["g2"].values].values
-    delta_count = np.array(cell_count2 - cell_count1)
-    metrics["delta_dir"] = delta_count > 0
-    metrics["delta_dir"] = metrics["delta_dir"].replace({True: 1, False: -1})
-
-    warnings.filterwarnings("ignore")
-    metrics["delta_count"] = delta_count
-
-    # Colocalization distance
-    metrics["d"] = metrics["nn"] / metrics["delta_count"]
-
-    d_na = metrics["d"] == np.inf
-    metrics["d"][d_na] = (metrics["delta_dir"] * metrics["nn"])[d_na]
-
-    metrics["log_nn"] = np.log2(metrics["nn"] + 2)
-    metrics["log_delta_count"] = (
-        metrics["delta_dir"] * np.log2(abs(metrics["delta_count"]))
-    ).replace(np.inf, 0)
-
-    adata.uns["coloc_dist"] = metrics
+    return adata if copy else None
 
 
 # TODO need physical unit size of coordinate system to standardize rendering resolution
@@ -305,44 +331,6 @@ def _prepare_cell_features(data, features, cell, **kwargs):
         computed_features.append(fn(cell_data, cell, **kwargs))
 
     return computed_features
-
-
-def gene_distance(data):
-    points = data.uns["points"]
-
-    # gpoints shape = [genes x n_points x 2], where n_points is different for each gene
-    gpoints = points.groupby(points["gene"].values).apply(lambda df: df.values).values
-
-    # Determine bounds of cell's coordinates for centering histograms
-    minrange = points.min(axis=0)
-    maxrange = points.max(axis=0)
-    bounds = np.array([minrange, maxrange]).T
-
-    # Calculate reference cell density
-    hist_bins = 32
-    cell_density = np.histogram2d(
-        *points.values.T, density=True, bins=hist_bins, range=bounds
-    )[0]
-    cell_density = cell_density / cell_density.sum().sum()
-
-    # Rasterize
-    # Need to benchmark against manually implementation in bento.tl.rasterize_cells()
-    g_densities = []
-    for g in gpoints:
-        h = np.histogram2d(*g.T, density=True, bins=hist_bins, range=bounds)[0]
-        h = h / h.sum().sum()
-        g_densities.append(h)
-
-    g_densities = np.array(g_densities)
-
-    gene_dists = []
-    for s in g_densities:
-        d = ot.emd2([], [], ot.dist(s, cell_density))
-        gene_dists.append(d)
-
-    gene_dists = pd.Series(gene_dists, index=points["gene"].unique())
-    gene_dists.index.name = "gene"
-    return gene_dists
 
 
 def _calc_ripley_features(cell_data, cell):
@@ -677,10 +665,6 @@ feature_set = dict(
             "function": _calc_nuclear_fraction,
         },
         "indexes": {"description": "index features", "function": _calc_indexes},
-        "gene_dist": {
-            "description": "gene-wise wasserstein distance",
-            "function": gene_distance,
-        },
     }
 )
 
