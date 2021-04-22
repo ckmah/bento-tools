@@ -16,9 +16,12 @@ from matplotlib.colors import ListedColormap, is_color_like
 from shapely import geometry
 from shapely.affinity import translate
 from holoviews import opts
-
+from datashader.mpl_ext import alpha_colormap, dsshow
 from ..io import get_points
 from ..tools._tools import subsample_points
+from matplotlib.colors import Normalize
+
+from functools import partial
 
 hv.extension("bokeh", "matplotlib")
 
@@ -190,18 +193,18 @@ def spots_freq(data, gene=None, groups=None, relative=True, stacked=False):
 
 def plot_cells(
     data,
-    kind="points",
+    kind="scatter",
     cells=None,
     genes=None,
-    fraction=0.1,
+    markersize=3,
+    alpha=0.2,
     hue=None,
-    palette="Reds",
-    size=3,
-    min_alpha=1,
+    col=None,
+    cmap="Blues",
     masks="all",
-    bw_adjust=1,
-    dim=5,
-    ax=None,
+    binwidth=3,
+    spread=True,
+    width=10
 ):
     """
     Visualize distribution of variable in spatial coordinates.
@@ -259,10 +262,16 @@ def plot_cells(
     # Subset adata info by genes and cells
     data = data[cells, genes]
     points = get_points(data, cells=cells, genes=genes)
+    points["gene"] = points["gene"].map(data.uns["point_gene_index"])
+    points = geopandas.GeoDataFrame(
+        points, geometry=geopandas.points_from_xy(points["x"], points["y"])
+    )
+
+    if hue:
+        points[hue] = points[hue].astype("category")
 
     # Get masks and points
     shapes = geopandas.GeoDataFrame(data.obs[masks], geometry="cell_shape")
-    shapes = shapes.dropna(axis=1)
     masks = shapes.columns.tolist()
 
     bounds = shapes.bounds
@@ -273,44 +282,106 @@ def plot_cells(
         np.ceil(bounds["maxy"].max()),
     )
 
-    scale_factor = 3
-    canvas_dim = max(maxx - minx, maxy - miny)
-    canvas_dim = int(canvas_dim / scale_factor)
-    render_dim = dict(width=canvas_dim, height=canvas_dim)
-
-    shapes = spd.GeoDataFrame(shapes)
-
-    bg = []
-    for mask in masks:
-        hv.Path(shapes[[mask]])
-        bg.append(
-            hd.datashade(
-                hv.Polygons(shapes[[mask]]),
-                aggregator="any",
-                cmap="black",
-                alpha=20,
-                min_alpha=0,
-                **render_dim,
-            )
-        )
-
-    bg = reduce(lambda m1, m2: m1 * m2, bg)
-
-    pts = hv.Points(points)
-    if hue is None:
-        fg = hd.datashade(pts, **render_dim)
+    if not col:
+        ncols = 1
+        col_names=['']
+        fig_width=width
+        fig_height=width
     else:
-        fg = hd.datashade(pts, min_alpha=100, aggregator=ds.count_cat(hue), **render_dim)
-    fg = hd.dynspread(fg, threshold=0.5, shape="circle", how="over")
+        ncols = points[col].nunique()
+        col_names = points[col].unique()
+        fig_width=width*ncols
+        fig_height=width
 
-    # Hover functionality
-    # quadmesh = hv.QuadMesh(
-    #     hd.aggregate(pts, width=200, height=200, dynamic=False)
-    # ).opts(tools=["hover"], alpha=0, hover_alpha=0.5)
-    # img = (bg * fg * quadmesh).opts(width=800, height=800)
+    fig, axes = plt.subplots(1, ncols, figsize=(fig_width, fig_height))
+    if type(axes) is not list:
+        axes = [axes]
 
-    img = (bg * fg).opts(width=int(1.5*canvas_dim), height=int(1.5*canvas_dim))
-    return img
+    for ax, c_name in zip(axes, col_names):
+
+        if col:
+            points_c = points.loc[points[col] == c_name]
+        else:
+            points_c = points
+
+        # Plot mask outlines
+        for mask in masks:
+            shapes.set_geometry(mask).plot(
+                color=(0, 0, 0, 0.05), edgecolor=(0, 0, 0, 0.3), ax=ax
+            )
+
+        # Plot points 
+        if kind == "scatter":
+            col_value = None
+            if hue:
+                col_value = hue
+
+            points_c.plot(
+                column=col_value,
+                markersize=markersize,
+                alpha=0.5,
+                # cmap=cmap,
+                legend=True,
+                ax=ax,
+            )
+
+        elif kind == "hist":
+            if hue:
+                agg = ds.by(hue, ds.count())
+            else:
+                agg = ds.count()
+
+            scaled_binw = ax.get_window_extent().width * binwidth / (maxx - minx)
+            scaled_binh = ax.get_window_extent().height * binwidth / (maxy - miny)
+
+            if spread:
+                spread = partial(tf.dynspread, threshold=0.5)
+            else:
+                spread = None
+
+            partist = dsshow(
+                points_c,
+                ds.Point("x", "y"),
+                aggregator=agg,
+                # agg_hook=lambda x: x.where((x.sel(gene=genes[0]) > 0) & (x.sel(gene=genes[1]) > 0)),
+                norm="linear",
+                cmap=cmap,
+                width_scale=1 / scaled_binw,
+                height_scale=1 / scaled_binh,
+                shade_hook=spread,
+                x_range=(minx, maxx),
+                y_range=(miny, maxy),
+                ax=ax,
+            )
+
+            if hue is None:
+                plt.colorbar(
+                    partist,
+                    orientation="horizontal",
+                    fraction=0.05,
+                    aspect=10,
+                    pad=0.02,
+                    ax=ax,
+                )
+
+        elif kind == "ds":
+            plot_width = width * plt.rcParams["figure.dpi"]
+            plot_height = width * plt.rcParams["figure.dpi"]
+            canvas = ds.Canvas(
+                plot_width=plot_width,
+                plot_height=plot_height,
+                x_range=(minx, maxx),
+                y_range=(miny, maxy),
+            )
+
+            agg = canvas.points(points_c, "x", "y", ds.by(hue, ds.any()))
+            tf.shade(agg)
+
+        ax.set_title(c_name)
+        ax.axis("off")
+
+    plt.close()
+    return fig
 
 
 def pheno_to_color(pheno, palette):
