@@ -95,7 +95,7 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
         metrics["cell"] = name
 
         # Ignore self colocalization
-        metrics = metrics.loc[metrics["g1"] != metrics["g2"]]
+        # metrics = metrics.loc[metrics["g1"] != metrics["g2"]]
 
         return metrics[["cell", "g1", "g2", "coloc_sim"]]
 
@@ -116,9 +116,23 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
     )
 
     cell_metrics = pd.concat(cell_metrics)
+    cell_metrics.columns = cell_metrics.columns.get_level_values(0)
 
     # Save coloc similarity
     adata.uns["coloc_sim"] = cell_metrics
+
+    # Aggregate metric across cells
+    cell_metrics_agg = dd.from_pandas(cell_metrics, chunksize=1000000)
+    agg = (
+        cell_metrics_agg.groupby(["g1", "g2"])
+        .coloc_sim.mean()
+        .compute()
+        .reset_index()
+        .pivot_table(index="g1", columns="g2", values="coloc_sim")
+        .fillna(0)
+    )
+
+    adata.uns['coloc_sim_agg'] = agg
 
     return adata if copy else None
 
