@@ -1,5 +1,5 @@
 import warnings
-from functools import reduce
+from functools import partial, reduce
 from mmap import ACCESS_DEFAULT
 
 import datashader as ds
@@ -11,15 +11,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from seaborn.utils import sort_df
 import spatialpandas as spd
-from matplotlib.colors import ListedColormap, is_color_like
+from datashader.mpl_ext import alpha_colormap, dsshow
+from holoviews import opts
+from matplotlib.colors import ListedColormap, Normalize, is_color_like
+from scipy.spatial.distance import cdist
 from shapely import geometry
 from shapely.affinity import translate
-from holoviews import opts
-from datashader.mpl_ext import alpha_colormap, dsshow
+
 from ..io import get_points
 from ..tools._tools import subsample_points
-from matplotlib.colors import Normalize
 
 from functools import partial
 
@@ -284,18 +286,23 @@ def plot_cells(
 
     if not col:
         ncols = 1
-        col_names=['']
-        fig_width=width
-        fig_height=width
+        col_names = [""]
+        fig_width = width
+        fig_height = width
     else:
         ncols = points[col].nunique()
         col_names = points[col].unique()
-        fig_width=width*ncols
-        fig_height=width
+        fig_width = width * ncols
+        fig_height = width
 
     fig, axes = plt.subplots(1, ncols, figsize=(fig_width, fig_height))
-    if type(axes) is not list:
+
+    try:
+        iterator = iter(axes)
+    except TypeError:
         axes = [axes]
+    else:
+        axes = list(axes)
 
     for ax, c_name in zip(axes, col_names):
 
@@ -310,7 +317,7 @@ def plot_cells(
                 color=(0, 0, 0, 0.05), edgecolor=(0, 0, 0, 0.3), ax=ax
             )
 
-        # Plot points 
+        # Plot points
         if kind == "scatter":
             col_value = None
             if hue:
@@ -320,8 +327,40 @@ def plot_cells(
                 column=col_value,
                 markersize=markersize,
                 alpha=0.5,
-                # cmap=cmap,
+                cmap=cmap,
                 legend=True,
+                ax=ax,
+            )
+
+        elif kind == "dist_scatter":
+            g1, g2 = points_c["gene"].unique()
+            g1_points = points_c[points_c["gene"] == g1]
+            g2_points = points_c[points_c["gene"] == g2]
+
+            d_matrix = cdist(g1_points[["x", "y"]], g2_points[["x", "y"]])
+            g1_points["min_dist"] = d_matrix.min(axis=1)
+            g2_points["min_dist"] = d_matrix.min(axis=0)
+            points_c = pd.concat([g1_points, g2_points])
+            points_c = points_c.sort_values("min_dist", ascending=False)
+            points_c.plot(
+                column="min_dist",
+                # edgecolor='black',
+                # linewidth=0.5,
+                markersize=[
+                    markersize * max(v, 1)
+                    for v in (-np.log(points_c["min_dist"]) / np.log(3) + 3)
+                ],
+                alpha=alpha,
+                cmap=sns.cubehelix_palette(
+                    start=0.5,
+                    rot=0.2,
+                    dark=0.3,
+                    hue=1,
+                    light=0.85,
+                    reverse=True,
+                    as_cmap=True,
+                ),
+                vmax=3,
                 ax=ax,
             )
 
@@ -363,19 +402,6 @@ def plot_cells(
                     pad=0.02,
                     ax=ax,
                 )
-
-        elif kind == "ds":
-            plot_width = width * plt.rcParams["figure.dpi"]
-            plot_height = width * plt.rcParams["figure.dpi"]
-            canvas = ds.Canvas(
-                plot_width=plot_width,
-                plot_height=plot_height,
-                x_range=(minx, maxx),
-                y_range=(miny, maxy),
-            )
-
-            agg = canvas.points(points_c, "x", "y", ds.by(hue, ds.any()))
-            tf.shade(agg)
 
         ax.set_title(c_name)
         ax.axis("off")
