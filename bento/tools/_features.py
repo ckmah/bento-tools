@@ -4,7 +4,10 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 import os
 
+import dask.dataframe as dd
 import geopandas
+import igraph as ig
+import leidenalg as la
 import matplotlib.path as mplPath
 import numpy as np
 import pandas as pd
@@ -19,7 +22,37 @@ from scipy.stats import spearmanr
 from sklearn.metrics import mean_squared_error
 from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
+
 from ..io import get_points
+
+
+def coloc_cluster_genes(data, resolution=1, copy=False):
+    adata = data.copy() if copy else data
+
+    coloc_sim = adata.uns["coloc_sim_agg"]
+
+    genes = coloc_sim.index.tolist()
+    coloc_sim = coloc_sim.values
+
+    nn = NearestNeighbors().fit(coloc_sim)
+    connectivity = nn.kneighbors_graph(coloc_sim, n_neighbors=5).toarray()
+
+    g = ig.Graph.Adjacency(connectivity)
+    g.es["weight"] = coloc_sim[connectivity != 0]
+    g.vs["label"] = genes
+    partition = la.find_partition(
+        g,
+        la.CPMVertexPartition,
+        weights=g.es["weight"],
+        resolution_parameter=resolution,
+    )
+    gene_clusters = pd.Series(
+        partition.membership, dtype="category", index=g.vs["label"]
+    )
+
+    adata.var["coloc_group"] = gene_clusters[adata.var_names]
+
+    return adata if copy else None
 
 
 def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
