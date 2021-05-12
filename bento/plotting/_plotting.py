@@ -72,7 +72,7 @@ def gene_umap(data, hue=None, **kwargs):
     return ax
 
 
-def spots_freq(data, genes=None, layer="pattern"):
+def spots_distr(data, genes=None, layer="pattern"):
     """Plot localization pattern frequencies for a subset of genes as a ridgeline plot. Default all genes.
 
     Parameters
@@ -117,7 +117,6 @@ def spots_freq(data, genes=None, layer="pattern"):
         g.map(
             sns.kdeplot,
             "fraction",
-            bw_adjust=1,
             clip_on=False,
             fill=True,
             alpha=1,
@@ -125,7 +124,7 @@ def spots_freq(data, genes=None, layer="pattern"):
         )
 
         # here we add a white line that represents the contour of each kdeplot
-        g.map(sns.kdeplot, "fraction", bw_adjust=1, clip_on=False, color="w", lw=2)
+        g.map(sns.kdeplot, "fraction", clip_on=False, color="w", lw=2)
 
         # here we add a horizontal line for each plot
         g.map(plt.axhline, y=0, lw=2, clip_on=False)
@@ -134,10 +133,10 @@ def spots_freq(data, genes=None, layer="pattern"):
         # notice how ax.lines[-1].get_color() enables you to access the last line's color in each matplotlib.Axes
         for i, ax in enumerate(g.axes.flat):
             ax.text(
-                -0.35,
+                -0.5,
                 0,
                 pattern_names[i],
-                fontweight="bold",
+                # fontweight="bold",
                 fontsize=14,
                 color=ax.lines[-1].get_color(),
             )
@@ -150,8 +149,8 @@ def spots_freq(data, genes=None, layer="pattern"):
         g.set(yticks=[])
         g.despine(bottom=True, left=True)
 
-        plt.setp(ax.get_xticklabels(), fontsize=15, fontweight="bold")
-        plt.xlabel("Gene fraction", fontweight="bold", fontsize=15)
+        plt.setp(ax.get_xticklabels(), fontsize=15)
+        plt.xlabel("Gene fraction", fontsize=15)
         g.fig.suptitle(
             "Localization pattern distribution across cells",
             ha="center",

@@ -17,6 +17,29 @@ from tqdm.auto import tqdm
 warnings.simplefilter("ignore", ConvergenceWarning)
 
 
+def spots_distr(data, layer="pattern", copy=False):
+    """
+    Compute pattern frequencies for each cell and for each gene.
+    """
+
+    adata = data.copy() if copy else data
+
+    pattern_values = adata.to_df(layer=layer)
+    frac_per_gene = (
+        pattern_values.T.reset_index(drop=True)
+        .apply(lambda x: x.value_counts())
+        .fillna(0)
+    )
+
+    frac_per_gene_long = (frac_per_gene / frac_per_gene.sum()).T
+    frac_per_gene_long.columns = [f"layer_{p}" for p in frac_per_gene_long.columns]
+    adata.obs[frac_per_gene_long.columns] = frac_per_gene_long.loc[adata.obs_names]
+
+    return adata if copy else None
+
+     
+
+
 def spots_diff(data, groups=None, continuous=None, copy=False, n_cores=1):
     """Test for differential localization across phenotype of interest.
 
