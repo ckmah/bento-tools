@@ -268,7 +268,6 @@ def score_genes_cell_cycle(data, copy=False, **kwargs):
     return adata if copy else None
 
 
-
 def _init_sample_info(data):
     if "sample_index" not in data.uns.keys():
         sample_index = (
@@ -300,6 +299,5 @@ def subsample_points(data, fraction):
         .apply(lambda df: df.sample(frac=fraction))
         .index.droplevel(0)
     )
-     
-    return data.loc[keep]
 
+    return data.loc[keep]
