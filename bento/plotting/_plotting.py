@@ -1,31 +1,18 @@
 import warnings
-from functools import partial, reduce
-from mmap import ACCESS_DEFAULT
+from functools import partial
 
-import dask.dataframe as dd
 import datashader as ds
 import datashader.transfer_functions as tf
 import geopandas
 import holoviews as hv
-import holoviews.operation.datashader as hd
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from seaborn.utils import sort_df
-import spatialpandas as spd
-from datashader.mpl_ext import alpha_colormap, dsshow
-from holoviews import opts
-from matplotlib.colors import ListedColormap, Normalize, is_color_like
+from datashader.mpl_ext import dsshow
 from scipy.spatial.distance import cdist
-from shapely import geometry
-from shapely.affinity import translate
 
-from ..io import get_points
-from ..tools._tools import subsample_points
-
-from umap import UMAP
-import umap.plot
+from ..preprocessing import get_points
 
 hv.extension("bokeh", "matplotlib")
 
