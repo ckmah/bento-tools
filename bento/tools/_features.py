@@ -8,13 +8,11 @@ import dask.dataframe as dd
 import geopandas
 import igraph as ig
 import leidenalg as la
-import matplotlib.path as mplPath
 import numpy as np
 import pandas as pd
 import rasterio
 import torch
 import torchvision
-from astropy.stats import RipleysKEstimator
 from joblib import Parallel, delayed
 from rasterio import features
 from scipy.stats import zscore
