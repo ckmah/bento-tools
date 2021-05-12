@@ -232,7 +232,6 @@ def plot_cells(
     # Subset adata info by genes and cells
     data = data[cells, genes]
     points = get_points(data, cells=cells, genes=genes)
-    points["gene"] = points["gene"].map(data.uns["point_gene_index"])
     points = geopandas.GeoDataFrame(
         points, geometry=geopandas.points_from_xy(points["x"], points["y"])
     )
