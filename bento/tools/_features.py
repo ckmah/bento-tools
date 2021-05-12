@@ -17,13 +17,34 @@ import torchvision
 from astropy.stats import RipleysKEstimator
 from joblib import Parallel, delayed
 from rasterio import features
-from scipy.spatial import distance, distance_matrix
-from scipy.stats import spearmanr
-from sklearn.metrics import mean_squared_error
+from scipy.stats import zscore
 from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
+from umap import UMAP
 
-from ..io import get_points
+def gene_leiden(data, copy=False):
+    adata = data.copy() if copy else data
+
+    coloc_sim = (
+        adata.uns["coloc_sim_agg"]
+        .pivot_table(index="g1", columns="g2", values="coloc_sim")
+        .fillna(0)
+    )
+    coloc_sim = coloc_sim.dropna()
+
+    genes = coloc_sim.index
+
+    # Z scale features
+    coloc_sim = zscore(coloc_sim, axis=0)
+
+    nn = NearestNeighbors().fit(coloc_sim)
+    connectivity = nn.kneighbors_graph(coloc_sim, n_neighbors=5).toarray()
+
+    loc_umap = UMAP().fit_transform(connectivity)
+    loc_umap = pd.DataFrame(loc_umap, index=genes)
+    adata.varm["loc_umap"] = loc_umap.reindex(adata.var_names)
+
+    return adata if copy else None
 
 
 def coloc_cluster_genes(data, resolution=1, copy=False):

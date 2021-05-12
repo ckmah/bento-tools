@@ -56,21 +56,19 @@ def spots_diff(data, groups):
     plt.ylim(-0.05, 3)
 
 
-def gene_umap(data):
-    coloc_sim = data.uns["coloc_sim_agg"]
+def gene_umap(data, hue=None, **kwargs):
 
-    mapper = UMAP().fit(coloc_sim)
-    loc_umap = mapper.transform(coloc_sim)
-
-    ax = umap.plot.points(
-        mapper,
-        labels=data.var["coloc_group"],
-        background="white",
-        color_key=sns.color_palette(as_cmap=True),
-        width=600,
-        height=600,
-    )
-
+    umap = data.varm['loc_umap']
+    if hue is not None:
+        hue_vector = data.var.loc[umap.index, hue]
+    else:
+        hue_vector = hue
+    ax = sns.scatterplot(data=umap, x=0, y=1, hue=hue_vector, **kwargs)
+    ax.legend(bbox_to_anchor=(1.01, 1), loc=2, borderaxespad=0)
+    plt.tight_layout()
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title(hue)
     return ax
 
 
