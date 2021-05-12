@@ -22,6 +22,9 @@ from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
 from umap import UMAP
 
+from ..preprocessing import get_points
+
+
 def gene_leiden(data, copy=False):
     adata = data.copy() if copy else data
 
@@ -67,12 +70,9 @@ def coloc_cluster_genes(data, resolution=1, copy=False):
         weights=g.es["weight"],
         resolution_parameter=resolution,
     )
-    gene_clusters = pd.Series(
-        partition.membership, dtype="category", index=g.vs["label"]
-    )
+    gene_clusters = pd.Series(partition.membership, dtype=int, index=g.vs["label"])
 
-    adata.var["coloc_group"] = gene_clusters[adata.var_names]
-
+    adata.var["coloc_group"] = gene_clusters.reindex(adata.var_names)
     return adata if copy else None
 
 
@@ -136,9 +136,6 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
             .reset_index()
         )
 
-        metrics["g1"] = metrics["g1"].map(adata.uns["point_gene_index"])
-        metrics["g2"] = metrics["g2"].map(adata.uns["point_gene_index"])
-
         # Colocalization metric: max of L_ij(r) for r <= radius
         g2_density = g_density.loc[metrics["g2"].tolist()].values
         metrics["coloc_sim"] = (
@@ -186,7 +183,7 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
         .fillna(0)
     )
 
-    adata.uns['coloc_sim_agg'] = agg
+    adata.uns["coloc_sim_agg"] = agg
 
     return adata if copy else None
 
@@ -262,9 +259,8 @@ def rasterize_cells(
 
         p = geopandas.GeoDataFrame(p, geometry=geopandas.points_from_xy(p["x"], p["y"]))
 
-        for gene in genes:
-            label = labels[gene]
-            gene_name = adata.uns["point_gene_index"][gene]
+        for gene_name in genes:
+            label = labels[gene_name]
 
             os.makedirs(f"{imgdir}/{label}", exist_ok=True)
 
@@ -274,7 +270,7 @@ def rasterize_cells(
             ):
                 return
 
-            cg_points = p.loc[p["gene"] == gene]
+            cg_points = p.loc[p["gene"] == gene_name]
 
             gene_raster = base_raster.copy()
 

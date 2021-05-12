@@ -10,11 +10,9 @@ import scipy.stats as stats
 import statsmodels.api as sm
 import statsmodels.formula.api as sfm
 from joblib import Parallel, delayed
-from sklearn.decomposition import PCA
 from statsmodels.stats.multitest import multipletests
 from statsmodels.tools.sm_exceptions import ConvergenceWarning, PerfectSeparationError
 from tqdm.auto import tqdm
-from umap import UMAP
 
 warnings.simplefilter("ignore", ConvergenceWarning)
 
