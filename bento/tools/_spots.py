@@ -94,26 +94,33 @@ def detect_spots(data, imagedir, device="auto", model="pattern", copy=False):
 
     # Annotate points with pattern labels
     plabels_long = pattern_labels.reset_index().melt(id_vars="cell")
-    plabels_long["cell"] = plabels_long["cell"].map(
-        {v: k for k, v in adata.uns["point_cell_index"].items()}
-    )
-    plabels_long["gene"] = plabels_long["gene"].map(
-        {v: k for k, v in adata.uns["point_gene_index"].items()}
-    )
-
     plabels_long = plabels_long.rename({"value": model}, axis=1)
 
+    # Overwrite existing values
     if model in adata.uns["points"].columns:
         adata.uns["points"].drop([model], axis=1, inplace=True)
 
+    # Annotate points
     adata.uns["points"] = adata.uns["points"].merge(
         plabels_long, how="left", on=["cell", "gene"]
     )
 
+    # Save pattern values as categorical to save memory
     adata.uns["points"][model] = adata.uns["points"][model].astype("category")
+
+    # Save to adata.var
+    distr_to_var(adata, model)
 
     return adata if copy else None
 
+
+def distr_to_var(data, layer, copy=False):
+    adata = data.copy() if copy else data
+
+    summary = (adata.to_df(layer).apply(lambda g: g.value_counts()) / adata.shape[0]).T
+    adata.var[summary.columns] = summary
+
+    return adata if copy else None
 
 def get_conv_dim(in_size, padding, dilation, kernel_size, stride):
     outsize = 1 + (in_size + 2 * padding - dilation * (kernel_size - 1) - 1) / stride
