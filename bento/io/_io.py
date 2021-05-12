@@ -1,5 +1,3 @@
-from ast import literal_eval
-
 import anndata
 import geopandas
 import numpy as np
@@ -7,9 +5,6 @@ import pandas as pd
 import scanpy as sc
 from anndata import AnnData
 from shapely import geometry, wkt
-
-
-from tqdm.auto import tqdm
 
 
 def read_h5ad(filename):
@@ -36,13 +31,6 @@ def read_h5ad(filename):
         else geopandas.GeoSeries(col)
     )
 
-    # Make sure indexes load as {int: value}
-    adata.uns["point_gene_index"] = {
-        int(k): v for k, v in adata.uns["point_gene_index"].items()
-    }
-    adata.uns["point_cell_index"] = {
-        int(k): v for k, v in adata.uns["point_cell_index"].items()
-    }
     return adata
 
 
@@ -150,7 +138,7 @@ def read_geodata(points, cell, other={}):
     print("Processing point coordinates...")
 
     # Create scanpy anndata object
-    adata = sc.AnnData(X=cellxgene)
+    adata = AnnData(X=cellxgene)
     mask_geoms = mask_geoms.reindex(adata.obs.index)
     adata.obs = pd.concat([adata.obs, mask_geoms], axis=1)
     adata.obs.index = adata.obs.index.astype(str)
@@ -160,24 +148,14 @@ def read_geodata(points, cell, other={}):
         adata.layers["spliced"] = spliced
         adata.layers["unspliced"] = unspliced
 
-    # Map cell and gene names to positional index
-    point_cell_index = {cell: i for i, cell in enumerate(adata.obs_names)}
-    point_gene_index = {gene: i for i, gene in enumerate(adata.var_names)}
+    # Save cell, gene, and nucleus as categorical type to save memory
+    uns_points["cell"] = uns_points["cell"].astype("category")
+    uns_points["gene"] = uns_points["gene"].astype("category")
 
-    # Replace cell and gene names with positional index to save memory
-    uns_points["cell"] = uns_points["cell"].map(point_cell_index).astype(int)
-    uns_points["gene"] = uns_points["gene"].map(point_gene_index).astype(int)
-    uns_points["nucleus"] = uns_points["nucleus"].astype(int)
+    if "nucleus" in uns_points.columns:
+        uns_points["nucleus"] = uns_points["nucleus"].astype("category")
 
-    # Reverse for lookup (position: cell)
-    point_cell_index = {int(v): k for k, v in point_cell_index.items()}
-    point_gene_index = {int(v): k for k, v in point_gene_index.items()}
-
-    adata.uns = {
-        "points": uns_points,
-        "point_cell_index": point_cell_index,
-        "point_gene_index": point_gene_index,
-    }
+    adata.uns = {"points": uns_points}
 
     print("Done.")
     return adata
@@ -279,37 +257,18 @@ def concatenate(adatas):
     uns_points = []
     for i, adata in enumerate(adatas):
         points = adata.uns["points"].copy()
-        point_cell_index = adata.uns["point_cell_index"]
-        points["cell"] = points["cell"].map(point_cell_index).astype(str) + f"-{i}"
+        points["cell"] = points["cell"].astype(str) + f"-{i}"
 
-        point_gene_index = adata.uns["point_gene_index"]
-        points["gene"] = points["gene"].map(point_gene_index).astype(str)
         points["batch"] = i
         uns_points.append(points)
 
-    uns_points = pd.concat(uns_points)
-
     new_adata = adatas[0].concatenate(adatas[1:])
 
-    # Map cell and gene names to positional index
-    point_cell_index = {cell: i for i, cell in enumerate(new_adata.obs_names)}
-    point_gene_index = {gene: i for i, gene in enumerate(new_adata.var_names)}
-
-    uns_points = uns_points.loc[uns_points["cell"].isin(point_cell_index.keys())]
-    uns_points = uns_points.loc[uns_points["gene"].isin(point_gene_index.keys())]
-
-    # Replace cell and gene names with positional index to save memory
-    uns_points["cell"] = uns_points["cell"].map(point_cell_index).astype(int)
-    uns_points["gene"] = uns_points["gene"].map(point_gene_index).astype(int)
-    uns_points["nucleus"] = uns_points["nucleus"].astype(int)
-
-    # Reverse for lookup (position: cell)
-    point_cell_index = {int(v): k for k, v in point_cell_index.items()}
-    point_gene_index = {int(v): k for k, v in point_gene_index.items()}
+    uns_points = pd.concat(uns_points)
+    points["cell"] = points["cell"].astype("category")
+    points["batch"] = points["batch"].astype("category")
 
     new_adata.uns["points"] = uns_points
-    new_adata.uns["point_cell_index"] = point_cell_index
-    new_adata.uns["point_gene_index"] = point_gene_index
 
     return new_adata
 
@@ -388,29 +347,3 @@ def to_scanpy(data):
     sc_data = sc.AnnData(expression)
 
     return sc_data
-
-
-def set_points(data, cells=None, genes=None, copy=False):
-    adata = data.copy() if copy else data
-    points = get_points(adata, cells, genes)
-    adata.uns["points"] = points
-    return adata if copy else None
-
-
-def get_points(data, cells=None, genes=None):
-
-    points = data.uns["points"]
-
-    if cells is not None:
-        cells = [cells] if type(cells) is str else cells
-
-        in_cells = [k for k, v in data.uns["point_cell_index"].items() if v in cells]
-        points = points.loc[points["cell"].isin(in_cells)]
-
-    if genes is not None:
-        genes = [genes] if type(genes) is str else genes
-
-        in_genes = [k for k, v in data.uns["point_gene_index"].items() if v in genes]
-        points = points.loc[points["gene"].isin(in_genes)]
-
-    return points
