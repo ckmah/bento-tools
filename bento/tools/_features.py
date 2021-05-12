@@ -51,16 +51,23 @@ def gene_leiden(data, copy=False):
 def coloc_cluster_genes(data, resolution=1, copy=False):
     adata = data.copy() if copy else data
 
-    coloc_sim = adata.uns["coloc_sim_agg"]
+    coloc_sim = (
+        adata.uns["coloc_sim_agg"]
+        .pivot_table(index="g1", columns="g2", values="coloc_sim")
+        .fillna(0)
+    )
 
     genes = coloc_sim.index.tolist()
     coloc_sim = coloc_sim.values
+
+    # Z scale features
+    coloc_sim = zscore(coloc_sim, axis=0)
 
     nn = NearestNeighbors().fit(coloc_sim)
     connectivity = nn.kneighbors_graph(coloc_sim, n_neighbors=5).toarray()
 
     g = ig.Graph.Adjacency(connectivity)
-    g.es["weight"] = coloc_sim[connectivity != 0]
+    g.es["weight"] = connectivity[connectivity != 0]
     g.vs["label"] = genes
     partition = la.find_partition(
         g,
@@ -177,8 +184,6 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
         .coloc_sim.mean()
         .compute()
         .reset_index()
-        .pivot_table(index="g1", columns="g2", values="coloc_sim")
-        .fillna(0)
     )
 
     adata.uns["coloc_sim_agg"] = agg
