@@ -111,6 +111,7 @@ def read_geodata(points, cell, other={}):
             .groupby(["cell", "gene"])
             .apply(lambda x: x.shape[0])
             .to_frame()
+            .reset_index()
         )
     else:
         # Use nuclear inclusion for splicing/unspliced layers
@@ -119,9 +120,8 @@ def read_geodata(points, cell, other={}):
             .groupby(["cell", "gene", "nucleus"])
             .apply(lambda x: x.shape[0])
             .to_frame()
+            .reset_index()
         )
-
-    expression = expression.reset_index()
 
     # Create cell x gene matrix
     print("Processing expression...")
