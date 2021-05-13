@@ -1,3 +1,4 @@
+from ast import Try
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -5,7 +6,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 import os
 
 import dask.dataframe as dd
-import geopandas
+import geopandas as gpd
 import matplotlib.path as mplPath
 import numpy as np
 import pandas as pd
@@ -17,7 +18,6 @@ from sklearn.metrics import mean_squared_error
 from tqdm.auto import tqdm
 
 from ..preprocessing import get_points
-
 
 def ripley_features(data, n_cores=1, copy=False):
     """
@@ -240,42 +240,36 @@ def norm_dist_to_mask(points, mask):
 def morph_enrichment(data, n_cores=1, copy=False):
     adata = data.copy() if copy else data
 
+    proportions = [0.05, 0.1]
+
     def enrichment_per_cell(c, p, cell_name):
 
         # Mean cell radius size
         mean_cell_radius = distance.cdist(
-            np.array(c.centroid).reshape(1, 2), np.array(cell_mask.exterior.xy).T
+            np.array(c.centroid).reshape(1, 2), np.array(c.exterior.xy).T
         ).mean()
 
+        # Define proportion of radius to perform morph opening
+        morph_masks = {}
+        for prop in proportions:
+            # Define proportion of radius; compute morph opening
+            d = mean_cell_radius * prop
+            morph_masks[prop] = c.buffer(distance=-d).buffer(distance=d)
+
         features = []
-        p["gene"] = p["gene"].map(adata.uns["point_gene_index"])
-        # TODO BROKEN HERE
+
         for gene, gene_pts in p.groupby("gene"):
-            # Calculate normalized distances from points to centroids
-            xy = gene_pts[['x', 'y']].values
-            cell_centroid_dist = norm_dist_to_centroid(xy, c)
-            nucleus_centroid_dist = norm_dist_to_centroid(xy, n)
 
-            # Calculate normalized distances from points to mask; distance = point to closest point on mask
-            cell_mask_dist = norm_dist_to_mask(xy, c)
-            nucleus_mask_dist = norm_dist_to_mask(xy, n)
+            # Create GeoDataFrame from points
+            pts = gpd.GeoDataFrame(geometry=gpd.points_from_xy(gene_pts.x, gene_pts.y))
 
-            features_raw = [
-                cell_centroid_dist,
-                nucleus_centroid_dist,
-                cell_mask_dist,
-                nucleus_mask_dist,
-            ]
+            # Count fraction of points in mask
+            enrichment = [cell_name, gene]
+            for prop in proportions:
+                n_points = len(gpd.clip(pts, morph_masks[prop]))
+                enrichment.append(np.float(n_points) / len(pts))
 
-            # Get quantiles of each distance distribution
-            features = [cell_name, gene]
-            for feature in features_raw:
-                quantiles = [5, 10, 20, 50]
-                features.extend(np.percentile(feature, quantiles))
-
-            # There should be 16 features (18 with cell/gene names)
-            features.append(np.array(features))
-
+            features.append(np.array(enrichment))
         return features
 
     # Parallelize points
@@ -288,136 +282,133 @@ def morph_enrichment(data, n_cores=1, copy=False):
         for cell_name in tqdm(adata.obs_names.tolist())
     )
 
-    cell_features = np.array(cell_features).reshape(-1, 16)
+    cell_features = np.array(cell_features).reshape(-1, 4)
 
-    # Enuemerate feature names
-    features_labels = ["cell", "gene"]
-    features_label_prefix = [
-        "cell_centroid_dist",
-        "nucleus_centroid_dist",
-        "cell_mask_dist",
-        "nucleus_mask_dist",
-    ]
+    # Enuemerate feature labels
+    feature_labels = ["cell", "gene"]
+    [feature_labels.append(f"morph_{prop}") for prop in proportions]
 
-    for label in features_label_prefix:
-        quantiles = [5, 10, 20, 50]
-        features_labels.extend([f"{label}_q{q}" for q in quantiles])
+    cell_features = pd.DataFrame(cell_features, columns=feature_labels)
 
-    cell_features = pd.DataFrame(cell_features, columns=features_labels)
-
-    for f in features_labels[2:]:
-        adata.layers[f] = cell_features.pivot(
-            index="cell", columns="gene", values=f
-        ).reindex(index=adata.obs_names, columns=adata.var_names)
+    for f in feature_labels[2:]:
+        adata.layers[f] = (
+            cell_features.pivot(index="cell", columns="gene", values=f)
+            .reindex(index=adata.obs_names, columns=adata.var_names)
+            .astype(float)
+        )
 
     return adata if copy else None
-    # Morphological openings on cell mask
-    # Mean cell radius size
-    mean_cell_radius = distance.cdist(
-        np.array(cell_mask.centroid).reshape(1, 2), np.array(cell_mask.exterior.xy).T
-    ).mean()
-
-    # Define proportion of radius to perform morph opening
-    proportions = [0.1, 0.25]
-    morph_masks = {}
-    for p in proportions:
-        # Define proportion of radius
-        d = mean_cell_radius * p
-
-        # Compute morph opening
-        morph_masks[p] = cell_mask.buffer(distance=-d).buffer(distance=d)
-
-    def _calc(gene_data, cell):
-
-        enrichment = []
-
-        # Create GeoDataFrame from points
-        points = pd.DataFrame(gene_data.X, columns=["x", "y"])
-        points = geopandas.GeoDataFrame(
-            geometry=geopandas.points_from_xy(points.x, points.y)
-        )
-
-        # Count fraction of points in mask
-        for p in proportions:
-            n_points = len(geopandas.clip(points, morph_masks[p]))
-            enrichment.append(np.float(n_points) / len(points))
-
-        return np.array(enrichment)
-
-    return cell_data.obs.groupby("gene").apply(
-        lambda obs: _calc(cell_data[obs.index, :], cell)
-    )
 
 
-def nuclear_fraction(cell_data, cell):
-    def _calc(gene_data, cell):
-        nucleus_index = cell_data.uns["mask_index"]["nucleus"]
-        n_index = nucleus_index[nucleus_index["cell"] == cell].index[0]
-        nuclear_count = sum(gene_data.obs["nucleus"] == n_index)
-        ratio = float(nuclear_count) / len(gene_data)
-        return ratio
+def nuclear_fraction(data, n_cores=1, copy=False):
+    """
+    Parameters
+    ----------
+    n_cores : int
+        Parameter kept for uniformity. Increasing number of cores will not do anything.
+    """
+    adata = data.copy() if copy else data
 
-    return cell_data.obs.groupby("gene").apply(
-        lambda obs: _calc(cell_data[obs.index, :], cell)
-    )
+    adata.layers["nuclear_fraction"] = adata.layers["unspliced"] / adata.X
+
+    return adata if copy else None
 
 
-def indexes(cell_data, cell):
+def moment_stats(data, n_cores=1, copy=False):
     """Calculate polarization index, dispersion index, and peripheral index. Requires both cell and nucleus."""
+    adata = data.copy() if copy else data
 
-    # Calculate of cell-dependent only values
-    cell_mask = cell_data.uns["masks"]["cell"].loc[cell, "geometry"]
-    cell_centroid = np.array(cell_mask.centroid).reshape(1, 2)
-    grid_points = _poly2grid(cell_mask)
-    cell_centroid_array = np.tile(cell_centroid, len(grid_points))
-    cell_centroid_array = cell_centroid_array.reshape(-1, 2)
-    radius_of_gyration = mean_squared_error(grid_points, cell_centroid_array)
+    def moments_per_cell(c, n, p, cell_name):
+        # Calculate of cell-dependent only values
+        cell_centroid = np.array(c.centroid).reshape(1, 2)
+        grid_points = _poly2grid(c)
+        cell_centroid_array = np.tile(cell_centroid, len(grid_points))
+        cell_centroid_array = cell_centroid_array.reshape(-1, 2)
+        radius_of_gyration = mean_squared_error(grid_points, cell_centroid_array)
 
-    nucleus_index = cell_data.uns["mask_index"]["nucleus"]
-    n_index = nucleus_index[cell_data.uns["mask_index"]["nucleus"] == cell].index[0]
-    nucleus_centroid = np.array(
-        cell_data.uns["masks"]["nucleus"].loc[n_index, "geometry"].centroid
-    ).reshape(1, 2)
+        nucleus_centroid = np.array(n.centroid).reshape(1, 2)
 
-    # Calculate second moment of points with centroid as reference
-    def second_moment(centroid, pts):
-        """
-        centroid : [1 x 2] float
-        pts : [n x 2] float
-        """
-        radii = distance.cdist(centroid, pts)
-        second_moment = np.sum(radii * radii / len(pts))
-        return second_moment
+        nuclear_moment = _second_moment(nucleus_centroid, grid_points)
 
-    nuclear_moment = second_moment(nucleus_centroid, grid_points)
+        features = []
 
-    def _calc(gene_data, cell):
+        for gene, gene_pts in p.groupby("gene"):
 
-        # Calculate distance between point and cell centroids
-        points = np.array(gene_data.X)
-        point_centroid = points.mean(axis=0).reshape(1, 2)
-        offset = distance.cdist(point_centroid, cell_centroid)[0][0]
+            # Calculate distance between point and cell centroids
+            pts = gene_pts[["x", "y"]].values
+            point_centroid = pts.mean(axis=0).reshape(1, 2)
+            offset = distance.cdist(point_centroid, cell_centroid)[0][0]
 
-        # Calculate polarization index
-        polarization_index = offset / radius_of_gyration
+            # Calculate polarization index
+            polarization_index = offset / radius_of_gyration
 
-        # Calculate dispersion index; d-index = 2nd moment of spots, norm. by 2nd moment of uniform spots; moments relative to spot centroid
-        dispersion_index = second_moment(point_centroid, points) / second_moment(
-            point_centroid, grid_points
+            # Calculate dispersion index; d-index = 2nd moment of spots, norm. by 2nd moment of uniform spots; moments relative to spot centroid
+            dispersion_index = _second_moment(point_centroid, pts) / _second_moment(
+                point_centroid, grid_points
+            )
+
+            # Calculate peripheral distribution index; d-index = 2nd moment of spots, norm. by 2nd moment of uniform spots; moments relative to nucleus centroid
+            peripheral_distribution_index = (
+                _second_moment(nucleus_centroid, pts) / nuclear_moment
+            )
+
+            features.append(
+                np.array(
+                    [
+                        cell_name,
+                        gene,
+                        polarization_index,
+                        dispersion_index,
+                        peripheral_distribution_index,
+                    ]
+                )
+            )
+
+        return features
+
+    # Parallelize points
+    cell_features = Parallel(n_jobs=n_cores)(
+        delayed(moments_per_cell)(
+            adata.obs.loc[cell_name, "cell_shape"],
+            adata.obs.loc[cell_name, "nucleus_shape"],
+            get_points(adata, cells=cell_name),
+            cell_name,
         )
-
-        # Calculate peripheral distribution index; d-index = 2nd moment of spots, norm. by 2nd moment of uniform spots; moments relative to nucleus centroid
-        peripheral_distribution_index = (
-            second_moment(nucleus_centroid, points) / nuclear_moment
-        )
-
-        return np.array(
-            [polarization_index, dispersion_index, peripheral_distribution_index]
-        )
-
-    return cell_data.obs.groupby("gene").apply(
-        lambda obs: _calc(cell_data[obs.index, :], cell)
+        for cell_name in tqdm(adata.obs_names.tolist())
     )
+
+    cell_features = np.array(cell_features).reshape(-1, 5)
+
+    # Enuemerate feature labels
+    feature_labels = [
+        "cell",
+        "gene",
+        "polar_moment",
+        "dispersion_moment",
+        "peripheral_moment",
+    ]
+
+    cell_features = pd.DataFrame(cell_features, columns=feature_labels)
+
+    for f in feature_labels[2:]:
+        adata.layers[f] = (
+            cell_features.pivot(index="cell", columns="gene", values=f)
+            .reindex(index=adata.obs_names, columns=adata.var_names)
+            .astype(float)
+        )
+
+    return adata if copy else None
+
+
+# Calculate second moment of points with centroid as reference
+def _second_moment(centroid, pts):
+    """
+    centroid : [1 x 2] float
+    pts : [n x 2] float
+    """
+    radii = distance.cdist(centroid, pts)
+    second_moment = np.sum(radii * radii / len(pts))
+    return second_moment
 
 
 def _poly2grid(polygon):
