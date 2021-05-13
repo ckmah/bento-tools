@@ -43,7 +43,6 @@ def ripley_features(data, n_cores=1, copy=False):
         l_4_dist = int(distance_matrix(c_coords, c_coords).max() / 4)
 
         features = []
-        p["gene"] = p["gene"].map(adata.uns["point_gene_index"])
         for gene, gene_pts in p.groupby("gene"):
             estimator = RipleysKEstimator(
                 area=c.area,
@@ -108,9 +107,11 @@ def ripley_features(data, n_cores=1, copy=False):
     cell_features = pd.DataFrame(cell_features, columns=colnames)
 
     for f in colnames[2:]:
-        adata.layers[f] = cell_features.pivot(
-            index="cell", columns="gene", values=f
-        ).reindex(index=adata.obs_names, columns=adata.var_names)
+        adata.layers[f] = (
+            cell_features.pivot(index="cell", columns="gene", values=f)
+            .reindex(index=adata.obs_names, columns=adata.var_names)
+            .astype(float)
+        )
 
     return adata if copy else None
 
@@ -134,10 +135,9 @@ def distance_features(data, n_cores=1, copy=False):
     def distance_per_cell(c, n, p, cell_name):
 
         features = []
-        p["gene"] = p["gene"].map(adata.uns["point_gene_index"])
         for gene, gene_pts in p.groupby("gene"):
             # Calculate normalized distances from points to centroids
-            xy = gene_pts[['x', 'y']].values
+            xy = gene_pts[["x", "y"]].values
             cell_centroid_dist = norm_dist_to_centroid(xy, c)
             nucleus_centroid_dist = norm_dist_to_centroid(xy, n)
 
@@ -177,7 +177,7 @@ def distance_features(data, n_cores=1, copy=False):
     cell_features = np.array(cell_features).reshape(-1, 18)
 
     # Enuemerate feature names
-    features_labels = ["cell", "gene"]
+    feature_labels = ["cell", "gene"]
     features_label_prefix = [
         "cell_centroid_dist",
         "nucleus_centroid_dist",
@@ -187,14 +187,16 @@ def distance_features(data, n_cores=1, copy=False):
 
     for label in features_label_prefix:
         quantiles = [5, 10, 20, 50]
-        features_labels.extend([f"{label}_q{q}" for q in quantiles])
+        feature_labels.extend([f"{label}_q{q}" for q in quantiles])
 
-    cell_features = pd.DataFrame(cell_features, columns=features_labels)
+    cell_features = pd.DataFrame(cell_features, columns=feature_labels)
 
-    for f in features_labels[2:]:
-        adata.layers[f] = cell_features.pivot(
-            index="cell", columns="gene", values=f
-        ).reindex(index=adata.obs_names, columns=adata.var_names)
+    for f in feature_labels[2:]:
+        adata.layers[f] = (
+            cell_features.pivot(index="cell", columns="gene", values=f)
+            .reindex(index=adata.obs_names, columns=adata.var_names)
+            .astype(float)
+        )
 
     return adata if copy else None
 
