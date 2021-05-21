@@ -32,6 +32,5 @@ setup(name='bento',
                         'tqdm>=4.44.1',
                         'umap-learn>=0.3.10',
                         'astropy>=4.0.1',
-                        'datashader>=0.12']
-      )
-      #sdf
+                        'datashader>=0.12'],
+      zip_safe=False)
