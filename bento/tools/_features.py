@@ -181,10 +181,13 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
     cell_metrics_agg = dd.from_pandas(cell_metrics, chunksize=1000000)
     agg = (
         cell_metrics_agg.groupby(["g1", "g2"])
-        .coloc_sim.mean()
+        .coloc_sim.sum()
         .compute()
         .reset_index()
     )
+
+    # Mean based on number of cells
+    agg['coloc_sim'] /= data.shape[0]
 
     adata.uns["coloc_sim_agg"] = agg
 
