@@ -1,26 +1,45 @@
-import bento
+import pickle
+import warnings
+
 import numpy as np
 import pandas as pd
-import pickle
+import scipy.stats as stats
+import statsmodels.formula.api as sfm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import datasets, transforms
-
+from joblib import Parallel, delayed
+from sklearn.preprocessing import OneHotEncoder
 from skorch import NeuralNetClassifier
 from skorch.callbacks import Checkpoint
+from statsmodels.stats.multitest import multipletests
+from statsmodels.tools.sm_exceptions import (ConvergenceWarning,
+                                             PerfectSeparationError)
+from torchvision import datasets, transforms
+from tqdm.auto import tqdm
 
-from sklearn.preprocessing import OneHotEncoder
+import bento
+
+warnings.simplefilter("ignore", ConvergenceWarning)
 
 
-def detect_spots(data, imagedir, device="auto", model="pattern", copy=False):
+PATTERN_NAMES = [
+            "cell edge",
+            "foci",
+            "nuclear edge",
+            "perinuclear",
+            "protrusions",
+            "random",
+        ]
+
+def detect_spots(cell_patterns, imagedir, device="auto", model="pattern", copy=False):
     """
     Detect and label localization patterns.
-    TODO change data to be iterable compatible with skorch.predict_proba
+    TODO change cell_patterns to be iterable compatible with skorch.predict_proba
 
     Parameters
     ----------
-    data : [type]
+    cell_patterns : [type]
         [description]
     imagedir : str
         Folder for rasterized images.
@@ -29,7 +48,7 @@ def detect_spots(data, imagedir, device="auto", model="pattern", copy=False):
     [type]
         [description]
     """
-    adata = data.copy() if copy else data
+    adata = cell_patterns.copy() if copy else cell_patterns
 
     # Default to gpu if possible. Otherwise respect specified parameter
     if device == "auto":
@@ -52,7 +71,7 @@ def detect_spots(data, imagedir, device="auto", model="pattern", copy=False):
         transform=transforms.Compose([transforms.Grayscale(), transforms.ToTensor()]),
     )
 
-    # Sample by n_classes
+    # 2d array, sample by n_classes
     pred_prob = net.predict_proba(dataset)
 
     if isinstance(module, FiveSpotsModule):
@@ -64,14 +83,7 @@ def detect_spots(data, imagedir, device="auto", model="pattern", copy=False):
             "random",
         ]
     else:
-        label_names = [
-            "cell edge",
-            "foci",
-            "nuclear edge",
-            "perinuclear",
-            "protrusions",
-            "random",
-        ]
+        label_names = PATTERN_NAMES
 
     encoder = OneHotEncoder(handle_unknown="ignore").fit(
         np.array(label_names).reshape(-1, 1)
@@ -82,6 +94,10 @@ def detect_spots(data, imagedir, device="auto", model="pattern", copy=False):
         str(path).split("/")[-1].split(".")[0].split("_") for path, _ in dataset.imgs
     ]
     spots_pred_long = pd.DataFrame(sample_names, columns=["cell", "gene"])
+
+    # TODO use spares matrices to avoid slow/big df pivots
+    # https://stackoverflow.com/questions/55404617/faster-alternatives-to-pandas-pivot-table
+    # Build "pattern" genexcell layer, where values are pattern labels
     spots_pred_long["label"] = encoder.inverse_transform(pred_prob >= 0.5)
 
     pattern_labels = (
@@ -114,13 +130,40 @@ def detect_spots(data, imagedir, device="auto", model="pattern", copy=False):
     return adata if copy else None
 
 
-def distr_to_var(data, layer, copy=False):
-    adata = data.copy() if copy else data
+def distr_to_var(cell_patterns, layer, copy=False):
+    """Computes frequencies of input layer values across cells and across genes.
+    Assumes layer values are categorical.
 
-    summary = (adata.to_df(layer).apply(lambda g: g.value_counts()) / adata.shape[0]).T
-    adata.var[summary.columns] = summary
+    Parameters
+    ----------
+    cell_patterns : [type]
+        [description]
+    layer : [type]
+        [description]
+    copy : bool, optional
+        [description], by default False
+
+    Returns
+    -------
+    [type]
+        [description]
+    """
+    adata = cell_patterns.copy() if copy else cell_patterns
+
+    # Save frequencies across genes to adata.var
+    gene_summary = (
+        adata.to_df(layer).apply(lambda g: g.value_counts()).fillna(0)
+    ).T
+    adata.var[gene_summary.columns] = gene_summary
+
+    # Save frequencies across cells to adata.obs
+    cell_summary = (
+        cell_patterns.to_df(layer).apply(lambda row: row.value_counts(), axis=1).fillna(0)
+    )
+    adata.obs[cell_summary.columns] = cell_summary
 
     return adata if copy else None
+
 
 def get_conv_dim(in_size, padding, dilation, kernel_size, stride):
     outsize = 1 + (in_size + 2 * padding - dilation * (kernel_size - 1) - 1) / stride
@@ -275,3 +318,139 @@ class FiveSpotsModule(nn.Module):
         x = F.softmax(x, dim=-1)
 
         return x
+
+
+def spots_diff(cell_patterns, groupby=None, continuous=None, n_cores=1, copy=False):
+    """Gene-wise test for differential localization across phenotype of interest.
+
+    One of `groupby` or `continuous` must be specified, but not both.
+
+    Parameters
+    ----------
+    cell_patterns : AnnData
+        Anndata formatted spatial cell_patterns.
+    groupby : str
+        Variable grouping cells for differential analysis. Must be in cell_patterns.obs_names.
+    continuous : str, pd.Series
+    n_cores : int, optional
+        cores used for multiprocessing, by default 1
+    copy : bool, optional
+        Return view of AnnData if False, return copy if True. By default False.
+    """
+    adata = cell_patterns.copy() if copy else cell_patterns
+
+    # Get group/continuous phenotype
+    phenotype = None
+    if groupby and not continuous:
+        phenotype = groupby
+    elif continuous and not groupby:
+        phenotype = continuous
+    else:
+        print(
+            'Either "groupby" or "continuous" parameters need to be specified, not both.'
+        )
+
+    # Test genes in parallel
+    diff_output = Parallel(n_jobs=n_cores)(
+        delayed(_test_gene)(
+            gene_name,
+            adata.layers['pattern'][:, gene_name],
+            adata.obs[phenotype],
+            continuous
+        )
+        for gene_name in tqdm(adata.var_names.tolist())
+    )
+
+    # Format pattern column
+    diff_output = pd.concat(diff_output)
+
+    # FDR correction
+    results_adj = []
+    for _, df in results.groupby("pattern"):
+        df["padj"] = multipletests(df["pvalue"], method="hs")[1]
+        results_adj.append(df)
+
+    results_adj = pd.concat(results_adj)
+    results_adj = results_adj.dropna()
+
+    # -log10pvalue, padj
+    results_adj["-log10p"] = - \
+        np.log10(results_adj["pvalue"].astype(np.float32))
+    results_adj["-log10padj"] = - \
+        np.log10(results_adj["padj"].astype(np.float32))
+
+    # Sort results
+    results_adj = results_adj.sort_values("pvalue")
+
+    # Save back to AnnData
+    adata.uns["sample_data"][f"dl_{phenotype}"] = results_adj
+
+    return adata if copy else None
+
+
+def _test_gene(gene, cell_patterns, phenotype, continuous):
+    """Perform pairwise comparison between groupby and every class.
+
+    Parameters
+    ----------
+    cell_patterns : DataFrame
+        Phenotype and localization pattern labels across cells for a single gene.
+    groupby : str
+        Variable grouping cells for differential analysis. Should be present in cell_patterns.columns.
+
+    Returns
+    -------
+    DataFrame
+        Differential localization test results. [# of patterns, ]
+    """
+    results = []
+
+    # Series denoting pattern frequencies
+    freqs = pd.Series(cell_patterns, index=phenotype.index).value_counts()
+
+    # Continuous test: spearman correlation between phenotype and pattern frequency
+    if continuous:
+        for c in PATTERN_NAMES:
+            corr, p = stats.spearmanr(cell_patterns[phenotype], cell_patterns[c])
+            results.append(
+                pd.Series(
+                    [corr, p, gene, continuous],
+                    index=["r", "pvalue", "gene", "phenotype"],
+                )
+                .to_frame()
+                .T
+            )
+        results = pd.concat(results)
+        results["pattern"] = classes
+    else:
+        group_dummies = pd.get_dummies(cell_patterns[phenotype])
+        group_names = group_dummies.columns.tolist()
+        group_data = pd.concat([cell_patterns, group_dummies], axis=1)
+
+        for g in group_names:
+            for c in classes:
+                try:
+                    res = sfm.logit(
+                        formula=f"{g} ~ {c}", cell_patterns=group_data).fit(disp=0)
+                    r = res.get_margeff().summary_frame()
+                    r["gene"] = gene
+                    r["phenotype"] = g
+                    r["pattern"] = c
+                    r.columns = [
+                        "dy/dx",
+                        "std_err",
+                        "z",
+                        "pvalue",
+                        "ci_low",
+                        "ci_high",
+                        "gene",
+                        "phenotype",
+                        "pattern",
+                    ]
+                    r = r.reset_index(drop=True)
+                    results.append(r)
+                except (np.linalg.LinAlgError, PerfectSeparationError):
+                    continue
+        results = pd.concat(results)
+
+    return results
