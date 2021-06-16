@@ -14,7 +14,6 @@ from ..preprocessing import get_points
 
 hv.extension("bokeh", "matplotlib")
 
-
 # Masala color palette by Noor
 # Note: tested colorblind friendliness, did not do so well
 masala_palette = sns.color_palette(
@@ -401,14 +400,17 @@ def _plot_cells(masks, cell_shape, ax, kind, points_c, markersize, binwidth, spr
 def pheno_to_color(pheno, palette):
     """
     Maps list of categorical labels to a color palette.
-    Input values are first sorted alphanumerically least to greatest before mapping to colors. This ensures consistent colors regardless of input value order.
+    Input values are first sorted alphanumerically least to greatest before mapping to colors.
+    This ensures consistent colors regardless of input value order.
 
     Parameters
     ----------
     pheno : pd.Series
         Categorical labels to map
     palette: None, string, or sequence, optional
-        Name of palette or None to return current palette. If a sequence, input colors are used but possibly cycled and desaturated. Taken from sns.color_palette() documentation.
+        Name of palette or None to return current palette.
+        If a sequence, input colors are used but possibly cycled and desaturated.
+        Taken from sns.color_palette() documentation.
 
     Returns
     -------
