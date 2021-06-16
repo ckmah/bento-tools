@@ -186,17 +186,20 @@ def spots_distr(data, direction='cells', sharey=True, binwidth=10, layer="patter
 def plot_cells(
     data,
     kind="scatter",
+    tile=False,
     cells=None,
     genes=None,
     markersize=3,
     alpha=0.2,
-    hue=None,
     col=None,
-    cmap="Blues",
+    col_order=None,
+    cmap="tab:blue",
+    ncols=4,
+    cell_ncols=4,
     masks="all",
     binwidth=3,
-    spread=True,
-    width=10
+    spread=False,
+    width=8
 ):
     """
     Visualize distribution of variable in spatial coordinates.
@@ -209,12 +212,8 @@ def plot_cells(
         Select specified list of cells. Default value of None selects all cells.
     genes: None, list
         Select specified list of genes. Default value of None selects all genes.
-    fraction: float (0,1]
-        Fraction to fraction when plotting. Useful when dealing with large datasets.
-    scatter_hue: str
-        Name of column in data.obs to interpet for scatter plot color. First tries to interpret if values are matplotlib color-like. For categorical data, tries to plot a different color for each label. For numerical, scales color by numerical values (need to be between [0,1]). Returns error if outside range.
     draw_masks: str, list
-       masks to draw outlines for. Will always include outline for union of `masks`.
+       masks to draw outlines for.
     """
 
     # Format cells input
@@ -258,145 +257,145 @@ def plot_cells(
         points, geometry=geopandas.points_from_xy(points["x"], points["y"])
     )
 
-    if hue:
-        points[hue] = points[hue].astype("category")
-
     # Get masks and points
     shapes = geopandas.GeoDataFrame(data.obs[masks], geometry="cell_shape")
     masks = shapes.columns.tolist()
 
-    bounds = shapes.bounds
-    minx, miny, maxx, maxy = (
-        np.floor(bounds["minx"].min()),
-        np.floor(bounds["miny"].min()),
-        np.ceil(bounds["maxx"].max()),
-        np.ceil(bounds["maxy"].max()),
-    )
-
-    if not col:
+    # Set number of columns
+    if col:
+        ncols = min(ncols, points[col].nunique())
+        col_names = points[col].unique()
+    else:
         ncols = 1
         col_names = [""]
-        fig_width = width
-        fig_height = width
-    else:
-        ncols = points[col].nunique()
-        col_names = points[col].unique()
-        fig_width = width * ncols
-        fig_height = width
 
-    fig, axes = plt.subplots(1, ncols, figsize=(fig_width, fig_height))
+    if col_order:
+        col_names = col_order
 
-    try:
-        iterator = iter(axes)
-    except TypeError:
-        axes = [axes]
-    else:
-        axes = list(axes)
+    nrows = max(1, int(np.ceil(len(col_names) / ncols)))
 
-    for ax, c_name in zip(axes, col_names):
+    # Create subplots for each "col" value
+    fig = plt.figure(figsize=(width, width))
+    col_grid = fig.add_gridspec(nrows, ncols, wspace=0, hspace=0)
 
-        if col:
-            points_c = points.loc[points[col] == c_name]
-        else:
-            points_c = points
+    nd_col_names = np.array(col_names)
+    nd_col_names.resize(nrows*ncols)
+    nd_col_names = nd_col_names.reshape(nrows, ncols)
+    for i in range(nrows):
+        for j in range(ncols):
+            # Set subplot title
+            c_name = nd_col_names[i, j]
 
-        # Plot mask outlines
-        for mask in masks:
-            shapes.set_geometry(mask).plot(
-                color=(0, 0, 0, 0.05), edgecolor=(0, 0, 0, 0.3), ax=ax
-            )
-
-        # Plot points
-        if kind == "scatter":
-            col_value = None
-            if hue:
-                col_value = hue
-
-            points_c.plot(
-                column=col_value,
-                markersize=markersize,
-                alpha=0.5,
-                cmap=cmap,
-                legend=True,
-                ax=ax,
-            )
-
-        elif kind == "dist_scatter":
-            g1, g2 = points_c["gene"].unique()
-            g1_points = points_c[points_c["gene"] == g1]
-            g2_points = points_c[points_c["gene"] == g2]
-
-            d_matrix = cdist(g1_points[["x", "y"]], g2_points[["x", "y"]])
-            g1_points["min_dist"] = d_matrix.min(axis=1)
-            g2_points["min_dist"] = d_matrix.min(axis=0)
-            points_c = pd.concat([g1_points, g2_points])
-            points_c = points_c.sort_values("min_dist", ascending=False)
-            points_c.plot(
-                column="min_dist",
-                # edgecolor='black',
-                # linewidth=0.5,
-                markersize=[
-                    markersize * max(v, 1)
-                    for v in (-np.log(points_c["min_dist"]) / np.log(3) + 3)
-                ],
-                alpha=alpha,
-                cmap=sns.cubehelix_palette(
-                    start=0.5,
-                    rot=0.2,
-                    dark=0.3,
-                    hue=1,
-                    light=0.85,
-                    reverse=True,
-                    as_cmap=True,
-                ),
-                vmax=3,
-                ax=ax,
-            )
-
-        elif kind == "hist":
-            if hue:
-                agg = ds.by(hue, ds.count())
+            if col:
+                points_c = points.loc[points[col] == c_name]
             else:
-                agg = ds.count()
+                points_c = points
 
-            scaled_binw = ax.get_window_extent().width * binwidth / (maxx - minx)
-            scaled_binh = ax.get_window_extent().height * binwidth / (maxy - miny)
+            if tile is False:
+                col_ax = fig.add_subplot(col_grid[i, j])
+                col_ax.set_title(c_name)
 
-            if spread:
-                spread = partial(tf.dynspread, threshold=0.5)
+                _plot_cells(masks, shapes, col_ax, kind, points_c,
+                            markersize, binwidth, spread, cmap)
             else:
-                spread = None
+                cell_ncols = min(len(shapes), cell_ncols)
+                cell_nrows = max(1, int(np.ceil(len(shapes) / cell_ncols)))
+                cell_grid = col_grid[i, j].subgridspec(
+                    cell_nrows, cell_ncols, wspace=0, hspace=0)
+                cell_axes = cell_grid.subplots()
 
-            partist = dsshow(
-                points_c,
-                ds.Point("x", "y"),
-                aggregator=agg,
-                # agg_hook=lambda x: x.where((x.sel(gene=genes[0]) > 0) & (x.sel(gene=genes[1]) > 0)),
-                norm="linear",
-                cmap=cmap,
-                width_scale=1 / scaled_binw,
-                height_scale=1 / scaled_binh,
-                shade_hook=spread,
-                x_range=(minx, maxx),
-                y_range=(miny, maxy),
-                ax=ax,
-            )
+                # Determine unit width/height of each subplot
+                cell_bounds = shapes.bounds
+                cell_maxw = (cell_bounds['maxx'] - cell_bounds['minx']).max()
+                cell_maxh = (cell_bounds['maxy'] - cell_bounds['miny']).max()
+                ax_radius = max(cell_maxw, cell_maxh) / 2
 
-            if hue is None:
-                plt.colorbar(
-                    partist,
-                    orientation="horizontal",
-                    fraction=0.05,
-                    aspect=10,
-                    pad=0.02,
-                    ax=ax,
-                )
+                for celli, cell_ax in enumerate(cell_axes.flat):
+                    try:
+                        cell_shape = shapes.iloc[[celli], :]
+                        centroidx, centroidy = cell_shape.centroid[0].xy
+                        centroidx = centroidx[0]
+                        centroidy = centroidy[0]
 
-        ax.set_title(c_name)
-        ax.axis("off")
+                        cell_ax.set_xlim(centroidx-ax_radius,
+                                         centroidx + ax_radius)
+                        cell_ax.set_ylim(centroidy-ax_radius,
+                                         centroidy + ax_radius)
+
+                        _plot_cells(masks,
+                                    cell_shape,
+                                    cell_ax,
+                                    kind,
+                                    points_c.loc[points_c['cell']
+                                                 == shapes.index[celli]],
+                                    markersize,
+                                    binwidth,
+                                    spread,
+                                    cmap
+                                    )
+
+                        cell_ax.set_xlim(centroidx-ax_radius,
+                                         centroidx + ax_radius)
+                        cell_ax.set_ylim(centroidy-ax_radius,
+                                         centroidy + ax_radius)
+
+                    except (IndexError, ValueError):
+                        cell_ax.remove()
 
     plt.close()
     return fig
+
+
+def _plot_cells(masks, cell_shape, ax, kind, points_c, markersize, binwidth, spread, cmap):
+    # ax.axis("off")
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    if not isinstance(type(cmap), type(sns.color_palette(as_cmap=True))):
+        cmap = sns.light_palette(cmap, as_cmap=True)
+
+    # Plot mask outlines
+    for mask in masks:
+        cell_shape.set_geometry(mask).plot(
+            color=(0, 0, 0, 0.05), edgecolor=(0, 0, 0, 0.3), ax=ax
+        )
+
+    # Plot points
+    if kind == "scatter":
+        col_value = None
+
+        points_c.plot(
+            column=col_value,
+            markersize=markersize,
+            alpha=0.5,
+            legend=True,
+            ax=ax,
+        )
+
+    # Plot density
+    elif kind == "hist":
+
+        if spread:
+            spread = partial(tf.dynspread, threshold=0.5)
+        else:
+            spread = None
+
+        # Percent of window size
+        scaled_binwidth = max(ax.get_window_extent().width * binwidth * .01,
+                              ax.get_window_extent().height * binwidth * .01)
+
+        dsshow(
+            points_c,
+            ds.Point("x", "y"),
+            norm="linear",
+            cmap=cmap,
+            width_scale=1 / scaled_binwidth,
+            height_scale=1 / scaled_binwidth,
+            shade_hook=spread,
+            ax=ax,
+        )
+
+    return ax
 
 
 def pheno_to_color(pheno, palette):
