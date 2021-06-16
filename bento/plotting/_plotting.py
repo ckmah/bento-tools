@@ -29,29 +29,34 @@ masala_palette = sns.color_palette(
 )
 
 
-def spots_diff(data, groups):
-    dl_results = data.uns["sample_data"][f"dl_{groups}"]
-    # with sns.axes_style("whitegrid"):
+def spots_diff(data, groups, adjusted=True, ymax=None):
+    dl_results = data.uns[f"diff_{groups}"]
+
+    if adjusted:
+        rank = "-log10padj"
+    else:
+        rank = "-log10p"
+
     g = sns.relplot(
         data=dl_results.sort_values("pattern"),
         x="dy/dx",
-        y="-log10padj",
+        y=rank,
         hue="pattern",
-        size="-log10padj",
-        sizes=(10, 200),
+        size=rank,
+        sizes=(1, 20),
         col="phenotype",
-        s=4,
         height=4,
         linewidth=0,
         palette="tab10",
+        facet_kws=dict(xlim=(-1, 1))
     )
-    for ax in g.axes.flatten():
-        ax.grid(False, axis="y")
-        ax.axhline(-np.log10(0.05), color="gray", lw=1, linestyle="--")
-        ax.axvline(0, color="black", lw=1, linestyle="-")
-        sns.despine(top=False, right=False, bottom=False, left=False)
-        plt.xlim(-1, 1)
-    plt.ylim(-0.05, 3)
+
+    g.map(plt.axhline, y=-np.log10(0.05),
+          color="gray", lw=1, linestyle="--", zorder=0)
+    (g.map(plt.axvline, x=0, color="black", lw=1, linestyle="-", zorder=0)
+      .set_axis_labels("Marginal Effect (dy/dx)", f"Significance ({rank})")
+      .set_titles("{col_name}"))
+    # g.map(sns.despine, top=False, right=False, bottom=False, left=False)
 
 
 def gene_umap(data, hue=None, **kwargs):
