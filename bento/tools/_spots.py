@@ -24,9 +24,9 @@ warnings.simplefilter("ignore", ConvergenceWarning)
 
 
 PATTERN_NAMES = [
-            "cell edge",
+    "cell_edge",
             "foci",
-            "nuclear edge",
+    "nuclear_edge",
             "perinuclear",
             "protrusions",
             "random",
@@ -76,8 +76,8 @@ def detect_spots(cell_patterns, imagedir, device="auto", model="pattern", copy=F
 
     if isinstance(module, FiveSpotsModule):
         label_names = [
-            "cell edge",
-            "nuclear edge",
+            "cell_edge",
+            "nuclear_edge",
             "perinuclear",
             "protrusions",
             "random",
