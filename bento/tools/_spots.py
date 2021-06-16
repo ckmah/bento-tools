@@ -3,12 +3,12 @@ import warnings
 
 import numpy as np
 import pandas as pd
-import scipy.stats as stats
 import statsmodels.formula.api as sfm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from joblib import Parallel, delayed
+from patsy import PatsyError
 from sklearn.preprocessing import OneHotEncoder
 from skorch import NeuralNetClassifier
 from skorch.callbacks import Checkpoint
@@ -25,12 +25,12 @@ warnings.simplefilter("ignore", ConvergenceWarning)
 
 PATTERN_NAMES = [
     "cell_edge",
-            "foci",
+    "foci",
     "nuclear_edge",
-            "perinuclear",
-            "protrusions",
-            "random",
-        ]
+    "perinuclear",
+    "protrusions",
+    "random",
+]
 
 
 def detect_spots(patterns, imagedir, batch_size=1024, device="auto", model="pattern", copy=False):
@@ -335,83 +335,69 @@ class FiveSpotsModule(nn.Module):
         return x
 
 
-def spots_diff(cell_patterns, groupby=None, continuous=None, n_cores=1, copy=False):
+def spots_diff(data, phenotype=None, continuous=False, combined=False, n_cores=1, copy=False):
     """Gene-wise test for differential localization across phenotype of interest.
-
-    One of `groupby` or `continuous` must be specified, but not both.
 
     Parameters
     ----------
-    cell_patterns : AnnData
-        Anndata formatted spatial cell_patterns.
-    groupby : str
-        Variable grouping cells for differential analysis. Must be in cell_patterns.obs_names.
-    continuous : str, pd.Series
+    data : AnnData
+        Anndata formatted spatial data.
+    phenotype : str
+        Variable grouping cells for differential analysis. Must be in data.obs_names.
+    continuous : bool
+        Whether the phenotype is continuous or categorical. By default False.
     n_cores : int, optional
         cores used for multiprocessing, by default 1
     copy : bool, optional
         Return view of AnnData if False, return copy if True. By default False.
     """
-    adata = cell_patterns.copy() if copy else cell_patterns
+    adata = data.copy() if copy else data
 
-    # Get group/continuous phenotype
-    phenotype = None
-    if groupby and not continuous:
-        phenotype = groupby
-    elif continuous and not groupby:
-        phenotype = continuous
-    else:
-        print(
-            'Either "groupby" or "continuous" parameters need to be specified, not both.'
-        )
+    # Parallelize on chunks
+    patterns = adata.layers['pattern'].T
+    phenotype_vector = adata.obs[phenotype].tolist()
 
-    # Test genes in parallel
-    diff_output = Parallel(n_jobs=n_cores)(
-        delayed(_test_gene)(
-            gene_name,
-            adata.layers['pattern'][:, gene_name],
-            adata.obs[phenotype],
-            continuous
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        diff_output = Parallel(n_jobs=n_cores)(
+            delayed(_spots_diff_gene)(gene, gp, phenotype, phenotype_vector, continuous, combined)
+            for gene, gp in tqdm(zip(adata.var_names, patterns), total=len(patterns))
         )
-        for gene_name in tqdm(adata.var_names.tolist())
-    )
 
     # Format pattern column
     diff_output = pd.concat(diff_output)
 
     # FDR correction
     results_adj = []
-    for _, df in results.groupby("pattern"):
+    for _, df in diff_output.groupby("pattern"):
         df["padj"] = multipletests(df["pvalue"], method="hs")[1]
         results_adj.append(df)
 
-    results_adj = pd.concat(results_adj)
-    results_adj = results_adj.dropna()
+    results_adj = pd.concat(results_adj).dropna()
 
     # -log10pvalue, padj
-    results_adj["-log10p"] = - \
-        np.log10(results_adj["pvalue"].astype(np.float32))
-    results_adj["-log10padj"] = - \
-        np.log10(results_adj["padj"].astype(np.float32))
+    results_adj["-log10p"] = -np.log10(results_adj["pvalue"].astype(np.float32))
+    results_adj["-log10padj"] = -np.log10(results_adj["padj"].astype(np.float32))
+
+    # Cap significance values
+    results_adj.loc[results_adj['-log10p'] > 20, '-log10p'] = 20
+    results_adj.loc[results_adj['-log10padj'] > 12, '-log10padj'] = 12
 
     # Sort results
     results_adj = results_adj.sort_values("pvalue")
 
     # Save back to AnnData
-    adata.uns["sample_data"][f"dl_{phenotype}"] = results_adj
+    adata.uns[f"diff_{phenotype}"] = results_adj
 
     return adata if copy else None
 
 
-def _test_gene(gene, cell_patterns, phenotype, continuous):
+def _spots_diff_gene(gene, patterns, phenotype, phenotype_vector, combined):
     """Perform pairwise comparison between groupby and every class.
 
     Parameters
     ----------
-    cell_patterns : DataFrame
-        Phenotype and localization pattern labels across cells for a single gene.
-    groupby : str
-        Variable grouping cells for differential analysis. Should be present in cell_patterns.columns.
+    chunk : tuple
 
     Returns
     -------
@@ -419,53 +405,47 @@ def _test_gene(gene, cell_patterns, phenotype, continuous):
         Differential localization test results. [# of patterns, ]
     """
     results = []
-
     # Series denoting pattern frequencies
-    freqs = pd.Series(cell_patterns, index=phenotype.index).value_counts()
+    pattern_dummies = pd.get_dummies(patterns)
+    pattern_dummies = pattern_dummies.drop('none', axis=1)
+    pattern_names = pattern_dummies.columns.tolist()
 
-    # Continuous test: spearman correlation between phenotype and pattern frequency
-    if continuous:
-        for c in PATTERN_NAMES:
-            corr, p = stats.spearmanr(cell_patterns[phenotype], cell_patterns[c])
-            results.append(
-                pd.Series(
-                    [corr, p, gene, continuous],
-                    index=["r", "pvalue", "gene", "phenotype"],
-                )
-                .to_frame()
-                .T
+    # One hot encode categories
+    group_dummies = pd.get_dummies(pd.Series(phenotype_vector))
+    group_dummies.columns = [f"{phenotype}_{g}" for g in group_dummies.columns]
+    group_names = group_dummies.columns.tolist()
+    group_data = pd.concat([pattern_dummies, group_dummies], axis=1)
+    group_data.columns = group_data.columns.astype(str)
+
+    # Perform one group vs rest logistic regression
+    for g in group_names:
+        try:
+            res = sfm.logit(formula=f"{g} ~ {' + '.join(pattern_names)}", data=group_data).fit(
+                disp=0
             )
-        results = pd.concat(results)
-        results["pattern"] = classes
-    else:
-        group_dummies = pd.get_dummies(cell_patterns[phenotype])
-        group_names = group_dummies.columns.tolist()
-        group_data = pd.concat([cell_patterns, group_dummies], axis=1)
 
-        for g in group_names:
-            for c in classes:
-                try:
-                    res = sfm.logit(
-                        formula=f"{g} ~ {c}", cell_patterns=group_data).fit(disp=0)
-                    r = res.get_margeff().summary_frame()
-                    r["gene"] = gene
-                    r["phenotype"] = g
-                    r["pattern"] = c
-                    r.columns = [
-                        "dy/dx",
-                        "std_err",
-                        "z",
-                        "pvalue",
-                        "ci_low",
-                        "ci_high",
-                        "gene",
-                        "phenotype",
-                        "pattern",
-                    ]
-                    r = r.reset_index(drop=True)
-                    results.append(r)
-                except (np.linalg.LinAlgError, PerfectSeparationError):
-                    continue
-        results = pd.concat(results)
+            # Look at marginal effect of each pattern coefficient
+            r = res.get_margeff(dummy=True).summary_frame()
+            r["gene"] = gene
+            r["phenotype"] = g
+            # r["pattern"] = p
 
-    return results
+            r.columns = [
+                "dy/dx",
+                "std_err",
+                "z",
+                "pvalue",
+                "ci_low",
+                "ci_high",
+                "gene",
+                "phenotype",
+                # "pattern",
+            ]
+            # r.reset_index(drop=True, inplace=True)
+            r = r.reset_index().rename({'index': 'pattern'}, axis=1)
+
+            results.append(r)
+        except (np.linalg.LinAlgError, PerfectSeparationError, PatsyError):
+            continue
+
+    return pd.concat(results) if len(results) > 0 else None
