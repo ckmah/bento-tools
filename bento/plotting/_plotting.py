@@ -7,10 +7,8 @@ import geopandas
 import holoviews as hv
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import seaborn as sns
 from datashader.mpl_ext import dsshow
-from scipy.spatial.distance import cdist
 
 from ..preprocessing import get_points
 
