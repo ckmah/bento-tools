@@ -7,20 +7,23 @@ from anndata import AnnData
 from shapely import geometry, wkt
 
 
-def read_h5ad(filename):
-    """Load bento processed AnnData object from h5ad. Casts DataFrames in adata.uns['masks'] to GeoDataFrame.
+def read_h5ad(filename, backed=None):
+    """Load bento processed AnnData object from h5ad.
 
     Parameters
     ----------
     filename : str
         File name to load data file.
-
+    backed : 'r', 'r+', True, False, None
+        If 'r', load AnnData in backed mode instead of fully loading it into memory (memory mode).
+        If you want to modify backed attributes of the AnnData object, you need to choose 'r+'.
+        By default None.
     Returns
     -------
     AnnData
         AnnData data object.
     """
-    adata = anndata.read_h5ad(filename)
+    adata = anndata.read_h5ad(filename, backed=backed)
 
     # Load obs columns that are shapely geometries
     adata.obs = adata.obs.apply(
