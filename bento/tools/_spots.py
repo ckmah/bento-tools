@@ -32,14 +32,15 @@ PATTERN_NAMES = [
             "random",
         ]
 
-def detect_spots(cell_patterns, imagedir, device="auto", model="pattern", copy=False):
+
+def detect_spots(patterns, imagedir, batch_size=1024, device="auto", model="pattern", copy=False):
     """
     Detect and label localization patterns.
-    TODO change cell_patterns to be iterable compatible with skorch.predict_proba
+    TODO change patterns to be iterable compatible with skorch.predict_proba
 
     Parameters
     ----------
-    cell_patterns : [type]
+    patterns : [type]
         [description]
     imagedir : str
         Folder for rasterized images.
@@ -48,7 +49,7 @@ def detect_spots(cell_patterns, imagedir, device="auto", model="pattern", copy=F
     [type]
         [description]
     """
-    adata = cell_patterns.copy() if copy else cell_patterns
+    adata = patterns.copy() if copy else patterns
 
     # Default to gpu if possible. Otherwise respect specified parameter
     if device == "auto":
@@ -62,7 +63,7 @@ def detect_spots(cell_patterns, imagedir, device="auto", model="pattern", copy=F
     modules = dict(pattern=SpotsModule, five_pattern=FiveSpotsModule)
     module = modules[model](**model_params)
 
-    net = NeuralNetClassifier(module=module, device=device)
+    net = NeuralNetClassifier(module=module, batch_size=batch_size, device=device)
     net.initialize()
     net.load_params(checkpoint=Checkpoint(dirname=f"{model_dir}"))
 
@@ -119,6 +120,8 @@ def detect_spots(cell_patterns, imagedir, device="auto", model="pattern", copy=F
         .fillna("none")
         .reindex(index=adata.obs_names, columns=adata.var_names, fill_value="none")
     )
+
+    pattern_labels.columns.name = "gene"
 
     adata.layers[model] = pattern_labels
 
