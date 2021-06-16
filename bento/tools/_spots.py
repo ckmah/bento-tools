@@ -147,13 +147,13 @@ def detect_spots(patterns, imagedir, batch_size=1024, device="auto", model="patt
     return adata if copy else None
 
 
-def distr_to_var(cell_patterns, layer, copy=False):
+def distr_to_var(data, layer, copy=False):
     """Computes frequencies of input layer values across cells and across genes.
     Assumes layer values are categorical.
 
     Parameters
     ----------
-    cell_patterns : [type]
+    data : [type]
         [description]
     layer : [type]
         [description]
@@ -165,17 +165,15 @@ def distr_to_var(cell_patterns, layer, copy=False):
     [type]
         [description]
     """
-    adata = cell_patterns.copy() if copy else cell_patterns
+    adata = data.copy() if copy else data
 
     # Save frequencies across genes to adata.var
-    gene_summary = (
-        adata.to_df(layer).apply(lambda g: g.value_counts()).fillna(0)
-    ).T
+    gene_summary = (adata.to_df(layer).apply(lambda g: g.value_counts()).fillna(0)).T
     adata.var[gene_summary.columns] = gene_summary
 
     # Save frequencies across cells to adata.obs
     cell_summary = (
-        cell_patterns.to_df(layer).apply(lambda row: row.value_counts(), axis=1).fillna(0)
+        data.to_df(layer).apply(lambda row: row.value_counts(), axis=1).fillna(0)
     )
     adata.obs[cell_summary.columns] = cell_summary
 
