@@ -95,6 +95,20 @@ def detect_spots(cell_patterns, imagedir, device="auto", model="pattern", copy=F
     ]
     spots_pred_long = pd.DataFrame(sample_names, columns=["cell", "gene"])
 
+    # Pair probabilities to samples
+    spots_pred_long[label_names] = pred_prob
+
+    # Flatten p(patterns) for all genes in each cell
+    loc_embed = (
+        spots_pred_long.pivot(index="cell", columns="gene", values=label_names)
+        .fillna(0)
+        .reindex(adata.obs_names)
+        .values
+    )
+
+    # Save flattened probabilities
+    adata.obsm[f"{model}_embed"] = loc_embed
+
     # TODO use spares matrices to avoid slow/big df pivots
     # https://stackoverflow.com/questions/55404617/faster-alternatives-to-pandas-pivot-table
     # Build "pattern" genexcell layer, where values are pattern labels
