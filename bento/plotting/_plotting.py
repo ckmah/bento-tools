@@ -75,93 +75,112 @@ def gene_umap(data, hue=None, **kwargs):
     return ax
 
 
-def spots_distr(data, genes=None, layer="pattern"):
-    """Plot localization pattern frequencies for a subset of genes as a ridgeline plot. Default all genes.
+def spots_distr(data, direction='cells', sharey=True, binwidth=10, layer="pattern"):
+    """Plot localization pattern distributions across all cells (default) or genes.
 
     Parameters
     ----------
     data : [type]
         [description]
     """
-    if genes is None:
-        genes = data.var_names
-    else:
-        if type(genes) != list:
-            genes = [genes]
+    if direction == 'cells':
+        axis = 1
+    elif direction == 'genes':
+        axis = 0
 
-        genes = list(set(genes))
+    # Count pattern occurences within axis
+    pattern_distr = data.to_df('pattern').apply(
+        lambda fiber: fiber.value_counts(), axis=axis)
 
-    cell_freq = (
-        data.to_df(layer=layer)
-        .loc[:, genes]
-        .T.reset_index(drop=True)
-        .apply(lambda x: x.value_counts())
-        .fillna(0)
-    )
+    if axis == 0:
+        pattern_distr = pattern_distr.T
 
-    cell_frac_long = (cell_freq / cell_freq.sum()).T.melt()
-    cell_frac_long.columns = [layer, "fraction"]
+    pattern_distr = ((pattern_distr.T * 100) / pattern_distr.sum(axis=1)).T
+
+    # Pattern fraction at dataset level
+    pattern_total_distr = pattern_distr.sum(axis=0)
+    pattern_total_distr = ((pattern_total_distr*100) /
+                           pattern_total_distr.sum()).to_frame().T.drop('none', axis=1).melt()
+    pattern_total_distr.columns = ['pattern', 'value']
+
+    distr_long = pattern_distr.drop('none', axis=1)
+    distr_long['group'] = None
+    distr_long = distr_long.melt(id_vars='group')
+    distr_long.columns = ['group', 'pattern', 'value']
+
+    palette = sns.color_palette('muted6')
 
     with sns.axes_style(style="white", rc={"axes.facecolor": (0, 0, 0, 0)}):
-        pattern_names = cell_frac_long[layer].unique()
+
+        fig, ax = plt.subplots(1, 1, figsize=(5, 3))
+        sns.barplot(data=pattern_total_distr, x='value', y='pattern',
+                    hue='pattern', palette=palette, dodge=False, ax=ax)
+        ax.set_title('Percent of total samples', fontsize=15)
+        ax.set_xlabel('Percent', fontsize=15)
+        ax.set_ylabel('')
+        ax.legend().remove()
+        sns.despine()
+
+        pattern_names = distr_long['pattern'].unique()
 
         g = sns.FacetGrid(
-            cell_frac_long,
-            row=layer,
-            hue=layer,
-            sharey=False,
-            aspect=10,
-            height=0.75,
-            palette=sns.color_palette(),
-            xlim=(-0.1, 1.1),
+            distr_long,
+            col='pattern',
+            hue='pattern',
+            col_wrap=3,
+            sharey=sharey,
+            sharex=False,
+            aspect=1.5,
+            height=2,
+            palette=palette,
+            xlim=(0, 100),
+
         )
         # subplot_kws=dict(facecolor=(0,0,0,0))
         # then we add the densities kdeplots for each pattern
         g.map(
-            sns.kdeplot,
-            "fraction",
+            sns.histplot,
+            "value",
+            stat='count',
+            binwidth=binwidth,
             clip_on=False,
-            fill=True,
             alpha=1,
-            linewidth=1.5,
         )
-
-        # here we add a white line that represents the contour of each kdeplot
-        g.map(sns.kdeplot, "fraction", clip_on=False, color="w", lw=2)
 
         # here we add a horizontal line for each plot
         g.map(plt.axhline, y=0, lw=2, clip_on=False)
 
-        # we loop over the FacetGrid figure axes (g.axes.flat) and add the pattern as text with the right color
-        # notice how ax.lines[-1].get_color() enables you to access the last line's color in each matplotlib.Axes
+        if direction == 'cells':
+            x_unit = 'genes'
+        else:
+            x_unit = 'cells'
+
+        # we loop over the FacetGrid figure axes (g.axes.flat) and add the pattern as text with the
+        # right color notice how ax.lines[-1].get_color() enables you to access the last line's
+        # color in each matplotlib.Axes
         for i, ax in enumerate(g.axes.flat):
-            ax.text(
-                -0.5,
-                0,
+            ax.set_title(
                 pattern_names[i],
                 # fontweight="bold",
-                fontsize=14,
+                fontsize=15,
                 color=ax.lines[-1].get_color(),
             )
+            ax.set_xlabel(f"Percent of {x_unit}", fontsize=15)
 
         # we use matplotlib.Figure.subplots_adjust() function to get the subplots to overlap
-        g.fig.subplots_adjust(hspace=-0.25)
+        g.fig.subplots_adjust(hspace=0.4)
 
         # eventually we remove axes titles, yticks and spines
         g.set_titles("")
-        g.set(yticks=[])
-        g.despine(bottom=True, left=True)
-
         plt.setp(ax.get_xticklabels(), fontsize=15)
-        plt.xlabel("Gene fraction", fontsize=15)
+
         g.fig.suptitle(
-            "Localization pattern distribution across cells",
+            f"Localization pattern distribution across {direction}",
             ha="center",
             fontsize=18,
             fontweight=20,
         )
-
-        return g
+    return g
 
 
 def plot_cells(
