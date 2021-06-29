@@ -16,7 +16,7 @@ from matplotlib.colors import ListedColormap
 from ..preprocessing import get_points
 from ..tools import PATTERN_NAMES
 
-matplotlib.rcParams['figure.facecolor'] = (0,0,0,0)
+matplotlib.rcParams["figure.facecolor"] = (0, 0, 0, 0)
 
 # Masala color palette by Noor
 # Note: tested colorblind friendliness, did not do so well
@@ -99,9 +99,7 @@ def spots_all_distr(data, groupby=None, layer="pattern", legend=True):
 
     pattern_distr.columns = [groupby, layer, "value"]
     pattern_distr["value"] *= 100
-    pattern_distr = pattern_distr.pivot(
-        index=groupby, columns=layer, values="value"
-    )
+    pattern_distr = pattern_distr.pivot(index=groupby, columns=layer, values="value")
     pattern_distr = pattern_distr.reindex(columns=PATTERN_NAMES, fill_value=0)
     # pattern_distr.drop("none", axis=1, inplace=True)
 
@@ -113,7 +111,7 @@ def spots_all_distr(data, groupby=None, layer="pattern", legend=True):
             width=0.8,
             figsize=(6, max(2, pattern_distr.shape[0] / 2)),
             xlim=(0, 100),
-            legend=False
+            legend=False,
         )
 
         if pattern_distr.shape[0] == 1:
@@ -231,7 +229,7 @@ def plot_cells(
     pattern=None,
     markersize=3,
     alpha=1,
-    cmap='blues',
+    cmap="blues",
     ncols=4,
     masks="all",
     binwidth=3,
@@ -329,7 +327,19 @@ def plot_cells(
                 else:
                     legend = False
                 _plot_cells(
-                    masks, s, ax, kind, p, markersize, alpha, binwidth, spread, hue, cmap, size, legend
+                    masks,
+                    s,
+                    ax,
+                    kind,
+                    p,
+                    markersize,
+                    alpha,
+                    binwidth,
+                    spread,
+                    hue,
+                    cmap,
+                    size,
+                    legend,
                 )
 
                 s_bound = s.bounds
@@ -359,9 +369,8 @@ def plot_cells(
             hue,
             cmap,
             size,
-            legend
+            legend,
         )
-
 
     if pattern:
         fig.suptitle(pattern)
@@ -370,7 +379,19 @@ def plot_cells(
 
 
 def _plot_cells(
-    masks, shapes, ax, kind, points_c, markersize, alpha, binwidth, spread, hue, cmap, size, legend
+    masks,
+    shapes,
+    ax,
+    kind,
+    points_c,
+    markersize,
+    alpha,
+    binwidth,
+    spread,
+    hue,
+    cmap,
+    size,
+    legend,
 ):
     # Plot mask outlines
     for mask in masks:
@@ -419,7 +440,7 @@ def _plot_cells(
         # Percent of window size
         scaled_binwidth = size * binwidth * 0.5
 
-        artist =dsshow(
+        artist = dsshow(
             points_c,
             ds.Point("x", "y"),
             aggregator,
@@ -436,9 +457,10 @@ def _plot_cells(
             plt.legend(handles=artist.get_legend_elements())
 
         from mpl_toolkits.axes_grid1 import make_axes_locatable
+
         divider = make_axes_locatable(ax)
-        cax = divider.append_axes('right', size='4%', pad=0.05)
-        ax.figure.colorbar(artist, cax=cax, orientation='vertical')
+        cax = divider.append_axes("right", size="4%", pad=0.05)
+        ax.figure.colorbar(artist, cax=cax, orientation="vertical")
         plt.tight_layout()
 
     bounds = shapes.total_bounds

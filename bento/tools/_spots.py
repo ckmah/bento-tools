@@ -13,8 +13,7 @@ from sklearn.preprocessing import OneHotEncoder
 from skorch import NeuralNetClassifier
 from skorch.callbacks import Checkpoint
 from statsmodels.stats.multitest import multipletests
-from statsmodels.tools.sm_exceptions import (ConvergenceWarning,
-                                             PerfectSeparationError)
+from statsmodels.tools.sm_exceptions import ConvergenceWarning, PerfectSeparationError
 from torchvision import datasets, transforms
 from tqdm.auto import tqdm
 
@@ -33,7 +32,9 @@ PATTERN_NAMES = [
 ]
 
 
-def detect_spots(patterns, imagedir, batch_size=1024, device="auto", model="pattern", copy=False):
+def detect_spots(
+    patterns, imagedir, batch_size=1024, device="auto", model="pattern", copy=False
+):
     """
     Detect and label localization patterns.
     TODO change patterns to be iterable compatible with skorch.predict_proba
@@ -92,7 +93,8 @@ def detect_spots(patterns, imagedir, batch_size=1024, device="auto", model="patt
 
     # Cell gene names
     sample_names = [
-        str(path).split("/")[-1].split(".")[0].rsplit("_", 1) for path, _ in dataset.imgs
+        str(path).split("/")[-1].split(".")[0].rsplit("_", 1)
+        for path, _ in dataset.imgs
     ]
     spots_pred_long = pd.DataFrame(sample_names, columns=["cell", "gene"])
 
@@ -335,7 +337,9 @@ class FiveSpotsModule(nn.Module):
         return x
 
 
-def spots_diff(data, phenotype=None, continuous=False, combined=False, n_cores=1, copy=False):
+def spots_diff(
+    data, phenotype=None, continuous=False, combined=False, n_cores=1, copy=False
+):
     """Gene-wise test for differential localization across phenotype of interest.
 
     Parameters
@@ -354,13 +358,15 @@ def spots_diff(data, phenotype=None, continuous=False, combined=False, n_cores=1
     adata = data.copy() if copy else data
 
     # Parallelize on chunks
-    patterns = adata.layers['pattern'].T
+    patterns = adata.layers["pattern"].T
     phenotype_vector = adata.obs[phenotype].tolist()
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         diff_output = Parallel(n_jobs=n_cores)(
-            delayed(_spots_diff_gene)(gene, gp, phenotype, phenotype_vector, continuous, combined)
+            delayed(_spots_diff_gene)(
+                gene, gp, phenotype, phenotype_vector, continuous, combined
+            )
             for gene, gp in tqdm(zip(adata.var_names, patterns), total=len(patterns))
         )
 
@@ -380,8 +386,8 @@ def spots_diff(data, phenotype=None, continuous=False, combined=False, n_cores=1
     results_adj["-log10padj"] = -np.log10(results_adj["padj"].astype(np.float32))
 
     # Cap significance values
-    results_adj.loc[results_adj['-log10p'] > 20, '-log10p'] = 20
-    results_adj.loc[results_adj['-log10padj'] > 12, '-log10padj'] = 12
+    results_adj.loc[results_adj["-log10p"] > 20, "-log10p"] = 20
+    results_adj.loc[results_adj["-log10padj"] > 12, "-log10padj"] = 12
 
     # Sort results
     results_adj = results_adj.sort_values("pvalue")
@@ -407,7 +413,7 @@ def _spots_diff_gene(gene, patterns, phenotype, phenotype_vector, combined):
     results = []
     # Series denoting pattern frequencies
     pattern_dummies = pd.get_dummies(patterns)
-    pattern_dummies = pattern_dummies.drop('none', axis=1)
+    pattern_dummies = pattern_dummies.drop("none", axis=1)
     pattern_names = pattern_dummies.columns.tolist()
 
     # One hot encode categories
@@ -420,9 +426,9 @@ def _spots_diff_gene(gene, patterns, phenotype, phenotype_vector, combined):
     # Perform one group vs rest logistic regression
     for g in group_names:
         try:
-            res = sfm.logit(formula=f"{g} ~ {' + '.join(pattern_names)}", data=group_data).fit(
-                disp=0
-            )
+            res = sfm.logit(
+                formula=f"{g} ~ {' + '.join(pattern_names)}", data=group_data
+            ).fit(disp=0)
 
             # Look at marginal effect of each pattern coefficient
             r = res.get_margeff(dummy=True).summary_frame()
@@ -442,7 +448,7 @@ def _spots_diff_gene(gene, patterns, phenotype, phenotype_vector, combined):
                 # "pattern",
             ]
             # r.reset_index(drop=True, inplace=True)
-            r = r.reset_index().rename({'index': 'pattern'}, axis=1)
+            r = r.reset_index().rename({"index": "pattern"}, axis=1)
 
             results.append(r)
         except (np.linalg.LinAlgError, PerfectSeparationError, PatsyError):
