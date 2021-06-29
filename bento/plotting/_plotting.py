@@ -230,6 +230,7 @@ def plot_cells(
     masks="all",
     binwidth=3,
     spread=False,
+    legend=False,
     frameon=True,
     size=4,
 ):
@@ -320,8 +321,13 @@ def plot_cells(
             try:
                 s = shapes.iloc[[i]]
                 p = points.loc[points["cell"] == s.index[0]]
+
+                if i == 0:
+                    legend = legend
+                else:
+                    legend = False
                 _plot_cells(
-                    masks, s, ax, kind, p, markersize, binwidth, spread, hue, cmap, size
+                    masks, s, ax, kind, p, markersize, alpha, binwidth, spread, hue, cmap, size, legend
                 )
 
                 s_bound = s.bounds
@@ -347,10 +353,9 @@ def plot_cells(
             hue,
             cmap,
             size,
+            legend
         )
 
-        plt.setp(ax, xticks=[], yticks=[])
-        ax.axis(frameon)
 
     if pattern:
         fig.suptitle(pattern)
@@ -359,12 +364,8 @@ def plot_cells(
 
 
 def _plot_cells(
-    masks, shapes, ax, kind, points_c, markersize, binwidth, spread, hue, cmap, size
+    masks, shapes, ax, kind, points_c, markersize, alpha, binwidth, spread, hue, cmap, size, legend
 ):
-
-    # if not isinstance(type(cmap), type(sns.color_palette(as_cmap=True))):
-    #     cmap = sns.light_palette(cmap, as_cmap=True)
-
     # Plot mask outlines
     for mask in masks:
         shapes.set_geometry(mask).plot(
@@ -374,33 +375,35 @@ def _plot_cells(
     if points_c.shape[0] == 0:
         return ax
 
-    color = None
-    categories = None
-
-    if hue is None:
-        color = cmap
-        cmap = None
-
-    if hue == 'pattern':
-        points_c[hue].cat.remove_categories('none', inplace=True)
+    if hue == "pattern" and "none" in points_c[hue].cat.categories:
+        points_c[hue].cat.remove_categories("none", inplace=True)
 
     # Plot points
     if kind == "scatter":
-        points_c.plot(
-            column=hue,
-            kind='geo',
-            markersize=markersize,
-            color=color,
-            # categories=categories,
-            cmap=cmap,
-            alpha=0.5,
-            legend=True,
-            ax=ax,
-            cax=ax
-        )
+        if hue is None:
+            points_c.plot(
+                column=hue,
+                markersize=markersize,
+                color=cmap,
+                alpha=alpha,
+                ax=ax,
+            )
+        else:
+            points_c.plot(
+                column=hue,
+                markersize=markersize,
+                cmap=cmap,
+                alpha=alpha,
+                ax=ax,
+            )
 
     # Plot density
     elif kind == "hist":
+
+        if hue:
+            aggregator = ds.count_cat(hue)
+        else:
+            aggregator = ds.count()
 
         if spread:
             spread = partial(tf.dynspread, threshold=0.5)
@@ -410,16 +413,27 @@ def _plot_cells(
         # Percent of window size
         scaled_binwidth = size * binwidth * 0.5
 
-        dsshow(
+        artist =dsshow(
             points_c,
             ds.Point("x", "y"),
+            aggregator,
             norm="linear",
             cmap=cmap,
             width_scale=1 / scaled_binwidth,
             height_scale=1 / scaled_binwidth,
+            vmin=0,
             shade_hook=spread,
             ax=ax,
         )
+
+        if legend:
+            plt.legend(handles=artist.get_legend_elements())
+
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes('right', size='4%', pad=0.05)
+        ax.figure.colorbar(artist, cax=cax, orientation='vertical')
+        plt.tight_layout()
 
     bounds = shapes.total_bounds
     ax.set_xlim(bounds[0], bounds[2])
