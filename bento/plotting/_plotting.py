@@ -4,6 +4,7 @@ from functools import partial
 import datashader as ds
 import datashader.transfer_functions as tf
 import geopandas
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -14,6 +15,8 @@ from matplotlib.colors import ListedColormap
 
 from ..preprocessing import get_points
 from ..tools import PATTERN_NAMES
+
+matplotlib.rcParams['figure.facecolor'] = (0,0,0,0)
 
 # Masala color palette by Noor
 # Note: tested colorblind friendliness, did not do so well
@@ -213,6 +216,8 @@ def spots_distr(data, level="cells", sharey=True, binwidth=10, layer="pattern"):
             fontsize=18,
             fontweight=20,
         )
+
+        plt.tight_layout()
     return g
 
 
@@ -225,7 +230,8 @@ def plot_cells(
     genes=None,
     pattern=None,
     markersize=3,
-    cmap="seaborn",
+    alpha=1,
+    cmap='blues',
     ncols=4,
     masks="all",
     binwidth=3,
@@ -253,11 +259,7 @@ def plot_cells(
     if cells is None:
         cells = data.obs.index.unique().tolist()
     else:
-        # print('Subsetting cells...')
-        if type(cells) != list:
-            cells = [cells]
-
-        cells = list(set(cells))
+        cells = list(cells)
 
     if "-1" in cells:
         warnings.warn(
@@ -338,8 +340,11 @@ def plot_cells(
 
             except (IndexError, ValueError):
                 ax.remove()
+
     else:
         fig, ax = plt.subplots(1, 1, figsize=(size, size))
+        plt.setp(ax, xticks=[], yticks=[])
+        ax.axis(frameon)
 
         _plot_cells(
             masks,
@@ -348,6 +353,7 @@ def plot_cells(
             kind,
             points,
             markersize,
+            alpha,
             binwidth,
             spread,
             hue,
