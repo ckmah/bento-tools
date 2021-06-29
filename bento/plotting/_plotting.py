@@ -76,22 +76,29 @@ def gene_umap(data, hue=None, **kwargs):
     return ax
 
 
-def spots_all_distr(data, groupby=None, layer="pattern"):
+def spots_all_distr(data, groupby=None, layer="pattern", legend=True):
 
     if groupby:
-        pattern_distr = (data.to_df("pattern").groupby(data.obs[groupby])
-                        .apply(lambda df: pd.Series(df.values.flatten()).value_counts()))
+        pattern_distr = (
+            data.to_df(layer)
+            .groupby(data.obs[groupby])
+            .apply(lambda df: pd.Series(df.values.flatten()).value_counts())
+        )
         pattern_distr = (pattern_distr / pattern_distr.sum(level=0)).reset_index()
 
     else:
         groupby = "Sample"
-        pattern_distr = pd.Series(data.to_df("pattern").values.flatten()).value_counts()
-        pattern_distr = (pattern_distr / pattern_distr.sum()).reset_index().reset_index()
+        pattern_distr = pd.Series(data.to_df(layer).values.flatten()).value_counts()
+        pattern_distr = (
+            (pattern_distr / pattern_distr.sum()).reset_index().reset_index()
+        )
         pattern_distr.iloc[:, 0] = "Sample"
 
-    pattern_distr.columns = [groupby, "pattern", "value"]
+    pattern_distr.columns = [groupby, layer, "value"]
     pattern_distr["value"] *= 100
-    pattern_distr = pattern_distr.pivot(index=groupby, columns="pattern", values="value")
+    pattern_distr = pattern_distr.pivot(
+        index=groupby, columns=layer, values="value"
+    )
     pattern_distr = pattern_distr.reindex(columns=PATTERN_NAMES, fill_value=0)
     # pattern_distr.drop("none", axis=1, inplace=True)
 
@@ -101,14 +108,16 @@ def spots_all_distr(data, groupby=None, layer="pattern"):
             stacked=True,
             colormap=ListedColormap(sns.color_palette("muted6", as_cmap=True)),
             width=0.8,
-            figsize=(6, max(2, pattern_distr.shape[0]/2)),
+            figsize=(6, max(2, pattern_distr.shape[0] / 2)),
             xlim=(0, 100),
+            legend=False
         )
 
         if pattern_distr.shape[0] == 1:
             ax.set_ylabel("")
         ax.set_xlabel("Percent")
-        ax.legend(bbox_to_anchor=(1, 1))
+        if legend:
+            ax.legend(bbox_to_anchor=(1, 1))
         sns.despine()
         plt.tight_layout()
 
@@ -300,7 +309,9 @@ def plot_cells(
         ax_radius = 1.1 * (max(cell_maxw, cell_maxh) / 2)
 
         # Create subplots
-        fig, axs = plot.subplots(nrows=nrows, ncols=ncols, sharex=False, sharey=False, axwidth=size, space=0)
+        fig, axs = plot.subplots(
+            nrows=nrows, ncols=ncols, sharex=False, sharey=False, axwidth=size, space=0
+        )
         axs.format(xticks=[], yticks=[])
         axs.axis(frameon)
 
@@ -314,8 +325,8 @@ def plot_cells(
                 )
 
                 s_bound = s.bounds
-                centerx = np.mean([s_bound['minx'], s_bound['maxx']])
-                centery = np.mean([s_bound['miny'], s_bound['maxy']])
+                centerx = np.mean([s_bound["minx"], s_bound["maxx"]])
+                centery = np.mean([s_bound["miny"], s_bound["maxy"]])
                 ax.set_xlim(centerx - ax_radius, centerx + ax_radius)
                 ax.set_ylim(centery - ax_radius, centery + ax_radius)
 
