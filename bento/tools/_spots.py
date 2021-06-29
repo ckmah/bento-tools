@@ -92,7 +92,7 @@ def detect_spots(patterns, imagedir, batch_size=1024, device="auto", model="patt
 
     # Cell gene names
     sample_names = [
-        str(path).split("/")[-1].split(".")[0].split("_") for path, _ in dataset.imgs
+        str(path).split("/")[-1].split(".")[0].rsplit("_", 1) for path, _ in dataset.imgs
     ]
     spots_pred_long = pd.DataFrame(sample_names, columns=["cell", "gene"])
 
