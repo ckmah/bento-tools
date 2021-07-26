@@ -4,6 +4,7 @@ from functools import partial
 import datashader as ds
 import datashader.transfer_functions as tf
 import geopandas
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -14,6 +15,8 @@ from matplotlib.colors import ListedColormap
 
 from ..preprocessing import get_points
 from ..tools import PATTERN_NAMES
+
+matplotlib.rcParams["figure.facecolor"] = (0, 0, 0, 0)
 
 # Masala color palette by Noor
 # Note: tested colorblind friendliness, did not do so well
@@ -76,39 +79,47 @@ def gene_umap(data, hue=None, **kwargs):
     return ax
 
 
-def spots_all_distr(data, groupby=None, layer="pattern"):
+def spots_all_distr(data, groupby=None, layer="pattern", stacked=True, legend=True):
 
     if groupby:
-        pattern_distr = (data.to_df("pattern").groupby(data.obs[groupby])
-                        .apply(lambda df: pd.Series(df.values.flatten()).value_counts()))
+        pattern_distr = (
+            data.to_df(layer)
+            .groupby(data.obs[groupby])
+            .apply(lambda df: pd.Series(df.values.flatten()).value_counts())
+        )
         pattern_distr = (pattern_distr / pattern_distr.sum(level=0)).reset_index()
 
     else:
         groupby = "Sample"
-        pattern_distr = pd.Series(data.to_df("pattern").values.flatten()).value_counts()
-        pattern_distr = (pattern_distr / pattern_distr.sum()).reset_index().reset_index()
+        pattern_distr = pd.Series(data.to_df(layer).values.flatten()).value_counts()
+        pattern_distr = (
+            (pattern_distr / pattern_distr.sum()).reset_index().reset_index()
+        )
         pattern_distr.iloc[:, 0] = "Sample"
 
-    pattern_distr.columns = [groupby, "pattern", "value"]
-    pattern_distr["value"] *= 100
-    pattern_distr = pattern_distr.pivot(index=groupby, columns="pattern", values="value")
+    pattern_distr.columns = [groupby, layer, "value"]
+    # pattern_distr["value"] *= 100
+    pattern_distr = pattern_distr.pivot(index=groupby, columns=layer, values="value")
     pattern_distr = pattern_distr.reindex(columns=PATTERN_NAMES, fill_value=0)
     # pattern_distr.drop("none", axis=1, inplace=True)
 
     with sns.axes_style(style="white"):
         ax = pattern_distr.plot(
-            kind="barh",
-            stacked=True,
+            kind="bar",
+            stacked=stacked,
             colormap=ListedColormap(sns.color_palette("muted6", as_cmap=True)),
             width=0.8,
-            figsize=(6, max(2, pattern_distr.shape[0]/2)),
-            xlim=(0, 100),
+            lw=0,
+            figsize=(max(2, pattern_distr.shape[0] / 2), 4),
+            # xlim=(0, 100),
+            legend=False,
         )
 
         if pattern_distr.shape[0] == 1:
-            ax.set_ylabel("")
-        ax.set_xlabel("Percent")
-        ax.legend(bbox_to_anchor=(1, 1))
+            ax.set_xlabel("")
+        ax.set_ylabel("Total Fraction")
+        if legend:
+            ax.legend(bbox_to_anchor=(1, 1))
         sns.despine()
         plt.tight_layout()
 
@@ -204,6 +215,8 @@ def spots_distr(data, level="cells", sharey=True, binwidth=10, layer="pattern"):
             fontsize=18,
             fontweight=20,
         )
+
+        plt.tight_layout()
     return g
 
 
@@ -216,11 +229,14 @@ def plot_cells(
     genes=None,
     pattern=None,
     markersize=3,
-    cmap="seaborn",
+    alpha=1,
+    cmap="blues",
     ncols=4,
     masks="all",
     binwidth=3,
     spread=False,
+    legend=False,
+    cbar=True,
     frameon=True,
     size=4,
 ):
@@ -243,11 +259,7 @@ def plot_cells(
     if cells is None:
         cells = data.obs.index.unique().tolist()
     else:
-        # print('Subsetting cells...')
-        if type(cells) != list:
-            cells = [cells]
-
-        cells = list(set(cells))
+        cells = list(cells)
 
     if "-1" in cells:
         warnings.warn(
@@ -300,7 +312,9 @@ def plot_cells(
         ax_radius = 1.1 * (max(cell_maxw, cell_maxh) / 2)
 
         # Create subplots
-        fig, axs = plot.subplots(nrows=nrows, ncols=ncols, sharex=False, sharey=False, axwidth=size, space=0)
+        fig, axs = plot.subplots(
+            nrows=nrows, ncols=ncols, sharex=False, sharey=False, axwidth=size, space=0
+        )
         axs.format(xticks=[], yticks=[])
         axs.axis(frameon)
 
@@ -309,20 +323,41 @@ def plot_cells(
             try:
                 s = shapes.iloc[[i]]
                 p = points.loc[points["cell"] == s.index[0]]
+
+                if i == 0:
+                    legend = legend
+                else:
+                    legend = False
                 _plot_cells(
-                    masks, s, ax, kind, p, markersize, binwidth, spread, hue, cmap, size
+                    masks,
+                    s,
+                    ax,
+                    kind,
+                    p,
+                    markersize,
+                    alpha,
+                    binwidth,
+                    spread,
+                    hue,
+                    cmap,
+                    size,
+                    legend,
+                    cbar,
                 )
 
                 s_bound = s.bounds
-                centerx = np.mean([s_bound['minx'], s_bound['maxx']])
-                centery = np.mean([s_bound['miny'], s_bound['maxy']])
+                centerx = np.mean([s_bound["minx"], s_bound["maxx"]])
+                centery = np.mean([s_bound["miny"], s_bound["maxy"]])
                 ax.set_xlim(centerx - ax_radius, centerx + ax_radius)
                 ax.set_ylim(centery - ax_radius, centery + ax_radius)
 
             except (IndexError, ValueError):
                 ax.remove()
+
     else:
         fig, ax = plt.subplots(1, 1, figsize=(size, size))
+        plt.setp(ax, xticks=[], yticks=[])
+        ax.axis(frameon)
 
         _plot_cells(
             masks,
@@ -331,29 +366,39 @@ def plot_cells(
             kind,
             points,
             markersize,
+            alpha,
             binwidth,
             spread,
             hue,
             cmap,
             size,
+            legend,
+            cbar,
         )
 
-        plt.setp(ax, xticks=[], yticks=[])
-        ax.axis(frameon)
-
     if pattern:
-        fig.suptitle(pattern)
+        ax.set_title(pattern)
 
+    # plt.close(fig)
     return fig
 
 
 def _plot_cells(
-    masks, shapes, ax, kind, points_c, markersize, binwidth, spread, hue, cmap, size
+    masks,
+    shapes,
+    ax,
+    kind,
+    points_c,
+    markersize,
+    alpha,
+    binwidth,
+    spread,
+    hue,
+    cmap,
+    size,
+    legend,
+    cbar,
 ):
-
-    # if not isinstance(type(cmap), type(sns.color_palette(as_cmap=True))):
-    #     cmap = sns.light_palette(cmap, as_cmap=True)
-
     # Plot mask outlines
     for mask in masks:
         shapes.set_geometry(mask).plot(
@@ -363,33 +408,48 @@ def _plot_cells(
     if points_c.shape[0] == 0:
         return ax
 
-    color = None
-    categories = None
-
-    if hue is None:
-        color = cmap
-        cmap = None
-
-    if hue == 'pattern':
-        points_c[hue].cat.remove_categories('none', inplace=True)
+    if hue == "pattern" and "none" in points_c[hue].cat.categories:
+        points_c[hue].cat.remove_categories("none", inplace=True)
+        cmap = dict(
+            zip(
+                [
+                    "cell_edge",
+                    "foci",
+                    "nuclear_edge",
+                    "perinuclear",
+                    "protrusions",
+                    "random",
+                ],
+                sns.color_palette("muted6", n_colors=6).as_hex(),
+            )
+        )
 
     # Plot points
     if kind == "scatter":
-        points_c.plot(
-            column=hue,
-            kind='geo',
-            markersize=markersize,
-            color=color,
-            # categories=categories,
-            cmap=cmap,
-            alpha=0.5,
-            legend=True,
-            ax=ax,
-            cax=ax
-        )
+        if hue is None:
+            points_c.plot(
+                column=hue,
+                markersize=markersize,
+                color=cmap,
+                alpha=alpha,
+                ax=ax,
+            )
+        else:
+            points_c.plot(
+                column=hue,
+                markersize=markersize,
+                cmap=cmap,
+                alpha=alpha,
+                ax=ax,
+            )
 
     # Plot density
     elif kind == "hist":
+
+        if hue:
+            aggregator = ds.count_cat(hue)
+        else:
+            aggregator = ds.count()
 
         if spread:
             spread = partial(tf.dynspread, threshold=0.5)
@@ -399,16 +459,30 @@ def _plot_cells(
         # Percent of window size
         scaled_binwidth = size * binwidth * 0.5
 
-        dsshow(
+        artist = dsshow(
             points_c,
             ds.Point("x", "y"),
+            aggregator,
             norm="linear",
             cmap=cmap,
+            color_key=cmap,
             width_scale=1 / scaled_binwidth,
             height_scale=1 / scaled_binwidth,
+            vmin=0,
             shade_hook=spread,
             ax=ax,
         )
+
+        if legend:
+            plt.legend(handles=artist.get_legend_elements())
+
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+        if cbar:
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="4%", pad=0.05)
+            ax.figure.colorbar(artist, cax=cax, orientation="vertical")
+        # plt.tight_layout()
 
     bounds = shapes.total_bounds
     ax.set_xlim(bounds[0], bounds[2])
