@@ -236,6 +236,7 @@ def plot_cells(
     binwidth=3,
     spread=False,
     legend=False,
+    cbar=True,
     frameon=True,
     size=4,
 ):
@@ -341,6 +342,7 @@ def plot_cells(
                     cmap,
                     size,
                     legend,
+                    cbar,
                 )
 
                 s_bound = s.bounds
@@ -371,11 +373,13 @@ def plot_cells(
             cmap,
             size,
             legend,
+            cbar,
         )
 
     if pattern:
-        fig.suptitle(pattern)
+        ax.set_title(pattern)
 
+    # plt.close(fig)
     return fig
 
 
@@ -393,6 +397,7 @@ def _plot_cells(
     cmap,
     size,
     legend,
+    cbar,
 ):
     # Plot mask outlines
     for mask in masks:
@@ -405,6 +410,19 @@ def _plot_cells(
 
     if hue == "pattern" and "none" in points_c[hue].cat.categories:
         points_c[hue].cat.remove_categories("none", inplace=True)
+        cmap = dict(
+            zip(
+                [
+                    "cell_edge",
+                    "foci",
+                    "nuclear_edge",
+                    "perinuclear",
+                    "protrusions",
+                    "random",
+                ],
+                sns.color_palette("muted6", n_colors=6).as_hex(),
+            )
+        )
 
     # Plot points
     if kind == "scatter":
@@ -447,6 +465,7 @@ def _plot_cells(
             aggregator,
             norm="linear",
             cmap=cmap,
+            color_key=cmap,
             width_scale=1 / scaled_binwidth,
             height_scale=1 / scaled_binwidth,
             vmin=0,
@@ -459,10 +478,11 @@ def _plot_cells(
 
         from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="4%", pad=0.05)
-        ax.figure.colorbar(artist, cax=cax, orientation="vertical")
-        plt.tight_layout()
+        if cbar:
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="4%", pad=0.05)
+            ax.figure.colorbar(artist, cax=cax, orientation="vertical")
+        # plt.tight_layout()
 
     bounds = shapes.total_bounds
     ax.set_xlim(bounds[0], bounds[2])
