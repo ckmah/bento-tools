@@ -79,7 +79,7 @@ def gene_umap(data, hue=None, **kwargs):
     return ax
 
 
-def spots_all_distr(data, groupby=None, layer="pattern", legend=True):
+def spots_all_distr(data, groupby=None, layer="pattern", stacked=True, legend=True):
 
     if groupby:
         pattern_distr = (
@@ -98,25 +98,26 @@ def spots_all_distr(data, groupby=None, layer="pattern", legend=True):
         pattern_distr.iloc[:, 0] = "Sample"
 
     pattern_distr.columns = [groupby, layer, "value"]
-    pattern_distr["value"] *= 100
+    # pattern_distr["value"] *= 100
     pattern_distr = pattern_distr.pivot(index=groupby, columns=layer, values="value")
     pattern_distr = pattern_distr.reindex(columns=PATTERN_NAMES, fill_value=0)
     # pattern_distr.drop("none", axis=1, inplace=True)
 
     with sns.axes_style(style="white"):
         ax = pattern_distr.plot(
-            kind="barh",
-            stacked=True,
+            kind="bar",
+            stacked=stacked,
             colormap=ListedColormap(sns.color_palette("muted6", as_cmap=True)),
             width=0.8,
-            figsize=(6, max(2, pattern_distr.shape[0] / 2)),
-            xlim=(0, 100),
+            lw=0,
+            figsize=(max(2, pattern_distr.shape[0] / 2), 4),
+            # xlim=(0, 100),
             legend=False,
         )
 
         if pattern_distr.shape[0] == 1:
-            ax.set_ylabel("")
-        ax.set_xlabel("Percent")
+            ax.set_xlabel("")
+        ax.set_ylabel("Total Fraction")
         if legend:
             ax.legend(bbox_to_anchor=(1, 1))
         sns.despine()
