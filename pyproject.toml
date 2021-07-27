@@ -1,5 +1,8 @@
 [tool.poetry]
 name = "bento-tools"
+packages = [
+  {include = "bento"},
+]
 version = "0.1.0"
 description = "A toolkit for subcellular analysis of RNA organization"
 authors = ["Clarence Mah <ckmah@ucsd.edu>"]
