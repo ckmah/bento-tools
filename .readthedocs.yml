@@ -8,3 +8,4 @@ python:
   install:
   - method: pip
     path: .
+requirements_file: doc_requirements.txt
