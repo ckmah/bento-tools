@@ -9,6 +9,7 @@ license = "MIT"
 python = ">=3.7.1,<4.0"
 anndata = "^0.7.1"
 astropy = "^4.0.1"
+datashader = "^0.12"
 geopandas = "^0.9.0"
 ipywidgets = "^7.5.1"
 leidenalg = "^0.8.3"
@@ -16,21 +17,17 @@ matplotlib = "^3.2.1"
 numpy = "^1.18.4"
 pandas = "^1.2.0"
 proplot = "^0.6.4"
+pydata-sphinx-theme = "^0.6.3"
 pygeos = "^0.8"
 rasterio = "^1.2.1"
-seaborn = "^0.11.0"
 scanpy = "^1.6.0"
 scikit-learn = "^0.22.2.post1"
 scipy = "^1.4.1"
+seaborn = "^0.11.0"
 shapely = "^1.7.0"
 skorch = "^0.9.0"
 torchvision = "^0.8.1"
 tqdm = "^4.44.1"
-umap-learn = "^0.3.10"
-datashader = "^0.12"
-
-
-[tool.poetry.dev-dependencies]
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

@@ -16,11 +16,11 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath("../package-name"))
+sys.path.insert(0, os.path.abspath("../bento-tools"))
 
 # -- Project information -----------------------------------------------------
 
-project = "bento"
+project = "bento-tools"
 copyright = "2021, Clarence Mah, Noorsher Ahmed"
 author = "Clarence Mah, Noorsher Ahmed"
 
