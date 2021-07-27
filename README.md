@@ -7,7 +7,7 @@ Bento is a toolkit for ingesting, visualizing, and analyzing spatial transcripto
 Use the package manager [pip](https://pip.pypa.io/en/stable/) to install bento.
 
 ```bash
-pip install bento
+pip install bento-tools
 ```
 
 ## Usage
