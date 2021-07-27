@@ -35,5 +35,5 @@ jobs:
           python_version: latest
           poetry_version: latest
           pypi_token: ${{ secrets.PYPI_TOKEN }}
-          repository_name: 'bento'
+          repository_name: 'bento-bio'
           ignore_dev_requirements: "yes"
