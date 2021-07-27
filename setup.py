@@ -1,35 +1,8 @@
-from setuptools import setup
+#!/usr/bin/env python
 
-setup(name='bento',
-      version='0.1',
-      description='Spatial RNA analysis toolkit',
-      url='http://github.com/ckmah/bento',
-      author='Clarence Mah',
-      author_email='ckmah@ucsd.edu',
-      license='MIT',
-      packages=['bento'],
-      python_requires='>3.5',
-      include_package_data=True,
-      install_requires=['anndata>=0.7.1',
-                        'astropy>=4.0.1',
-                        'geopandas>=0.9.0',
-                        'ipywidgets>=7.5.1',
-                        'leidenalg>=0.8.3',
-                        'matplotlib>=3.2.1',
-                        'numpy>=1.18.4',
-                        'pandas>=1.2.0',
-                        'proplot>=0.6.4',
-                        'pygeos>=0.8',
-                        'rasterio>=1.2.1',
-                        'seaborn>=0.11.0',
-                        'scanpy>=1.6.0',
-                        'scikit-learn>=0.22.2.post1',
-                        'scipy>=1.4.1',
-                        'shapely>=1.7.0',
-                        'skorch>=0.9.0',
-                        'torchvision>=0.8.1',
-                        'tqdm>=4.44.1',
-                        'umap-learn>=0.3.10',
-                        'astropy>=4.0.1',
-                        'datashader>=0.12'],
-      zip_safe=False)
+# This is a shim to hopefully allow Github to detect the package, build is done with poetry
+
+import setuptools
+
+if __name__ == "__main__":
+    setuptools.setup(name="bento")
