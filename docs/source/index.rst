@@ -7,14 +7,12 @@ Welcome to bento's documentation!
 =================================
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
 
+.. autosummary::
+   :toctree: _autosummary
+   :template: custom-module-template.rst
+   :recursive:
 
+   bento
 
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   bento.io.read_h5ad

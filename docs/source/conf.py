@@ -9,20 +9,18 @@
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
-#
-# import os
-# import sys
-# sys.path.insert(0, os.path.abspath('.'))
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath("../bento-tools"))
+sys.path.insert(0, os.path.abspath('..'))  # Source code dir relative to this file
+
 
 # -- Project information -----------------------------------------------------
 
 project = "bento-tools"
-copyright = "2021, Clarence Mah, Noorsher Ahmed"
-author = "Clarence Mah, Noorsher Ahmed"
+copyright = "2021, Clarence Mah"
+author = "Clarence Mah"
+html_favicon = 'favicon.ico'
 
 # The full version, including alpha/beta/rc tags
 release = "0.1"
@@ -35,12 +33,16 @@ release = "0.1"
 # ones.
 extensions = [
     "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
+
+autosummary_generate = True
+autoclass_content = "both"
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -64,3 +66,8 @@ html_static_path = ["_static"]
 
 napoleon_google_docstring = False
 napoleon_numpy_docstring = True
+napoleon_use_param = False
+napoleon_use_rtype = False
+
+html_title = "bento-tools"
+html_logo = "_static/bento-logo.png"
