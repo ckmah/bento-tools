@@ -32,7 +32,7 @@ release = "0.1"
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    "sphinx.ext.autodoc",
+    # "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
@@ -42,7 +42,7 @@ extensions = [
 templates_path = ["_templates"]
 
 autosummary_generate = True
-autoclass_content = "both"
+autosummary_imported_members = True
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
