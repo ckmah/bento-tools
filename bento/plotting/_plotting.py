@@ -1,4 +1,6 @@
 import warnings
+warnings.filterwarnings("ignore")
+
 from functools import partial
 
 import datashader as ds

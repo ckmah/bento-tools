@@ -1,3 +1,6 @@
+import warnings
+warnings.filterwarnings("ignore")
+
 import anndata
 import geopandas
 import numpy as np
