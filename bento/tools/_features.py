@@ -82,18 +82,20 @@ def coloc_cluster_genes(data, resolution=1, copy=False):
 
 
 def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
-    """Calculate pairwise gene colocalization similarity using a KNN approach.
+    """Calculate pairwise gene colocalization similarity with the cross L function.
 
     Parameters
     ----------
     adata : AnnData
         Anndata formatted spatial data.
-    outer_radius : int, optional
-        Number of pixels to search for neighbors, by default 3
+    radius : int
+        Max radius to search for neighboring points, by default 3
+    min_count : int
+        Minimum points needed to be eligible for analysis.
     Returns
     -------
     adata : AnnData
-        .uns['coloc_sim']: Pairwise gene colocalization similarity within each cell.
+        .uns['coloc_sim']: Pairwise gene colocalization similarity within each cell formatted as a long dataframe.
     """
     adata = data.copy() if copy else data
 
@@ -143,7 +145,7 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
 
         # Colocalization metric: max of L_ij(r) for r <= radius
         g2_density = g_density.loc[metrics["g2"].tolist()].values
-        metrics["coloc_sim"] = (
+        metrics["sim"] = (
             (metrics["point_dist"].divide(g2_density * np.pi, axis=0))
             .pow(0.5)
             .max(axis=1)
@@ -153,7 +155,7 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
         # Ignore self colocalization
         # metrics = metrics.loc[metrics["g1"] != metrics["g2"]]
 
-        return metrics[["cell", "g1", "g2", "coloc_sim"]]
+        return metrics[["cell", "g1", "g2", "sim"]]
 
     # Only keep genes >= min_count in each cell
     gene_densities = []
@@ -174,25 +176,65 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
     cell_metrics = pd.concat(cell_metrics)
     cell_metrics.columns = cell_metrics.columns.get_level_values(0)
 
+    # Make symmetric (Lij = Lji)
+    cell_metrics['pair'] = cell_metrics.apply(lambda row: '-'.join(sorted([row['g1'], row['g2']])), axis=1)
+    cell_symmetric = cell_metrics.groupby(['cell', 'pair']).mean()
+
+    # Retain gene pair names
+    cell_symmetric = cell_metrics.set_index(['cell', 'pair']).drop('sim', axis=1).join(cell_symmetric).reset_index()
+    
+    # Aggregate across cells
+    coloc_agg = cell_symmetric.groupby(['pair'])['sim'].mean().to_frame()
+    coloc_agg = coloc_agg.join(cell_symmetric.set_index('pair').drop(['sim', 'cell'], axis=1)).reset_index().drop_duplicates()
+    
     # Save coloc similarity
+    cell_metrics[['cell', 'g1', 'g2', 'pair']].astype('category', copy=False)
+    coloc_agg[['g1', 'g2', 'pair']].astype('category', copy=False)
     adata.uns["coloc_sim"] = cell_metrics
-
-    # Aggregate metric across cells
-    cell_metrics_agg = dd.from_pandas(cell_metrics, chunksize=1000000)
-    agg = (
-        cell_metrics_agg.groupby(["g1", "g2"])
-        .coloc_sim.sum()
-        .compute()
-        .reset_index()
-    )
-
-    # Mean based on number of cells
-    agg['coloc_sim'] /= data.shape[0]
-
-    adata.uns["coloc_sim_agg"] = agg
+    adata.uns["coloc_sim_agg"] = coloc_agg
 
     return adata if copy else None
 
+
+def get_gene_coloc(data, gene):
+    """
+    For a given gene, return its colocalization with all other genes.
+    
+    Assumes colocalization is precomputed with bento.tl.coloc_sim.
+    
+    Parameters
+    ----------
+    data : AnnData
+        AnnData formatted spatial data.
+    gene : str
+        The name of a gene, must be present in data.var.
+        
+    Returns
+    -------
+    pd.DataFrame
+        Subset of data.uns['coloc_sim_agg'].
+    """
+    sim = data.uns['coloc_sim_agg']
+    return sim.loc[sim['g1'].str.match(gene)]
+
+
+def get_gene_set_coloc(data, genes):
+    """
+    For a list of genes, return their pairwise colocalization with each other.
+    
+    Parameters
+    ----------
+    data : AnnData
+        AnnData formatted spatial data.
+    gene : list of str
+        The names of genes, must be present in data.var.
+        
+    Returns
+    -------
+    pd.DataFrame
+    """
+    sim = data.uns['coloc_sim_agg']
+    return sim.loc[sim['g1'].isin(genes) & sim['g2'].isin(genes)]
 
 # TODO need physical unit size of coordinate system to standardize rendering resolution
 def rasterize_cells(
