@@ -1,3 +1,4 @@
+from . import datasets
 from . import io
 from . import plotting as pl
 from . import preprocessing as pp

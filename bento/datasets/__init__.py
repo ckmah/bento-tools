@@ -1,1 +1,1 @@
-# from ._datasets import toy_data
+from ._datasets import get_dataset_info, load_dataset
