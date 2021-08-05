@@ -3,6 +3,7 @@ name = "bento-tools"
 packages = [
   {include = "bento"},
 ]
+include = ["bento/datasets/datasets.csv"]
 version = "0.1.1"
 description = "A toolkit for subcellular analysis of RNA organization"
 authors = ["Clarence Mah <ckmah@ucsd.edu>"]
