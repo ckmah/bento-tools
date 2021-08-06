@@ -1,9 +1,7 @@
 [tool.poetry]
 name = "bento-tools"
-packages = [
-  {include = "bento"},
-]
-include = ["bento/datasets/datasets.csv"]
+packages = [{ include = "bento" }]
+include = ["bento/datasets/datasets.csv", "bento/models/**/*"]
 version = "0.1.1"
 description = "A toolkit for subcellular analysis of RNA organization"
 authors = ["Clarence Mah <ckmah@ucsd.edu>"]
