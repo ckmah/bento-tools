@@ -5,7 +5,6 @@ import anndata
 import geopandas
 import numpy as np
 import pandas as pd
-import scanpy as sc
 from anndata import AnnData
 from shapely import geometry, wkt
 
@@ -349,7 +348,7 @@ def to_scanpy(data):
     expression.columns = expression.columns.droplevel(0)
     expression.columns = expression.columns.str.upper()
 
-    # Create scanpy anndata object to use scoring function
-    sc_data = sc.AnnData(expression)
+    # Create anndata object
+    sc_data = AnnData(expression)
 
     return sc_data
