@@ -1,9 +1,7 @@
 import os
-from urllib.request import urlopen
 
 import pandas as pd
 import pkg_resources
-from tqdm.auto import tqdm
 
 from ..io import read_h5ad
 
@@ -90,3 +88,8 @@ def _download(url, path):
         if path.is_file():
             path.unlink()
         raise
+
+
+def sample_data():
+    stream = pkg_resources.resource_stream(__name__, "seqfish_sample.h5ad")
+    return read_h5ad(stream)
