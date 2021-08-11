@@ -7,18 +7,19 @@ import os
 
 
 RipleysKEstimator = None
-import dask.dataframe as dd
+spearmanr = None
+mean_squared_error = None
+
 import geopandas as gpd
 import matplotlib.path as mplPath
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
 from scipy.spatial import distance, distance_matrix
-from scipy.stats import spearmanr
-from sklearn.metrics import mean_squared_error
 from tqdm.auto import tqdm
 
 from ..preprocessing import get_points
+
 
 def ripley_features(data, n_cores=1, copy=False):
     """
@@ -40,6 +41,9 @@ def ripley_features(data, n_cores=1, copy=False):
     if RipleysKEstimator is None:
         from astropy.stats import RipleysKEstimator
 
+    global spearmanr
+    if spearmanr is None:
+        from scipy.stats import spearmanr
 
     adata = data.copy() if copy else data
 
@@ -50,15 +54,15 @@ def ripley_features(data, n_cores=1, copy=False):
 
         features = []
         for gene, gene_pts in p.groupby("gene"):
-            
+
             gene_features = [cell_name, gene]
-            
+
             # Skip if no points
             if len(gene_pts) == 0:
-                gene_features.extend([np.nan]*5)
+                gene_features.extend([np.nan] * 5)
                 features.append(gene_features)
                 continue
-            
+
             estimator = RipleysKEstimator(
                 area=c.area,
                 x_min=float(gene_pts["x"].min()),
@@ -151,13 +155,13 @@ def distance_features(data, n_cores=1, copy=False):
         features = []
         for gene, gene_pts in p.groupby("gene"):
             gene_features = [cell_name, gene]
-            
+
             # Skip if no points
             if len(gene_pts) == 0:
-                gene_features.extend([np.nan]*16)
+                gene_features.extend([np.nan] * 16)
                 features.append(gene_features)
                 continue
-            
+
             # Calculate normalized distances from points to centroids
             xy = gene_pts[["x", "y"]].values
             cell_centroid_dist = norm_dist_to_centroid(xy, c)
@@ -280,15 +284,15 @@ def morph_enrichment(data, n_cores=1, copy=False):
         features = []
 
         for gene, gene_pts in p.groupby("gene"):
-            
+
             gene_features = [cell_name, gene]
-            
+
             # Skip if no points
             if len(gene_pts) == 0:
-                gene_features.extend([np.nan]*len(proportions))
+                gene_features.extend([np.nan] * len(proportions))
                 features.append(gene_features)
                 continue
-                
+
             # Create GeoDataFrame from points
             pts = gpd.GeoDataFrame(geometry=gpd.points_from_xy(gene_pts.x, gene_pts.y))
 
@@ -344,6 +348,10 @@ def nuclear_fraction(data, n_cores=1, copy=False):
 
 def moment_stats(data, n_cores=1, copy=False):
     """Calculate polarization index, dispersion index, and peripheral index. Requires both cell and nucleus."""
+    global mean_squared_error
+    if mean_squared_error is None:
+        from sklearn.metrics import mean_squared_error
+
     adata = data.copy() if copy else data
 
     def moments_per_cell(c, n, p, cell_name):
@@ -361,15 +369,15 @@ def moment_stats(data, n_cores=1, copy=False):
         features = []
 
         for gene, gene_pts in p.groupby("gene"):
-            
+
             gene_features = [cell_name, gene]
-            
+
             # Skip if no points
             if len(gene_pts) == 0:
-                gene_features.extend([np.nan]*3)
+                gene_features.extend([np.nan] * 3)
                 features.append(gene_features)
                 continue
-                
+
             # Calculate distance between point and cell centroids
             pts = gene_pts[["x", "y"]].values
             point_centroid = pts.mean(axis=0).reshape(1, 2)
@@ -388,12 +396,10 @@ def moment_stats(data, n_cores=1, copy=False):
                 _second_moment(nucleus_centroid, pts) / nuclear_moment
             )
 
-            gene_features.extend([
-                polarization_index,
-                dispersion_index,
-                peripheral_distribution_index]
+            gene_features.extend(
+                [polarization_index, dispersion_index, peripheral_distribution_index]
             )
-            
+
             features.append(gene_features)
 
         return features

@@ -1,23 +1,20 @@
 import pickle
 import warnings
 
+OneHotEncoder = None
+
+import bento
 import numpy as np
 import pandas as pd
 import statsmodels.formula.api as sfm
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from joblib import Parallel, delayed
 from patsy import PatsyError
-from sklearn.preprocessing import OneHotEncoder
-from skorch import NeuralNetClassifier
-from skorch.callbacks import Checkpoint
 from statsmodels.stats.multitest import multipletests
-from statsmodels.tools.sm_exceptions import ConvergenceWarning, PerfectSeparationError
+from statsmodels.tools.sm_exceptions import (ConvergenceWarning,
+                                             PerfectSeparationError)
 from torchvision import datasets, transforms
 from tqdm.auto import tqdm
-
-import bento
 
 warnings.simplefilter("ignore", ConvergenceWarning)
 
@@ -50,6 +47,16 @@ def detect_spots(
     [type]
         [description]
     """
+
+    global skorch, OneHotEncoder
+
+    if skorch is None:
+        import skorch
+
+    if OneHotEncoder is None:
+        from sklearn.preprocessing import OneHotEncoder
+        
+
     adata = patterns.copy() if copy else patterns
 
     # Default to gpu if possible. Otherwise respect specified parameter
@@ -64,9 +71,9 @@ def detect_spots(
     modules = dict(pattern=SpotsModule, five_pattern=FiveSpotsModule)
     module = modules[model](**model_params)
 
-    net = NeuralNetClassifier(module=module, batch_size=batch_size, device=device)
+    net = skorch.NeuralNetClassifier(module=module, batch_size=batch_size, device=device)
     net.initialize()
-    net.load_params(checkpoint=Checkpoint(dirname=f"{model_dir}"))
+    net.load_params(checkpoint=skorch.callbacks.Checkpoint(dirname=f"{model_dir}"))
 
     dataset = datasets.ImageFolder(
         imagedir,
@@ -205,7 +212,7 @@ class DataReshape:
         return X
 
 
-class SpotsModule(nn.Module):
+class SpotsModule(torch.nn.Module):
     def __init__(
         self,
         n_conv_layers,
@@ -224,14 +231,14 @@ class SpotsModule(nn.Module):
         # Stack (convolutions + batchnorm + activation) + maxpool
         for i in range(n_conv_layers):
             conv_layers.append(
-                nn.Conv2d(
+                torch.nn.Conv2d(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     kernel_size=kernel_size,
                 )
             )
-            conv_layers.append(nn.BatchNorm2d(out_channels))
-            conv_layers.append(nn.ReLU())
+            conv_layers.append(torch.nn.BatchNorm2d(out_channels))
+            conv_layers.append(torch.nn.ReLU())
 
             # Compute convolved output dimensions
             in_dim = get_conv_dim(
@@ -243,35 +250,35 @@ class SpotsModule(nn.Module):
 
         out_channels = int(out_channels / 2)
 
-        conv_layers.append(nn.MaxPool2d(2, 2))
+        conv_layers.append(torch.nn.MaxPool2d(2, 2))
         in_dim = int(in_dim / 2)
 
         # We optimize the number of layers, hidden units and dropout ratio in each layer.
-        fc_layers = [nn.Flatten()]
+        fc_layers = [torch.nn.Flatten()]
 
         # Compute flatten size
         in_features = out_channels * in_dim * in_dim
         for i in [f_units_l0, f_units_l1]:
             out_features = i
-            fc_layers.append(nn.Linear(in_features, out_features))
-            fc_layers.append(nn.BatchNorm1d(out_features))
-            fc_layers.append(nn.ReLU())
+            fc_layers.append(torch.nn.Linear(in_features, out_features))
+            fc_layers.append(torch.nn.BatchNorm1d(out_features))
+            fc_layers.append(torch.nn.ReLU())
 
             in_features = out_features
 
-        fc_layers.append(nn.Linear(in_features, 6))
+        fc_layers.append(torch.nn.Linear(in_features, 6))
 
-        self.model = nn.Sequential(*[*conv_layers, *fc_layers])
+        self.model = torch.nn.Sequential(*[*conv_layers, *fc_layers])
 
     def forward(self, x):
         x = self.model(x)
 
-        x = F.softmax(x, dim=-1)
+        x = torch.nn.functional.softmax(x, dim=-1)
 
         return x
 
 
-class FiveSpotsModule(nn.Module):
+class FiveSpotsModule(torch.nn.Module):
     def __init__(
         self,
         n_conv_layers,
@@ -290,14 +297,14 @@ class FiveSpotsModule(nn.Module):
         # Stack (convolutions + batchnorm + activation) + maxpool
         for i in range(n_conv_layers):
             conv_layers.append(
-                nn.Conv2d(
+                torch.nn.Conv2d(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     kernel_size=kernel_size,
                 )
             )
-            conv_layers.append(nn.BatchNorm2d(out_channels))
-            conv_layers.append(nn.ReLU())
+            conv_layers.append(torch.nn.BatchNorm2d(out_channels))
+            conv_layers.append(torch.nn.ReLU())
 
             # Compute convolved output dimensions
             in_dim = get_conv_dim(
@@ -309,30 +316,30 @@ class FiveSpotsModule(nn.Module):
 
         out_channels = int(out_channels / 2)
 
-        conv_layers.append(nn.MaxPool2d(2, 2))
+        conv_layers.append(torch.nn.MaxPool2d(2, 2))
         in_dim = int(in_dim / 2)
 
         # We optimize the number of layers, hidden units and dropout ratio in each layer.
-        fc_layers = [nn.Flatten()]
+        fc_layers = [torch.nn.Flatten()]
 
         # Compute flatten size
         in_features = out_channels * in_dim * in_dim
         for i in [f_units_l0, f_units_l1]:
             out_features = i
-            fc_layers.append(nn.Linear(in_features, out_features))
-            fc_layers.append(nn.BatchNorm1d(out_features))
-            fc_layers.append(nn.ReLU())
+            fc_layers.append(torch.nn.Linear(in_features, out_features))
+            fc_layers.append(torch.nn.BatchNorm1d(out_features))
+            fc_layers.append(torch.nn.ReLU())
 
             in_features = out_features
 
-        fc_layers.append(nn.Linear(in_features, 5))
+        fc_layers.append(torch.nn.Linear(in_features, 5))
 
-        self.model = nn.Sequential(*[*conv_layers, *fc_layers])
+        self.model = torch.nn.Sequential(*[*conv_layers, *fc_layers])
 
     def forward(self, x):
         x = self.model(x)
 
-        x = F.softmax(x, dim=-1)
+        x = torch.nn.functional.softmax(x, dim=-1)
 
         return x
 

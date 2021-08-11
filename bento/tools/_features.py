@@ -12,11 +12,11 @@ torch = None
 torchvision = None
 zscore = None
 UMAP = None
+NearestNeighbors = None
 import geopandas
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
 
 from ..preprocessing import get_points
@@ -24,12 +24,16 @@ from ..preprocessing import get_points
 
 def gene_leiden(data, copy=False):
 
-    global zscore, UMAP
+    global zscore, UMAP, NearestNeighbors
     if zscore is None:
         from scipy.stats import zscore
 
     if UMAP is None:
         from umap import UMAP
+
+    if NearestNeighbors is None:
+        from sklearn.neighbors import NearestNeighbors
+        
 
     adata = data.copy() if copy else data
 
@@ -57,7 +61,7 @@ def gene_leiden(data, copy=False):
 
 def coloc_cluster_genes(data, resolution=1, copy=False):
 
-    global ig, la, z_score
+    global ig, la, z_score, NearestNeighbors
     if ig is None:
         import igraph as ig
 
@@ -65,7 +69,10 @@ def coloc_cluster_genes(data, resolution=1, copy=False):
         import leidenalg as la
 
     if zscore is None:
-        import zscore
+        from scipy.stats import zscore
+
+    if NearestNeighbors is None:
+        from sklearn.neighbors import NearestNeighbors
 
     adata = data.copy() if copy else data
 
@@ -114,9 +121,12 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
         .uns['coloc_sim']: Pairwise gene colocalization similarity within each cell.
     """
 
-    global dd
+    global dd, NearestNeighbors
     if dd is None:
         import dask.dataframe as dd
+
+    if NearestNeighbors is None:
+        from sklearn.neighbors import NearestNeighbors
 
     adata = data.copy() if copy else data
 
