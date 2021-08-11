@@ -4,26 +4,33 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 import os
 
-import dask.dataframe as dd
+dd = None
+ig = None
+la = None
+rasterio = None
+torch = None
+torchvision = None
+zscore = None
+UMAP = None
 import geopandas
-import igraph as ig
-import leidenalg as la
 import numpy as np
 import pandas as pd
-import rasterio
-import torch
-import torchvision
 from joblib import Parallel, delayed
-from rasterio import features
-from scipy.stats import zscore
 from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
-from umap import UMAP
 
 from ..preprocessing import get_points
 
 
 def gene_leiden(data, copy=False):
+
+    global zscore, UMAP
+    if zscore is None:
+        from scipy.stats import zscore
+
+    if UMAP is None:
+        from umap import UMAP
+
     adata = data.copy() if copy else data
 
     coloc_sim = (
@@ -49,6 +56,17 @@ def gene_leiden(data, copy=False):
 
 
 def coloc_cluster_genes(data, resolution=1, copy=False):
+
+    global ig, la, z_score
+    if ig is None:
+        import igraph as ig
+
+    if la is None:
+        import leidenalg as la
+
+    if zscore is None:
+        import zscore
+
     adata = data.copy() if copy else data
 
     coloc_sim = (
@@ -95,6 +113,11 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
     adata : AnnData
         .uns['coloc_sim']: Pairwise gene colocalization similarity within each cell.
     """
+
+    global dd
+    if dd is None:
+        import dask.dataframe as dd
+
     adata = data.copy() if copy else data
 
     # Filter points and counts by min_count
@@ -179,15 +202,10 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
 
     # Aggregate metric across cells
     cell_metrics_agg = dd.from_pandas(cell_metrics, chunksize=1000000)
-    agg = (
-        cell_metrics_agg.groupby(["g1", "g2"])
-        .coloc_sim.sum()
-        .compute()
-        .reset_index()
-    )
+    agg = cell_metrics_agg.groupby(["g1", "g2"]).coloc_sim.sum().compute().reset_index()
 
     # Mean based on number of cells
-    agg['coloc_sim'] /= data.shape[0]
+    agg["coloc_sim"] /= data.shape[0]
 
     adata.uns["coloc_sim_agg"] = agg
 
@@ -214,6 +232,17 @@ def rasterize_cells(
     imgdir : str
         Directory where images will be stored.
     """
+
+    global rasterio, torch, torchvision
+    if rasterio is None:
+        import rasterio
+
+    if torch is None:
+        import torch
+
+    if torchvision is None:
+        import torchvision
+
     adata = data.copy() if copy else data
 
     os.makedirs(f"{imgdir}", exist_ok=True)
@@ -235,7 +264,7 @@ def rasterize_cells(
         )
 
         # Rasterize cell
-        base_raster = features.rasterize(
+        base_raster = rasterio.features.rasterize(
             [s],
             fill=0,
             default_value=20,
@@ -245,7 +274,7 @@ def rasterize_cells(
 
         # Rasterize nucleus
         if n is not None:
-            features.rasterize(
+            rasterio.features.rasterize(
                 [n], default_value=40, transform=tf_origin, out=base_raster
             )
 
@@ -281,7 +310,7 @@ def rasterize_cells(
             gene_raster = base_raster.copy()
 
             # Set base as 40
-            gene_raster = features.rasterize(
+            gene_raster = rasterio.features.rasterize(
                 shapes=cg_points.geometry,
                 default_value=40,
                 transform=tf_origin,
@@ -289,7 +318,7 @@ def rasterize_cells(
             )
 
             # Plus 20 per point
-            features.rasterize(
+            rasterio.features.rasterize(
                 shapes=cg_points.geometry,
                 default_value=20,
                 transform=tf_origin,
