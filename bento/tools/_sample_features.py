@@ -10,6 +10,8 @@ def extract(data, feature_name, n_cores=1, copy=False):
     adata = data.copy() if copy else data
     if feature_name == "cyto_distance_to_cell":
         CytoDistanceToCell().transform(adata, ["cell_shape"], feature_name, n_cores)
+    elif feature_name == "cyto_distance_to_nucleus":
+        CytoDistanceToNucleus().transform(adata, ["nucleus_shape"], feature_name, n_cores)
     else:
         raise ValueError("Not a valid 'feature_name'.")
 
@@ -103,3 +105,20 @@ class CytoDistanceToCell(AbstractFeature):
         cytoplasmic = points["nucleus"].astype(str) == "-1"
 
         return points[cytoplasmic].distance(cell_shape.boundary).mean()
+
+
+class CytoDistanceToNucleus(AbstractFeature):
+    def extract(self, points, shapes):
+        """Given a set of points, calculate and return the average distance between cytoplasmic points to the nuclear membrane.
+
+        Parameters
+        ----------
+        points : GeoDataFrame
+            Point coordinates. Assumes "nuclear" column is present.
+        shapes : list of Polygon objects (Shapely)
+            Assumes first element is nuclear membrane shape.
+        """
+        nuclear_shape = shapes[0]
+        nuclear = points["nucleus"].astype(str) != "-1"
+
+        return points[nuclear].distance(nuclear_shape.boundary).mean()
