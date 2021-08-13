@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.abspath('..'))  # Source code dir relative to this fi
 # -- Project information -----------------------------------------------------
 
 project = "bento-tools"
-copyright = "2021, Clarence Mah"
+copyright = "Clarence Mah. 2021"
 author = "Clarence Mah"
 html_favicon = 'favicon.ico'
 
@@ -32,7 +32,6 @@ release = "0.1"
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    # "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
@@ -55,7 +54,18 @@ exclude_patterns = []
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = "pydata_sphinx_theme"
+html_theme = "sphinxawesome_theme"
+
+html_theme_options = {
+      "nav_include_hidden": True,
+      "show_nav": True,
+      "show_breadcrumbs": True,
+      "breadcrumbs_separator": "/",
+      "show_prev_next": False,
+      "show_scrolltop": True
+}
+
+pygments_style = 'sphinx'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
