@@ -9,4 +9,4 @@ python:
   - method: pip
     path: .
   install:
-   - requirements: docs/requirements.txt  
+   - requirements: docs/source/requirements.txt  
