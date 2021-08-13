@@ -32,6 +32,5 @@
    bento.io
    bento.plotting
    bento.preprocessing
-   bento.tests
    bento.tools
 

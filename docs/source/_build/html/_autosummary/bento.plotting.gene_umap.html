@@ -2,382 +2,329 @@
 <!DOCTYPE html>
 
 <html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>bento.plotting.gene_umap &#8212; bento-tools</title>
-    
-  <link href="../_static/css/theme.css" rel="stylesheet" />
-  <link href="../_static/css/index.c5995385ac14fb8791e8eb36b4908be2.css" rel="stylesheet" />
-
-    
-  <link rel="stylesheet"
-    href="../_static/vendor/fontawesome/5.13.0/css/all.min.css">
-  <link rel="preload" as="font" type="font/woff2" crossorigin
-    href="../_static/vendor/fontawesome/5.13.0/webfonts/fa-solid-900.woff2">
-  <link rel="preload" as="font" type="font/woff2" crossorigin
-    href="../_static/vendor/fontawesome/5.13.0/webfonts/fa-brands-400.woff2">
-
-    
-      
-
-    
-    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
-    <link rel="stylesheet" type="text/css" href="../_static/basic.css" />
-    
-  <link rel="preload" as="script" href="../_static/js/index.1c5a1a01449ed65a7b51.js">
-
-    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
-    <script src="../_static/jquery.js"></script>
-    <script src="../_static/underscore.js"></script>
-    <script src="../_static/doctools.js"></script>
-    <link rel="shortcut icon" href="../_static/favicon.ico"/>
-    <link rel="index" title="Index" href="../genindex.html" />
-    <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="bento.plotting.plot_cells" href="bento.plotting.plot_cells.html" />
-    <link rel="prev" title="bento.plotting" href="bento.plotting.html" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="docsearch:language" content="en" />
-    
-  </head>
-  <body data-spy="scroll" data-target="#bd-toc-nav" data-offset="80">
-    
-    <div class="container-fluid" id="banner"></div>
-
-    
-    <nav class="navbar navbar-light navbar-expand-lg bg-light fixed-top bd-navbar" id="navbar-main"><div class="container-xl">
-
-  <div id="navbar-start">
-    
-    
-
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>bento.plotting.gene_umap — bento-tools</title>
+<link href="../_static/css/theme.css" rel="stylesheet"/>
+<link href="../_static/css/index.c5995385ac14fb8791e8eb36b4908be2.css" rel="stylesheet"/>
+<link href="../_static/vendor/fontawesome/5.13.0/css/all.min.css" rel="stylesheet"/>
+<link as="font" crossorigin="" href="../_static/vendor/fontawesome/5.13.0/webfonts/fa-solid-900.woff2" rel="preload" type="font/woff2"/>
+<link as="font" crossorigin="" href="../_static/vendor/fontawesome/5.13.0/webfonts/fa-brands-400.woff2" rel="preload" type="font/woff2"/>
+<link href="../_static/pygments.css" rel="stylesheet" type="text/css"/>
+<link href="../_static/basic.css" rel="stylesheet" type="text/css"/>
+<link as="script" href="../_static/js/index.1c5a1a01449ed65a7b51.js" rel="preload"/>
+<script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+<script src="../_static/jquery.js"></script>
+<script src="../_static/underscore.js"></script>
+<script src="../_static/doctools.js"></script>
+<link href="../_static/favicon.ico" rel="shortcut icon"/>
+<link href="../genindex.html" rel="index" title="Index"/>
+<link href="../search.html" rel="search" title="Search"/>
+<link href="bento.plotting.plot_cells.html" rel="next" title="bento.plotting.plot_cells"/>
+<link href="bento.plotting.html" rel="prev" title="bento.plotting"/>
+<meta content="width=device-width, initial-scale=1" name="viewport"/>
+<meta content="en" name="docsearch:language"/>
+</head>
+<body data-offset="80" data-spy="scroll" data-target="#bd-toc-nav">
+<div class="container-fluid" id="banner"></div>
+<nav class="navbar navbar-light navbar-expand-lg bg-light fixed-top bd-navbar" id="navbar-main"><div class="container-xl">
+<div id="navbar-start">
 <a class="navbar-brand" href="../index.html">
-  <img src="../_static/bento-logo.png" class="logo" alt="logo">
+<img alt="logo" class="logo" src="../_static/bento-logo.png"/>
 </a>
-
-
-    
-  </div>
-
-  <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbar-collapsible" aria-controls="navbar-collapsible" aria-expanded="false" aria-label="Toggle navigation">
-    <span class="navbar-toggler-icon"></span>
-  </button>
-
-  
-  <div id="navbar-collapsible" class="col-lg-9 collapse navbar-collapse">
-    <div id="navbar-center" class="mr-auto">
-      
-      <div class="navbar-center-item">
-        <ul id="navbar-main-elements" class="navbar-nav">
-    <li class="toctree-l1 current active nav-item">
- <a class="reference internal nav-link" href="bento.html">
+</div>
+<button aria-controls="navbar-collapsible" aria-expanded="false" aria-label="Toggle navigation" class="navbar-toggler" data-target="#navbar-collapsible" data-toggle="collapse" type="button">
+<span class="navbar-toggler-icon"></span>
+</button>
+<div class="col-lg-9 collapse navbar-collapse" id="navbar-collapsible">
+<div class="mr-auto" id="navbar-center">
+<div class="navbar-center-item">
+<ul class="navbar-nav" id="navbar-main-elements">
+<li class="toctree-l1 current active nav-item expanded">
+<a class="reference internal nav-link" href="bento.html">
   bento
  </a>
 </li>
-
-    
 </ul>
-      </div>
-      
-    </div>
-
-    <div id="navbar-end">
-      
-      <div class="navbar-end-item">
-        <ul id="navbar-icon-links" class="navbar-nav" aria-label="Icon Links">
-      </ul>
-      </div>
-      
-    </div>
-  </div>
 </div>
-    </nav>
-    
-
-    <div class="container-xl">
-      <div class="row">
-          
-            
-            <!-- Only show if we have sidebars configured, else just a small margin  -->
-            <div class="col-12 col-md-3 bd-sidebar"><form class="bd-search d-flex align-items-center" action="../search.html" method="get">
-  <i class="icon fas fa-search"></i>
-  <input type="search" class="form-control" name="q" id="search-input" placeholder="Search the docs ..." aria-label="Search the docs ..." autocomplete="off" >
-</form><nav class="bd-links" id="bd-docs-nav" aria-label="Main navigation">
-  <div class="bd-toc-item active">
-    <ul class="current nav bd-sidenav">
- <li class="toctree-l1">
-  <a class="reference internal" href="bento.datasets.html">
+</div>
+<div id="navbar-end">
+<div class="navbar-end-item">
+<ul aria-label="Icon Links" class="navbar-nav" id="navbar-icon-links">
+</ul>
+</div>
+</div>
+</div>
+</div>
+</nav>
+<div class="container-xl">
+<div class="row">
+<!-- Only show if we have sidebars configured, else just a small margin  -->
+<div class="col-12 col-md-3 bd-sidebar"><form action="../search.html" class="bd-search d-flex align-items-center" method="get">
+<i class="icon fas fa-search"></i>
+<input aria-label="Search the docs ..." autocomplete="off" class="form-control" id="search-input" name="q" placeholder="Search the docs ..." type="search"/>
+</form><nav aria-label="Main navigation" class="bd-links" id="bd-docs-nav">
+<div class="bd-toc-item active">
+<ul class="current nav bd-sidenav">
+<li class="toctree-l1 has-children">
+<a class="reference internal" href="bento.datasets.html">
    bento.datasets
   </a>
- </li>
- <li class="toctree-l1 has-children">
-  <a class="reference internal" href="bento.io.html">
+<input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" type="checkbox"/>
+<label for="toctree-checkbox-1">
+<i class="fas fa-chevron-down">
+</i>
+</label>
+<ul>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.datasets.get_dataset_info.html">
+     bento.datasets.get_dataset_info
+    </a>
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.datasets.load_dataset.html">
+     bento.datasets.load_dataset
+    </a>
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.datasets.sample_data.html">
+     bento.datasets.sample_data
+    </a>
+</li>
+</ul>
+</li>
+<li class="toctree-l1 has-children">
+<a class="reference internal" href="bento.io.html">
    bento.io
   </a>
-  <input class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" type="checkbox"/>
-  <label for="toctree-checkbox-1">
-   <i class="fas fa-chevron-down">
-   </i>
-  </label>
-  <ul>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.io.concatenate.html">
+<input class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" type="checkbox"/>
+<label for="toctree-checkbox-2">
+<i class="fas fa-chevron-down">
+</i>
+</label>
+<ul>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.io.concatenate.html">
      bento.io.concatenate
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.io.read_geodata.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.io.read_geodata.html">
      bento.io.read_geodata
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.io.read_h5ad.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.io.read_h5ad.html">
      bento.io.read_h5ad
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.io.write_h5ad.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.io.write_h5ad.html">
      bento.io.write_h5ad
     </a>
-   </li>
-  </ul>
- </li>
- <li class="toctree-l1 current active has-children">
-  <a class="reference internal" href="bento.plotting.html">
+</li>
+</ul>
+</li>
+<li class="toctree-l1 current active has-children expanded">
+<a class="reference internal" href="bento.plotting.html">
    bento.plotting
   </a>
-  <input checked="" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" type="checkbox"/>
-  <label for="toctree-checkbox-2">
-   <i class="fas fa-chevron-down">
-   </i>
-  </label>
-  <ul class="current">
-   <li class="toctree-l2 current active">
-    <a class="current reference internal" href="#">
+<input checked="" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" type="checkbox"/>
+<label for="toctree-checkbox-3">
+<i class="fas fa-chevron-down">
+</i>
+</label>
+<ul class="current">
+<li class="toctree-l2 current active expanded">
+<a class="current reference internal" href="#">
      bento.plotting.gene_umap
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.plotting.plot_cells.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.plotting.plot_cells.html">
      bento.plotting.plot_cells
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.plotting.spots_all_distr.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.plotting.spots_all_distr.html">
      bento.plotting.spots_all_distr
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.plotting.spots_diff.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.plotting.spots_diff.html">
      bento.plotting.spots_diff
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.plotting.spots_distr.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.plotting.spots_distr.html">
      bento.plotting.spots_distr
     </a>
-   </li>
-  </ul>
- </li>
- <li class="toctree-l1 has-children">
-  <a class="reference internal" href="bento.preprocessing.html">
+</li>
+</ul>
+</li>
+<li class="toctree-l1 has-children">
+<a class="reference internal" href="bento.preprocessing.html">
    bento.preprocessing
   </a>
-  <input class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" type="checkbox"/>
-  <label for="toctree-checkbox-3">
-   <i class="fas fa-chevron-down">
-   </i>
-  </label>
-  <ul>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.preprocessing.filter_points.html">
+<input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" type="checkbox"/>
+<label for="toctree-checkbox-4">
+<i class="fas fa-chevron-down">
+</i>
+</label>
+<ul>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.preprocessing.filter_points.html">
      bento.preprocessing.filter_points
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.preprocessing.get_points.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.preprocessing.get_points.html">
      bento.preprocessing.get_points
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.preprocessing.set_points.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.preprocessing.set_points.html">
      bento.preprocessing.set_points
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.preprocessing.subsample.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.preprocessing.subsample.html">
      bento.preprocessing.subsample
     </a>
-   </li>
-  </ul>
- </li>
- <li class="toctree-l1">
-  <a class="reference internal" href="bento.tests.html">
-   bento.tests
-  </a>
- </li>
- <li class="toctree-l1 has-children">
-  <a class="reference internal" href="bento.tools.html">
+</li>
+</ul>
+</li>
+<li class="toctree-l1 has-children">
+<a class="reference internal" href="bento.tools.html">
    bento.tools
   </a>
-  <input class="toctree-checkbox" id="toctree-checkbox-4" name="toctree-checkbox-4" type="checkbox"/>
-  <label for="toctree-checkbox-4">
-   <i class="fas fa-chevron-down">
-   </i>
-  </label>
-  <ul>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.cell_area.html">
+<input class="toctree-checkbox" id="toctree-checkbox-5" name="toctree-checkbox-5" type="checkbox"/>
+<label for="toctree-checkbox-5">
+<i class="fas fa-chevron-down">
+</i>
+</label>
+<ul>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.cell_area.html">
      bento.tools.cell_area
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.cell_aspect_ratio.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.cell_aspect_ratio.html">
      bento.tools.cell_aspect_ratio
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.coloc_cluster_genes.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.coloc_cluster_genes.html">
      bento.tools.coloc_cluster_genes
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.coloc_sim.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.coloc_sim.html">
      bento.tools.coloc_sim
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.detect_spots.html">
-     bento.tools.detect_spots
-    </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.distance_features.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.distance_features.html">
      bento.tools.distance_features
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.distr_to_var.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.distr_to_var.html">
      bento.tools.distr_to_var
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.gene_leiden.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.extract.html">
+     bento.tools.extract
+    </a>
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.gene_leiden.html">
      bento.tools.gene_leiden
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.moment_stats.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.moment_stats.html">
      bento.tools.moment_stats
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.morph_enrichment.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.morph_enrichment.html">
      bento.tools.morph_enrichment
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.nuclear_fraction.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.nuclear_fraction.html">
      bento.tools.nuclear_fraction
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.rasterize_cells.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.predict_patterns.html">
+     bento.tools.predict_patterns
+    </a>
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.rasterize_cells.html">
      bento.tools.rasterize_cells
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.ripley_features.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.ripley_features.html">
      bento.tools.ripley_features
     </a>
-   </li>
-   <li class="toctree-l2">
-    <a class="reference internal" href="bento.tools.spots_diff.html">
+</li>
+<li class="toctree-l2">
+<a class="reference internal" href="bento.tools.spots_diff.html">
      bento.tools.spots_diff
     </a>
-   </li>
-  </ul>
- </li>
+</li>
 </ul>
-
-  </div>
+</li>
+</ul>
+</div>
 </nav>
-            </div>
-            
-          
-
-          
-          <div class="d-none d-xl-block col-xl-2 bd-toc">
-            
-              
-              <div class="toc-item">
-                
-
+</div>
+<div class="d-none d-xl-block col-xl-2 bd-toc">
+<div class="toc-item">
 <nav id="bd-toc-nav">
-    
 </nav>
-              </div>
-              
-              <div class="toc-item">
-                
-              </div>
-              
-            
-          </div>
-          
-
-          
-          
-            
-          
-          <main class="col-12 col-md-9 col-xl-7 py-md-5 pl-md-5 pr-md-4 bd-content" role="main">
-              
-              <div>
-                
-  <div class="section" id="bento-plotting-gene-umap">
+</div>
+<div class="toc-item">
+</div>
+</div>
+<main class="col-12 col-md-9 col-xl-7 py-md-5 pl-md-5 pr-md-4 bd-content" role="main">
+<div>
+<div class="section" id="bento-plotting-gene-umap">
 <h1>bento.plotting.gene_umap<a class="headerlink" href="#bento-plotting-gene-umap" title="Permalink to this headline">¶</a></h1>
 <dl class="py function">
 <dt class="sig sig-object py" id="bento.plotting.gene_umap">
-<span class="sig-prename descclassname"><span class="pre">bento.plotting.</span></span><span class="sig-name descname"><span class="pre">gene_umap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hue</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#bento.plotting.gene_umap" title="Permalink to this definition">¶</a></dt>
+<span class="sig-prename descclassname">bento.plotting.</span><span class="sig-name descname">gene_umap</span><span class="sig-paren">(</span><em class="sig-param"><span class="n">data</span></em>, <em class="sig-param"><span class="n">hue</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="o">**</span><span class="n">kwargs</span></em><span class="sig-paren">)</span><a class="headerlink" href="#bento.plotting.gene_umap" title="Permalink to this definition">¶</a></dt>
 <dd></dd></dl>
-
 </div>
-
-
-              </div>
-              
-              
-              <div class='prev-next-bottom'>
-                
-    <a class='left-prev' id="prev-link" href="bento.plotting.html" title="previous page">bento.plotting</a>
-    <a class='right-next' id="next-link" href="bento.plotting.plot_cells.html" title="next page">bento.plotting.plot_cells</a>
-
-              </div>
-              
-          </main>
-          
-
-      </div>
-    </div>
-  
-  <script src="../_static/js/index.1c5a1a01449ed65a7b51.js"></script>
-
-  <footer class="footer mt-5 mt-md-0">
-  <div class="container">
-    
-    <div class="footer-item">
-      <p class="copyright">
-    &copy; Copyright 2021, Clarence Mah.<br/>
+</div>
+<div class="prev-next-bottom">
+<a class="left-prev" href="bento.plotting.html" id="prev-link" title="previous page">bento.plotting</a>
+<a class="right-next" href="bento.plotting.plot_cells.html" id="next-link" title="next page">bento.plotting.plot_cells</a>
+</div>
+</main>
+</div>
+</div>
+<script src="../_static/js/index.1c5a1a01449ed65a7b51.js"></script>
+<footer class="footer mt-5 mt-md-0">
+<div class="container">
+<div class="footer-item">
+<p class="copyright">
+    © Copyright 2021, Clarence Mah.<br/>
 </p>
-    </div>
-    
-    <div class="footer-item">
-      <p class="sphinx-version">
+</div>
+<div class="footer-item">
+<p class="sphinx-version">
 Created using <a href="http://sphinx-doc.org/">Sphinx</a> 4.1.2.<br/>
 </p>
-    </div>
-    
-  </div>
+</div>
+</div>
 </footer>
-  </body>
+</body>
 </html>
