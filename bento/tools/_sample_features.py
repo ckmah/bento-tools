@@ -1,17 +1,26 @@
 from abc import ABCMeta, abstractmethod
 
 import pandas as pd
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed, parallel_backend
 from tqdm.auto import tqdm
 import geopandas as gpd
 
 
-def extract(data, feature_name, n_cores=1, copy=False):
+def extract_many():
+    pass
+
+def extract(data, feature_name, n_jobs=1, copy=False):
     adata = data.copy() if copy else data
     if feature_name == "cyto_distance_to_cell":
-        CytoDistanceToCell().transform(adata, ["cell_shape"], feature_name, n_cores)
+        CytoDistanceToCell().transform(adata, ["cell_shape"], feature_name, n_jobs)
     elif feature_name == "cyto_distance_to_nucleus":
-        CytoDistanceToNucleus().transform(adata, ["nucleus_shape"], feature_name, n_cores)
+        CytoDistanceToNucleus().transform(
+            adata, ["nucleus_shape"], feature_name, n_jobs
+        )
+    elif feature_name == "intranuclear_distance_to_nucleus":
+        IntranuclearDistanceToNucleus().transform(
+            adata, ["nucleus_shape"], feature_name, n_jobs
+        )
     else:
         raise ValueError("Not a valid 'feature_name'.")
 
@@ -33,10 +42,10 @@ class AbstractFeature(metaclass=ABCMeta):
         shapes : list of Polygon objects (Shapely)
 
         """
-        pass
+        return points, shapes
 
     @classmethod
-    def transform(self, data, shape_names, layer, n_cores):
+    def transform(self, data, shape_names, layer, n_jobs):
         """Applies self.extract() to all points grouped by cell and gene.
 
         Parameters
@@ -52,40 +61,31 @@ class AbstractFeature(metaclass=ABCMeta):
         # Check points DataFrame for missing columns
         if not self.__point_metadata.isin(points.columns).all():
             raise KeyError(
-                f"'points' DataFrame does not have columns {self.__point_metadata.tolist()}."
+                f"'points' DataFrame needs to have all columns: {self.__point_metadata.tolist()}."
             )
 
         # Group points by cell and gene
-        group_names = []
-        group_points = []
-        for name, p in points.groupby(["cell", "gene"]):
-            group_names.append(name)
-            group_points.append(
-                gpd.GeoDataFrame(p, geometry=gpd.points_from_xy(p.x, p.y))
-            )
-
-        # Get sample cell and gene names
-        group_cells = [name[0] for name in group_names]
-        group_genes = [name[1] for name in group_names]
-
-        # Enumerate shapes associated with each sample
-        group_shapes = data.obs.loc[group_cells, shape_names].to_numpy()
+        points = gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points.x, points.y))
+        points[['cell', 'gene', 'nucleus']] = points[['cell', 'gene', 'nucleus']].astype('category')
+        points_groupby = points.groupby(["cell", "gene"])
 
         # Extract feature
-        values = Parallel(n_jobs=n_cores)(
-            delayed(self.extract)(self, p, s)
-            for p, s in tqdm(zip(group_points, group_shapes), total=len(group_points))
+        values = Parallel(n_jobs=n_jobs)(
+            delayed(self.extract)(self, p, data.obs.loc[name[0], shape_names])
+            for name, p in tqdm(points_groupby, total=points_groupby.ngroups, desc="Analyzing")
         )
+        
         # Save results to data layer
-        feature_df = pd.DataFrame(
-            [group_cells, group_genes, values], index=["cell", "gene", layer]
-        ).T
+        feature_df = pd.DataFrame(points_groupby.groups.keys(), columns=["cell", "gene"])
+        feature_df[layer] = values
 
         data.layers[layer] = (
             feature_df.pivot(index="cell", columns="gene", values=layer)
             .reindex(index=data.obs_names, columns=data.var_names)
             .astype(float)
         )
+
+        print('Done.')
 
         return
 
@@ -101,6 +101,7 @@ class CytoDistanceToCell(AbstractFeature):
         shapes : list of Polygon objects (Shapely)
             Assumes first element is cell membrane shape.
         """
+        points, shapes = super().extract(self, points, shapes)
         cell_shape = shapes[0]
         cytoplasmic = points["nucleus"].astype(str) == "-1"
 
@@ -118,6 +119,25 @@ class CytoDistanceToNucleus(AbstractFeature):
         shapes : list of Polygon objects (Shapely)
             Assumes first element is nuclear membrane shape.
         """
+        points, shapes = super().extract(self, points, shapes)
+        nuclear_shape = shapes[0]
+        cytoplasmic = points["nucleus"].astype(str) == "-1"
+
+        return points[cytoplasmic].distance(nuclear_shape.boundary).mean()
+
+
+class IntranuclearDistanceToNucleus(AbstractFeature):
+    def extract(self, points, shapes):
+        """Given a set of points, calculate and return the average distance between intranuclear points to the nuclear membrane.
+
+        Parameters
+        ----------
+        points : GeoDataFrame
+            Point coordinates. Assumes "nuclear" column is present.
+        shapes : list of Polygon objects (Shapely)
+            Assumes first element is nuclear membrane shape.
+        """
+        points, shapes = super().extract(self, points, shapes)
         nuclear_shape = shapes[0]
         nuclear = points["nucleus"].astype(str) != "-1"
 

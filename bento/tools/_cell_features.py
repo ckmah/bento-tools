@@ -1,4 +1,5 @@
 from shapely.geometry import Point
+import geopandas as gpd
 
 def cell_aspect_ratio(data, copy=False):
 
@@ -28,7 +29,7 @@ def cell_area(data, copy=False):
 
     # Calculate pixel-wise area 
     # TODO: unit scale?
-    area = adata.obs['cell_shape'].area
-    adata.obs['area'] = area
+    area = gpd.GeoSeries(adata.obs['cell_shape']).area
+    adata.obs['cell_area'] = area
 
     return adata if copy else None
