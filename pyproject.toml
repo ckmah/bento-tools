@@ -33,6 +33,7 @@ datashader = "^0.13.0"
 # make these main dependencies for now [tool.poetry.dev-dependencies]
 Sphinx = "^4.1.2"
 pydata-sphinx-theme = "^0.6.3"
+statsmodels = "0.12.2"
 
 [build-system]
 requires = ["poetry-core>=1.0.0", 'setuptools']
