@@ -1,37 +1,28 @@
 import warnings
+
 warnings.filterwarnings("ignore")
 
 from functools import partial
 
-import datashader as ds
-import datashader.transfer_functions as tf
+
+ds = None
+tf = None
+geopandas = None
+plot = None
+dsshow = None
+
 import geopandas
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import proplot as plot
 import seaborn as sns
-from datashader.mpl_ext import dsshow
 from matplotlib.colors import ListedColormap
 
 from ..preprocessing import get_points
 from ..tools import PATTERN_NAMES
 
 matplotlib.rcParams["figure.facecolor"] = (0, 0, 0, 0)
-
-# Masala color palette by Noor
-# Note: tested colorblind friendliness, did not do so well
-masala_palette = sns.color_palette(
-    [
-        (1.0, 0.78, 0.27),
-        (1.0, 0.33, 0.22),
-        (0.95, 0.6, 0.71),
-        (0, 0.78, 0.86),
-        (0.39, 0.81, 0.63),
-        (0.25, 0.25, 0.25),
-    ]
-)
 
 
 def spots_diff(data, groups, adjusted=True, ymax=None):
@@ -256,6 +247,20 @@ def plot_cells(
     draw_masks: str, list
        masks to draw outlines for.
     """
+
+    global ds, tf, plot, dsshow
+
+    if ds is None:
+        import datashader as ds
+
+    if tf is None:
+        import datashader.transfer_functions as tf
+
+    if plot is None:
+        import proplot as plot
+
+    if dsshow is None:
+        from datashader.mpl_ext import dsshow
 
     # Format cells input
     if cells is None:

@@ -1,9 +1,7 @@
 import os
-from urllib.request import urlopen
 
 import pandas as pd
-import pkg_resources
-from tqdm.auto import tqdm
+pkg_resources = None
 
 from ..io import read_h5ad
 
@@ -16,6 +14,11 @@ def get_dataset_info():
     DataFrame
         Info about builtin datasets indexed by dataset name.
     """
+    global pkg_resources
+    if pkg_resources is None:
+        import pkg_resources
+
+
     stream = pkg_resources.resource_stream(__name__, "datasets.csv")
     return pd.read_csv(stream, index_col=0)
 
@@ -90,3 +93,12 @@ def _download(url, path):
         if path.is_file():
             path.unlink()
         raise
+
+
+def sample_data():
+    global pkg_resources
+    if pkg_resources is None:
+        import pkg_resources
+        
+    stream = pkg_resources.resource_stream(__name__, "seqfish_sample.h5ad")
+    return read_h5ad(stream)
