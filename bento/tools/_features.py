@@ -246,7 +246,8 @@ def rasterize_cells(
     global rasterio, torch, torchvision
     if rasterio is None:
         import rasterio
-        from rasterio import features
+
+    from rasterio import features
 
     if torch is None:
         import torch
@@ -256,6 +257,7 @@ def rasterize_cells(
 
     adata = data.copy() if copy else data
 
+    imgdir = os.path.expanduser(imgdir)
     os.makedirs(f"{imgdir}", exist_ok=True)
 
     def write_img(s, n, p, cell_name):
@@ -275,7 +277,7 @@ def rasterize_cells(
         )
 
         # Rasterize cell
-        base_raster = features.rasterize(
+        base_raster = rasterio.features.rasterize(
             [s],
             fill=0,
             default_value=20,
@@ -285,7 +287,7 @@ def rasterize_cells(
 
         # Rasterize nucleus
         if n is not None:
-            features.rasterize(
+            rasterio.features.rasterize(
                 [n], default_value=40, transform=tf_origin, out=base_raster
             )
 
@@ -321,7 +323,7 @@ def rasterize_cells(
             gene_raster = base_raster.copy()
 
             # Set base as 40
-            gene_raster = features.rasterize(
+            gene_raster = rasterio.features.rasterize(
                 shapes=cg_points.geometry,
                 default_value=40,
                 transform=tf_origin,
@@ -329,7 +331,7 @@ def rasterize_cells(
             )
 
             # Plus 20 per point
-            features.rasterize(
+            rasterio.features.rasterize(
                 shapes=cg_points.geometry,
                 default_value=20,
                 transform=tf_origin,

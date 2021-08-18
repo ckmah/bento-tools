@@ -72,145 +72,85 @@ def gene_umap(data, hue=None, **kwargs):
     return ax
 
 
-def spots_all_distr(data, groupby=None, layer="pattern", stacked=True, legend=True):
+def cell_patterns(data, cells=None, fraction=True):
+    """Plot pattern frequency across cells.
 
-    if groupby:
-        pattern_distr = (
-            data.to_df(layer)
-            .groupby(data.obs[groupby])
-            .apply(lambda df: pd.Series(df.values.flatten()).value_counts())
-        )
-        pattern_distr = (pattern_distr / pattern_distr.sum(level=0)).reset_index()
-
-    else:
-        groupby = "Sample"
-        pattern_distr = pd.Series(data.to_df(layer).values.flatten()).value_counts()
-        pattern_distr = (
-            (pattern_distr / pattern_distr.sum()).reset_index().reset_index()
-        )
-        pattern_distr.iloc[:, 0] = "Sample"
-
-    pattern_distr.columns = [groupby, layer, "value"]
-    # pattern_distr["value"] *= 100
-    pattern_distr = pattern_distr.pivot(index=groupby, columns=layer, values="value")
-    pattern_distr = pattern_distr.reindex(columns=PATTERN_NAMES, fill_value=0)
-    # pattern_distr.drop("none", axis=1, inplace=True)
-
-    with sns.axes_style(style="white"):
-        ax = pattern_distr.plot(
-            kind="bar",
-            stacked=stacked,
-            colormap=ListedColormap(sns.color_palette("muted6", as_cmap=True)),
-            width=0.8,
-            lw=0,
-            figsize=(max(2, pattern_distr.shape[0] / 2), 4),
-            # xlim=(0, 100),
-            legend=False,
-        )
-
-        if pattern_distr.shape[0] == 1:
-            ax.set_xlabel("")
-        ax.set_ylabel("Total Fraction")
-        if legend:
-            ax.legend(bbox_to_anchor=(1, 1))
-        sns.despine()
-        plt.tight_layout()
-
-    return ax
-
-
-def spots_distr(data, level="cells", sharey=True, binwidth=10, layer="pattern"):
-    """Plot localization pattern distributions across all cells (default) or genes.
-
+    The mean and 95% confidence interval for all cells is denoted with black points and grey boxes.
+    The blue points denote the mean frequencies for the specified subset of cell(s). 
     Parameters
     ----------
-    data : [type]
-        [description]
+    data : spatial formatted AnnData
+    cells : list of str, optional
+        A list of cell names, by default None. The mean frequencies are plotted as blue points.
+    fraction : bool, optional
+        Whether to normalize pattern frequencies as a fraction, by default True.
+    Returns
+    -------
+    Axes
+        Returns a matplotlib Axes containing plotted figure elements.
     """
-    if level == "cells":
-        axis = 1
-    elif level == "genes":
-        axis = 0
+    pattern_freq = data.obs[PATTERN_NAMES]
 
-    # Count pattern occurences within axis
-    pattern_distr = data.to_df("pattern").apply(
-        lambda fiber: fiber.value_counts(), axis=axis
+    if fraction:
+        pattern_freq /= data.n_vars
+        
+    # Calculate mean and 95% confidence interval
+    stats = pattern_freq.apply(
+        lambda pattern: [pattern.mean(), *np.percentile(pattern, [2.5, 97.5])]
+    )
+    stats.index = ["mean", "ci_lower", "ci_upper"]
+    stats = stats.T
+
+    stats = stats.sort_values("mean", ascending=True)
+
+    # Plot mean as points
+    ax = plt.gca()
+    base_size=7
+    plt.scatter(x=stats["mean"], y=stats.index, c="grey", s=base_size ** 2, zorder=100)
+
+    # Plot CI as grey box
+    plt.hlines(
+        y=range(stats.shape[0]),
+        xmin=stats["ci_lower"],
+        xmax=stats["ci_upper"],
+        color="grey",
+        alpha=0.1,
+        linewidth=2 * base_size,
+        zorder=1,
     )
 
-    if axis == 0:
-        pattern_distr = pattern_distr.T
+    # Values to compare
+    if cells is not None:
+        stats["value"] = data.obs.loc[cells, PATTERN_NAMES].mean()
 
-    pattern_distr = ((pattern_distr.T * 100) / pattern_distr.sum(axis=1)).T
+        if fraction:
+            stats["value"] /= data.n_vars
+        plt.scatter(x=stats["value"], y=stats.index, c="skyblue", s=base_size ** 2, zorder=100)
 
-    distr_long = pattern_distr.drop("none", axis=1)
-    distr_long["group"] = None
-    distr_long = distr_long.melt(id_vars="group")
-    distr_long.columns = ["group", "pattern", "value"]
-
-    palette = sns.color_palette("muted6")
-    with sns.axes_style(style="white", rc={"axes.facecolor": (0, 0, 0, 0)}):
-
-        pattern_names = distr_long["pattern"].unique()
-
-        g = sns.FacetGrid(
-            distr_long,
-            col="pattern",
-            hue="pattern",
-            col_wrap=3,
-            sharey=sharey,
-            sharex=False,
-            aspect=1.5,
-            height=2,
-            palette=palette,
-            xlim=(0, 100),
-        )
-        # subplot_kws=dict(facecolor=(0,0,0,0))
-        # then we add the densities kdeplots for each pattern
-        g.map(
-            sns.histplot,
-            "value",
-            stat="count",
-            binwidth=binwidth,
-            clip_on=False,
+        # Stems
+        plt.hlines(
+            y=range(stats.shape[0]),
+            xmin=stats["mean"],
+            xmax=stats["value"],
+            color="skyblue",
             alpha=1,
+            linewidth=1,
+            zorder=10,
         )
 
-        # here we add a horizontal line for each plot
-        g.map(plt.axhline, y=0, lw=2, clip_on=False)
+    # styling
+    if fraction:
+        plt.xlim(0, 1)
+        plt.xlabel(f'Fraction ({data.n_vars} genes)')
+    else:
+        plt.xlim(0, data.n_vars)
+        plt.xlabel(f'Frequency ({data.n_vars} genes)')
+    ax.set_title(f"n = {data.n_obs} cells")
 
-        if level == "cells":
-            x_unit = "genes"
-        else:
-            x_unit = "cells"
+    ax.tick_params(axis="y", length=0)
+    sns.despine(left=True)
 
-        # we loop over the FacetGrid figure axes (g.axes.flat) and add the pattern as text with the
-        # right color notice how ax.lines[-1].get_color() enables you to access the last line's
-        # color in each matplotlib.Axes
-        for i, ax in enumerate(g.axes.flat):
-            ax.set_title(
-                pattern_names[i],
-                # fontweight="bold",
-                fontsize=15,
-                color=ax.lines[-1].get_color(),
-            )
-            ax.set_xlabel(f"Percent of {x_unit}", fontsize=15)
-
-        # we use matplotlib.Figure.subplots_adjust() function to get the subplots to overlap
-        g.fig.subplots_adjust(hspace=0.4)
-
-        # eventually we remove axes titles, yticks and spines
-        g.set_titles("")
-        plt.setp(ax.get_xticklabels(), fontsize=15)
-
-        g.fig.suptitle(
-            f"Localization pattern distribution across {level}",
-            ha="center",
-            fontsize=18,
-            fontweight=20,
-        )
-
-        plt.tight_layout()
-    return g
+    return ax
 
 
 def plot_cells(
