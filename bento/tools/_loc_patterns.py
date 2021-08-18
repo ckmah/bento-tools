@@ -333,11 +333,11 @@ def distr_to_var(data, layer, copy=False):
     adata = data.copy() if copy else data
 
     # Save frequencies across genes to adata.var
-    gene_summary = adata.to_df(layer).sum(axis=0)
+    gene_summary = adata.to_df(layer).replace({'none': 0}).sum(axis=0)
     adata.var[layer] = gene_summary
 
     # Save frequencies across cells to adata.obs
-    cell_summary = adata.to_df(layer).sum(axis=1)
+    cell_summary = adata.to_df(layer).replace({'none': 0}).sum(axis=1)
     adata.obs[layer] = cell_summary
 
     return adata if copy else None
