@@ -6,23 +6,39 @@ from tqdm.auto import tqdm
 import geopandas as gpd
 
 
-def extract_many():
-    pass
+def proximity(data, shape_name, position='inner', n_jobs=1, copy=False):
+    """
+    Compute proximity of points to shape.
 
-def extract(data, feature_name, n_jobs=1, copy=False):
+    Parameters
+    ----------
+    data : spatial formatted AnnData
+        data.uns['points'] must be DataFrame with minimum columns x, y, cell, and gene.
+    shape_name : str
+        Column name in data.obs referring to shape to use in calculation.
+    position : str
+        Expect one of 'inner', or 'outer', by default 'inner'. 'Outer' refers to points outside the shape but within the same overall cellular compartment; 'inner' refers to points inside shape.
+    n_jobs : int
+        Number of jobs to run in parallel.
+    copy : bool
+        Whether to return a copy of data or to modify in place, by default False.
+
+    """
     adata = data.copy() if copy else data
-    if feature_name == "cyto_distance_to_cell":
-        CytoDistanceToCell().transform(adata, ["cell_shape"], feature_name, n_jobs)
-    elif feature_name == "cyto_distance_to_nucleus":
-        CytoDistanceToNucleus().transform(
-            adata, ["nucleus_shape"], feature_name, n_jobs
-        )
-    elif feature_name == "intranuclear_distance_to_nucleus":
-        IntranuclearDistanceToNucleus().transform(
-            adata, ["nucleus_shape"], feature_name, n_jobs
-        )
+    if shape_name not in data.obs.columns:
+        raise ValueError("Not a valid shape")
+
+    layer = f'{shape_name.split(sep="_shape")[0]}_{position}_proximity'
+        
+    if position == 'inner':
+        # TODO switch to indexed shapes
+        InnerToShape().transform(data, shape_name, layer, n_jobs)
+    elif position == 'outer':
+        if shape_name == 'cell_shape':
+            raise ValueError("Extracellular points not supported")
+        OuterToShape().transform(data, shape_name, layer, n_jobs)
     else:
-        raise ValueError("Not a valid 'feature_name'.")
+        raise ValueError("Not a valid position.")
 
     return adata if copy else None
 
@@ -32,28 +48,28 @@ class AbstractFeature(metaclass=ABCMeta):
     __point_metadata = pd.Series(["x", "y", "cell", "gene", "nucleus"])
 
     @abstractmethod
-    def extract(self, points, shapes):
+    def extract(self, points, shape):
         """Given a set of points, extract and return a single feature value.
 
         Parameters
         ----------
         points : DataFrame
             Point coordinates.
-        shapes : list of Polygon objects (Shapely)
+        shape : Polygon (Shapely)
 
         """
-        return points, shapes
+        return points, shape
 
     @classmethod
-    def transform(self, data, shape_names, layer, n_jobs):
+    def transform(self, data, shape_name, layer, n_jobs):
         """Applies self.extract() to all points grouped by cell and gene.
 
         Parameters
         ----------
         data : spatial formatted AnnData
             data.uns['points'] must be DataFrame with minimum columns x, y, cell, and gene.
-        shape_names : list of str
-            Column names in data.obs referring to shapes to use in calculation.
+        shape_name : str
+            Column name in data.obs referring to shape to use in calculation.
         """
 
         points = data.uns["points"]
@@ -64,19 +80,48 @@ class AbstractFeature(metaclass=ABCMeta):
                 f"'points' DataFrame needs to have all columns: {self.__point_metadata.tolist()}."
             )
 
-        # Group points by cell and gene
+        # GeoDataFrame for spatial operations
         points = gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points.x, points.y))
-        points[['cell', 'gene', 'nucleus']] = points[['cell', 'gene', 'nucleus']].astype('category')
-        points_groupby = points.groupby(["cell", "gene"])
+        
+        # Precompute max cell radius
+        max_dist = data.obs['cell_shape'].apply(lambda c: c.boundary.hausdorff_distance(c.centroid))
+        max_dist.index.name = 'cell'
+        max_dist.name = 'max_dist'
 
+        # Precompute if shape is in nucleus
+#         shape_geo = gpd.GeoSeries(data.obs[shape_name])
+        nucleus_geo = gpd.GeoSeries(data.obs['nucleus_shape'])
+#         shape_in_nucleus = shape_geo.within(nucleus_geo)
+#         shape_in_nucleus.index.name = 'cell'
+#         shape_in_nucleus.name = 'shape_in_nucleus'
+        
+        # Join attributes to points
+        input_data = points.set_index('cell').join(data.obs[shape_name]).join(max_dist)
+        
+        if shape_name != 'nucleus_shape':
+            input_data = input_data.join(nucleus_geo)
+            
+        input_data = input_data.reset_index()
+        
+        # Precompute if points are within respective shape
+#         print('Warning: compatible with non-indexed shapes for now (4x slower)')
+#         input_data['point_in_shape'] = input_data.within(input_data[shape_name])
+        
+        # Cast categorical type to save memory
+        cat_vars = ['cell', 'gene', 'nucleus']
+        input_data[cat_vars] = input_data[cat_vars].astype('category')
+
+        # Group points by cell and gene
+        input_grouped = input_data.groupby(["cell", "gene"])
+        
         # Extract feature
         values = Parallel(n_jobs=n_jobs)(
-            delayed(self.extract)(self, p, data.obs.loc[name[0], shape_names])
-            for name, p in tqdm(points_groupby, total=points_groupby.ngroups, desc="Analyzing")
+            delayed(self.extract)(self, inp, inp[shape_name].iloc[0])
+            for name, inp in tqdm(input_grouped, total=len(input_grouped), desc="Measure proximity")
         )
         
         # Save results to data layer
-        feature_df = pd.DataFrame(points_groupby.groups.keys(), columns=["cell", "gene"])
+        feature_df = pd.DataFrame(input_grouped.groups.keys(), columns=["cell", "gene"])
         feature_df[layer] = values
 
         data.layers[layer] = (
@@ -89,56 +134,54 @@ class AbstractFeature(metaclass=ABCMeta):
 
         return
 
-
-class CytoDistanceToCell(AbstractFeature):
-    def extract(self, points, shapes):
-        """Given a set of points, calculate and return the average distance between cytoplasmic points to the cell membrane.
-
-        Parameters
-        ----------
-        points : GeoDataFrame
-            Point coordinates. Assumes "nuclear" column is present.
-        shapes : list of Polygon objects (Shapely)
-            Assumes first element is cell membrane shape.
-        """
-        points, shapes = super().extract(self, points, shapes)
-        cell_shape = shapes[0]
-        cytoplasmic = points["nucleus"].astype(str) == "-1"
-
-        return points[cytoplasmic].distance(cell_shape.boundary).mean()
-
-
-class CytoDistanceToNucleus(AbstractFeature):
-    def extract(self, points, shapes):
-        """Given a set of points, calculate and return the average distance between cytoplasmic points to the nuclear membrane.
+    
+class OuterToShape(AbstractFeature):
+    def extract(self, points, shape):
+        """Given a set of points, calculate and return the average proximity between points outside to the shape boundary.
+        
+        Only considers points inside the same major subcellular compartment (cytoplasm or nucleus).
 
         Parameters
         ----------
         points : GeoDataFrame
             Point coordinates. Assumes "nuclear" column is present.
-        shapes : list of Polygon objects (Shapely)
-            Assumes first element is nuclear membrane shape.
+        shape : Polygon (Shapely)
         """
-        points, shapes = super().extract(self, points, shapes)
-        nuclear_shape = shapes[0]
-        cytoplasmic = points["nucleus"].astype(str) == "-1"
+        points, shape = super().extract(self, points, shape)
+        nucleus_shape = points['nucleus_shape'].values[0]
+        
+        # Only look at points in the same major compartment
+        if shape.within(nucleus_shape):
+            in_compartment = points["nucleus"] != "-1"
+        else:
+            in_compartment = points["nucleus"] == "-1"
 
-        return points[cytoplasmic].distance(nuclear_shape.boundary).mean()
+        outer = ~points.within(shape)
+        
+            
+        dist = points[in_compartment & outer].distance(shape.boundary).mean()
 
-
-class IntranuclearDistanceToNucleus(AbstractFeature):
-    def extract(self, points, shapes):
-        """Given a set of points, calculate and return the average distance between intranuclear points to the nuclear membrane.
+        # Scale from [0, 1], where 1 is close and 0 is far.
+        max_dist = points['max_dist'].values[0]
+        proximity = (max_dist - dist) / max_dist
+        return proximity
+    
+class InnerToShape(AbstractFeature):
+    def extract(self, points, shape):
+        """Given a set of points, calculate and return the average proximity between points inside to the shape boundary.
 
         Parameters
         ----------
         points : GeoDataFrame
             Point coordinates. Assumes "nuclear" column is present.
-        shapes : list of Polygon objects (Shapely)
-            Assumes first element is nuclear membrane shape.
-        """
-        points, shapes = super().extract(self, points, shapes)
-        nuclear_shape = shapes[0]
-        nuclear = points["nucleus"].astype(str) != "-1"
+        shape : Polygon (Shapely)
+            """
+        points, shape = super().extract(self, points, shape)
+        inner = points.within(shape)
 
-        return points[nuclear].distance(nuclear_shape.boundary).mean()
+        dist = points[inner].distance(shape.boundary).mean()
+
+        # Scale from [0, 1], where 1 is close and 0 is far.
+        max_dist = points['max_dist'].values[0]
+        proximity = (max_dist - dist) / max_dist
+        return proximity
