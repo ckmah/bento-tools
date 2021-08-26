@@ -4,7 +4,6 @@ warnings.filterwarnings("ignore")
 
 from functools import partial
 
-
 ds = None
 tf = None
 geopandas = None
@@ -16,6 +15,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import proplot as plot
 import seaborn as sns
 from matplotlib.colors import ListedColormap
 
@@ -23,60 +23,90 @@ from ..preprocessing import get_points
 from ..tools import PATTERN_NAMES
 
 matplotlib.rcParams["figure.facecolor"] = (0, 0, 0, 0)
+plot.rc["autoformat"] = False
+plot.rc['grid'] = False
 
 
-def spots_diff(data, groups, adjusted=True, ymax=None):
-    dl_results = data.uns[f"diff_{groups}"]
+def pattern_distribution(data, relative=False):
+    """Visualizie"""
+    pattern_stats = []
+    for p in PATTERN_NAMES:
+        p_stats = data.var[[f"{p}_fraction", f"{p}_count", "fraction_detected"]]
+        p_stats = p_stats.rename(
+            {f"{p}_fraction": "pattern_fraction", f"{p}_count": "pattern_count"}, axis=1
+        )
+        p_stats["pattern"] = p
+        pattern_stats.append(p_stats)
+    pattern_stats = pd.concat(pattern_stats).reset_index()
 
-    if adjusted:
-        rank = "-log10padj"
+    g = sns.FacetGrid(
+        data=pattern_stats, col="pattern", hue="pattern", col_wrap=3, size=2
+    )
+
+    if relative:
+        y = "pattern_fraction"
     else:
-        rank = "-log10p"
+        y = "pattern_count"
+
+    with sns.axes_style("white"):
+        g.map_dataframe(
+            sns.scatterplot,
+            "fraction_detected",
+            y,
+            s=16,
+            linewidth=0,
+            alpha=0.5,
+        )
+
+        for ax in g.axes:
+            ax.set_xlim(0, 1)
+            ax.axvline(0.5, lw=1, c="pink", ls="dotted")
+            sns.despine()
+
+    return g
+
+
+def pattern_diff(data, phenotype, group_name, relative=False):
+    """Visualize gene pattern frequencies between groups of cells by plotting log2 fold change and pattern count."""
+    diff_stats = data.uns[f"{phenotype}_dp"]
+
+    if relative:
+        y = "n_cells_detected"
+    else:
+        y = "pattern_count"
 
     g = sns.relplot(
-        data=dl_results.sort_values("pattern"),
-        x="dy/dx",
-        y=rank,
-        hue="pattern",
-        size=rank,
-        sizes=(1, 20),
-        col="phenotype",
-        height=4,
+        data=diff_stats,
+        x=f"{group_name}_log2fc",
+        y=y,
+        # size="cell_fraction",
+        # sizes=(2**2, 2**6),
+        hue="cell_fraction",
+        col="pattern",
+        col_wrap=3,
+        height=2.5,
+        palette="crest",
+        s=20,
+        # alpha=0.4,
         linewidth=0,
-        palette="tab10",
-        facet_kws=dict(xlim=(-1, 1)),
     )
 
-    g.map(plt.axhline, y=-np.log10(0.05), color="gray", lw=1, linestyle="--", zorder=0)
-    (
-        g.map(plt.axvline, x=0, color="black", lw=1, linestyle="-", zorder=0)
-        .set_axis_labels("Marginal Effect (dy/dx)", f"Significance ({rank})")
-        .set_titles("{col_name}")
-    )
-    # g.map(sns.despine, top=False, right=False, bottom=False, left=False)
+    for ax in g.axes:
+        # ax.set_xlim(-4, 4)
+        ax.axvline(0, lw=1, c="black")
+        ax.axvline(-1, lw=1, c="pink", ls="dotted")
+        ax.axvline(1, lw=1, c="pink", ls="dotted")
 
+        sns.despine()
 
-def gene_umap(data, hue=None, **kwargs):
-
-    umap = data.varm["loc_umap"]
-    if hue is not None:
-        hue_vector = data.var.loc[umap.index, hue]
-    else:
-        hue_vector = hue
-    ax = sns.scatterplot(data=umap, x=0, y=1, hue=hue_vector, **kwargs)
-    ax.legend(bbox_to_anchor=(1.01, 1), loc=2, borderaxespad=0)
-    plt.tight_layout()
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_title(hue)
-    return ax
+    return g
 
 
 def cell_patterns(data, cells=None, fraction=True):
     """Plot pattern frequency across cells.
 
     The mean and 95% confidence interval for all cells is denoted with black points and grey boxes.
-    The blue points denote the mean frequencies for the specified subset of cell(s). 
+    The blue points denote the mean frequencies for the specified subset of cell(s).
     Parameters
     ----------
     data : spatial formatted AnnData
@@ -93,7 +123,7 @@ def cell_patterns(data, cells=None, fraction=True):
 
     if fraction:
         pattern_freq /= data.n_vars
-        
+
     # Calculate mean and 95% confidence interval
     stats = pattern_freq.apply(
         lambda pattern: [pattern.mean(), *np.percentile(pattern, [2.5, 97.5])]
@@ -105,7 +135,7 @@ def cell_patterns(data, cells=None, fraction=True):
 
     # Plot mean as points
     ax = plt.gca()
-    base_size=7
+    base_size = 7
     plt.scatter(x=stats["mean"], y=stats.index, c="grey", s=base_size ** 2, zorder=100)
 
     # Plot CI as grey box
@@ -125,7 +155,9 @@ def cell_patterns(data, cells=None, fraction=True):
 
         if fraction:
             stats["value"] /= data.n_vars
-        plt.scatter(x=stats["value"], y=stats.index, c="skyblue", s=base_size ** 2, zorder=100)
+        plt.scatter(
+            x=stats["value"], y=stats.index, c="skyblue", s=base_size ** 2, zorder=100
+        )
 
         # Stems
         plt.hlines(
@@ -141,10 +173,10 @@ def cell_patterns(data, cells=None, fraction=True):
     # styling
     if fraction:
         plt.xlim(0, 1)
-        plt.xlabel(f'Fraction ({data.n_vars} genes)')
+        plt.xlabel(f"Fraction ({data.n_vars} genes)")
     else:
         plt.xlim(0, data.n_vars)
-        plt.xlabel(f'Frequency ({data.n_vars} genes)')
+        plt.xlabel(f"Frequency ({data.n_vars} genes)")
     ax.set_title(f"n = {data.n_obs} cells")
 
     ax.tick_params(axis="y", length=0)
@@ -188,16 +220,13 @@ def plot_cells(
        masks to draw outlines for.
     """
 
-    global ds, tf, plot, dsshow
+    global ds, tf, dsshow
 
     if ds is None:
         import datashader as ds
 
     if tf is None:
         import datashader.transfer_functions as tf
-
-    if plot is None:
-        import proplot as plot
 
     if dsshow is None:
         from datashader.mpl_ext import dsshow
