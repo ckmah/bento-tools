@@ -10,8 +10,10 @@ from joblib import Parallel, delayed, parallel_backend
 from tqdm.auto import tqdm
 
 from .. import tools as tl
+from ..utils import track
 
 
+@track
 def proximity(data, shape_name, position="inner", n_jobs=1, copy=False):
     """
     Compute proximity of points to shape.
@@ -49,6 +51,7 @@ def proximity(data, shape_name, position="inner", n_jobs=1, copy=False):
     return adata if copy else None
 
 
+@track
 def asymmetry(data, shape_name, position="inner", n_jobs=1, copy=False):
     """
     Compute asymmetry of points relative to shape.

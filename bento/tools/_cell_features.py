@@ -3,7 +3,9 @@ import numpy as np
 from scipy.spatial import distance
 from shapely.geometry import Point
 
+from .._utils import track
 
+@track
 def cell_aspect_ratio(data, copy=False):
 
     adata = data.copy() if copy else data
@@ -30,11 +32,9 @@ def cell_aspect_ratio(data, copy=False):
     return adata if copy else None
 
 
+@track
 def cell_area(data, copy=False):
     adata = data.copy() if copy else data
-
-    if not overwrite and 'cell_area' in adata.obs.columns:
-        return adata if copy else None
     
     # Calculate pixel-wise area
     # TODO: unit scale?
@@ -43,7 +43,7 @@ def cell_area(data, copy=False):
 
     return adata if copy else None
 
-
+@track
 def cell_radius(data, overwrite=False, copy=False):
     """
     Calculate the mean cell radius.
@@ -66,6 +66,7 @@ def cell_radius(data, overwrite=False, copy=False):
     return adata if copy else None
 
 
+@track
 def is_nuclear(data, shape_name, overwrite=False, copy=False):
     """
     Check if shape_name is contained within the nucleus.

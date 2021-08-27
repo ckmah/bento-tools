@@ -11,6 +11,8 @@ from torchvision import datasets, transforms
 
 from ._pattern_stats import pattern_stats
 
+from ..utils import track
+
 PATTERN_NAMES = [
     "cell_edge",
     "foci",
@@ -21,6 +23,7 @@ PATTERN_NAMES = [
 ]
 
 
+@track
 def predict_patterns(
     data, imagedir, batch_size=1024, model="multiclass", device="auto", copy=False
 ):

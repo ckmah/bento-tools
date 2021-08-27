@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 
-from ._pattern_models import PATTERN_NAMES
+from ..utils import track
 
-
+@track
 def pattern_stats(data, copy=False):
     """Computes frequencies of input layer values across cells and across genes.
     Assumes layer values are categorical.
@@ -49,7 +49,7 @@ def pattern_stats(data, copy=False):
     return adata if copy else None
 
 
-
+@track
 def pattern_diff(data, phenotype=None, copy=False):
     """Gene-wise test for differential localization across phenotype of interest.
 

@@ -1,3 +1,5 @@
+from ..utils import track
+
 def get_points(data, cells=None, genes=None):
 
     points = data.uns["points"]
@@ -15,6 +17,7 @@ def get_points(data, cells=None, genes=None):
     return points
 
 
+@track
 def set_points(data, cells=None, genes=None, copy=False):
     adata = data.copy() if copy else data
     points = get_points(adata, cells, genes)
@@ -22,6 +25,7 @@ def set_points(data, cells=None, genes=None, copy=False):
     return adata if copy else None
 
 
+@track
 def filter_points(data, min=None, max=None, copy=False):
     """Select samples with at least min_count and at most max_count points.
 
@@ -59,8 +63,7 @@ def filter_points(data, min=None, max=None, copy=False):
     return adata if copy else None
 
 
-
-
+@track
 def subsample(data, frac=0.2, copy=True):
     adata = data.copy() if copy else data
     points = get_points(data)
