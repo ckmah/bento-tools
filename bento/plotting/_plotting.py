@@ -28,7 +28,16 @@ plot.rc['grid'] = False
 
 
 def pattern_distribution(data, relative=False):
-    """Visualizie"""
+    """Visualize gene pattern distributions.
+    
+    Each point is a gene, denoting the number of cells the gene is detected in (x-axis) vs pattern frequency (y-axis).
+    
+    Parameters
+    ----------
+    data : spatial formatted AnnData
+    relative : bool
+        If True, plot fraction of detected cells, by default False. Otherwise plot absolute frequency.
+    """
     pattern_stats = []
     for p in PATTERN_NAMES:
         p_stats = data.var[[f"{p}_fraction", f"{p}_count", "fraction_detected"]]
