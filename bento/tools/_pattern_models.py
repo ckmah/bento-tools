@@ -9,18 +9,8 @@ import pandas as pd
 import torch
 from torchvision import datasets, transforms
 
+from .._utils import PATTERN_NAMES, track
 from ._pattern_stats import pattern_stats
-
-from ..utils import track
-
-PATTERN_NAMES = [
-    "cell_edge",
-    "foci",
-    "nuclear_edge",
-    "perinuclear",
-    "protrusions",
-    "random",
-]
 
 
 @track

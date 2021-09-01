@@ -1,5 +1,7 @@
 import warnings
 
+from matplotlib.lines import Line2D
+
 warnings.filterwarnings("ignore")
 
 from functools import partial
@@ -9,6 +11,7 @@ tf = None
 geopandas = None
 plot = None
 dsshow = None
+mplcyberpunk = None 
 
 import geopandas
 import matplotlib
@@ -20,7 +23,8 @@ import seaborn as sns
 from matplotlib.colors import ListedColormap
 
 from ..preprocessing import get_points
-from ..tools import PATTERN_NAMES
+
+from .._utils import PATTERN_NAMES
 
 matplotlib.rcParams["figure.facecolor"] = (0, 0, 0, 0)
 plot.rc["autoformat"] = False
@@ -90,7 +94,7 @@ def pattern_diff(data, phenotype, group_name, relative=False):
         y=y,
         # size="cell_fraction",
         # sizes=(2**2, 2**6),
-        hue="cell_fraction",
+        hue=f"{group_name}_rank",
         col="pattern",
         col_wrap=3,
         height=2.5,
@@ -102,13 +106,124 @@ def pattern_diff(data, phenotype, group_name, relative=False):
 
     for ax in g.axes:
         # ax.set_xlim(-4, 4)
-        ax.axvline(0, lw=1, c="black")
-        ax.axvline(-1, lw=1, c="pink", ls="dotted")
-        ax.axvline(1, lw=1, c="pink", ls="dotted")
+        ax.axvline(0, lw=0.5, c="grey")
+        ax.axvline(-2, lw=1, c="pink", ls="dotted")
+        ax.axvline(2, lw=1, c="pink", ls="dotted")
 
         sns.despine()
 
     return g
+
+
+def gene_patterns(data, gene=None, groups=None, relative=True, stacked=False):
+    """Plot pattern frequency of genes.
+    Parameters
+    ----------
+    data : [type]
+        [description]
+    gene : str
+        Gene name to show frequencies.
+    groups : str, optional
+        Sample category to stratify frequencies, by default None.
+    relative : bool, optional
+        Whether to calculate relative fractions or absolute number of cells, by default True.
+    stacked : bool, optional
+        Whether to use a single plot or multiple plots for each category, by default False.
+    """
+
+    global mplcyberpunk
+    if mplcyberpunk is None:
+        import mplcyberpunk
+
+    # Calculate polar angles
+    angles = np.linspace(0, 2 * np.pi, len(PATTERN_NAMES), endpoint=False)
+    angles = np.concatenate((angles, [angles[0]]))
+
+    colors = sns.color_palette('muted', n_colors=6)
+
+    # Groups x patterns dataframe
+    all_pcounts = []
+    for p in PATTERN_NAMES:
+        if groups:
+            pcounts = data.to_df(p)[gene].groupby(data.obs[groups]).agg('sum')
+        else:
+            pcounts = pd.Series([data.to_df(p)[gene].sum()], name=p).to_frame()
+        all_pcounts.append(pcounts)
+
+    all_pcounts = pd.concat(all_pcounts, axis=1)
+    if all_pcounts.shape[0] == 1:
+        all_pcounts.index = [gene]
+
+    if stacked or all_pcounts.shape[0] == 1:
+        fig = plt.figure(figsize=(4, 4))
+        ax = fig.add_subplot(111, polar=True)
+        axs = [ax]*6
+    else:
+        fig, axs = plt.subplots(
+            1,
+            all_pcounts.shape[0],
+            sharex=True,
+            subplot_kw=dict(polar=True),
+            figsize=(4 * all_pcounts.shape[0], 4),
+        )
+        fig.subplots_adjust(wspace=0.3)
+
+    with sns.axes_style("whitegrid"):
+        for i, rowname in enumerate(all_pcounts.index):
+            pcounts = all_pcounts.iloc[i].values.tolist()
+            pcounts = pcounts + [pcounts[0]]
+            current_ax = axs[i]
+          
+            # Plot gene trace
+            current_ax.plot(angles, pcounts, color=colors[i], linewidth=1)
+            current_ax.scatter(angles, pcounts, color=colors[i], s=10)
+
+            # Set theta axis labels
+            current_ax.set_thetagrids(angles * 180 / np.pi, PATTERN_NAMES + [PATTERN_NAMES[0]])
+            current_ax.tick_params(axis="x", labelsize="medium", pad=15)
+
+            # Format r ticks
+            current_ax.yaxis.set_major_locator(plt.MaxNLocator(4, prune="lower"))
+            current_ax.tick_params(axis="y", labelsize="medium", labelcolor='gray')
+
+            # Set grid style
+            current_ax.grid(True, axis='x', linestyle="-", linewidth=0.5, color='gray', alpha=0.5)
+            current_ax.grid(True, axis='y', linestyle=":", linewidth=0.5, color='gray', alpha=0.5)
+            current_ax.set_facecolor((0.98,0.98,0.98))
+            current_ax.spines["polar"].set_color('gray')
+            current_ax.spines["polar"].set_alpha(0.5)
+
+
+        handles = [
+            Line2D(
+                [], [], 
+                c=color, 
+                lw=1, 
+                marker="o", 
+                markersize=4, 
+                label=g
+            )
+            for g, color in zip(all_pcounts.index, colors[:all_pcounts.shape[0]])
+        ]
+        plt.legend(
+            handles=handles,
+            loc=(0.9, 0.95),
+            labelspacing=0.1,
+            fontsize="medium",
+            frameon=False,
+        )
+        
+        plt.tight_layout()
+
+        for ax in axs:
+            mplcyberpunk.make_lines_glow(ax, n_glow_lines=3)
+            mplcyberpunk.add_underglow(ax, alpha_underglow=0.2)
+            if ax == axs[-1]:
+                break
+
+    plt.close()
+    return fig
+
 
 
 def cell_patterns(data, cells=None, fraction=True):
@@ -364,7 +479,7 @@ def plot_cells(
     if pattern:
         ax.set_title(pattern)
 
-    # plt.close(fig)
+    plt.close(fig)
     return fig
 
 

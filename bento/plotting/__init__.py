@@ -1,1 +1,7 @@
-from ._plotting import plot_cells, pattern_diff, cell_patterns, pattern_distribution
+from ._plotting import (
+    cell_patterns,
+    gene_patterns,
+    pattern_diff,
+    pattern_distribution,
+    plot_cells,
+)

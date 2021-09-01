@@ -1,4 +1,4 @@
-from ..utils import track
+from .._utils import track
 
 def get_points(data, cells=None, genes=None):
 
