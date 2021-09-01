@@ -3,7 +3,7 @@ import bento
 
 data = bento.datasets.sample_data()
 bento.tl.rasterize_cells(data, '/tmp/patpred')
-bento.tl.predict_patterns(data, model='multilabel')
+bento.tl.predict_patterns(data, '/tmp/patpred', model='multilabel')
 
 
 class TestPlotting(unittest.TestCase):

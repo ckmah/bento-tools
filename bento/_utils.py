@@ -61,7 +61,7 @@ def track(func):
 
             if len(removed) > 0 or len(added) > 0:
                 modified = True
-                out += "\n    obs:"
+                out += f"\n    {attr}:"
                 if len(removed) > 0:
                     out += f"\n        - removed: {', '.join(removed)}"
                 if len(added) > 0:

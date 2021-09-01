@@ -40,11 +40,11 @@ def proximity(data, shape_name, position="inner", n_jobs=1, copy=False):
 
     if position == "inner":
         # TODO switch to indexed shapes
-        InnerToShapeDist().transform(data, shape_name, layer, n_jobs)
+        InnerToShapeDist().transform(adata, shape_name, layer, n_jobs)
     elif position == "outer":
         if shape_name == "cell_shape":
             raise ValueError("Extracellular points not supported")
-        OuterToShapeDist().transform(data, shape_name, layer, n_jobs)
+        OuterToShapeDist().transform(adata, shape_name, layer, n_jobs)
     else:
         raise ValueError("Not a valid position.")
 
@@ -75,14 +75,14 @@ def asymmetry(data, shape_name, position="inner", n_jobs=1, copy=False):
         raise ValueError("Not a valid shape")
 
     layer = f'{shape_name.split(sep="_shape")[0]}_{position}_asymmetry'
-
+    
     if position == "inner":
         # TODO switch to indexed shapes
-        InnerToShapeAsymmetry().transform(data, shape_name, layer, n_jobs)
+        InnerToShapeAsymmetry().transform(adata, shape_name, layer, n_jobs)
     elif position == "outer":
         if shape_name == "cell_shape":
             raise ValueError("Extracellular points not supported")
-        OuterToShapeAsymmetry().transform(data, shape_name, layer, n_jobs)
+        OuterToShapeAsymmetry().transform(adata, shape_name, layer, n_jobs)
     else:
         raise ValueError("Not a valid position.")
 
@@ -105,15 +105,17 @@ class AbstractFeature(metaclass=ABCMeta):
 
         """
         shape = points[shape_name].values[0]
+
+        # Cast to GeoDataFrame for spatial operations
+        points = gpd.GeoDataFrame(
+            points, geometry=gpd.points_from_xy(points.x, points.y)
+        )
+
         return points, shape, shape_name
 
     @abstractmethod
     def precompute(self, data, points, shape_name):
         """Any cell-level feature to precompute. This prevents recomputing once per sample."""
-        # GeoDataFrame for spatial operations
-        points = gpd.GeoDataFrame(
-            points, geometry=gpd.points_from_xy(points.x, points.y)
-        )
 
         # Save shape to points column
         points = (
@@ -122,6 +124,10 @@ class AbstractFeature(metaclass=ABCMeta):
             .reset_index()
             .sort_values(["cell", "gene"])
         )
+
+        # Cast categorical type to save memory
+        cat_vars = ["cell", "gene", "nucleus"]
+        points[cat_vars] = points[cat_vars].astype("category")
 
         return data, points, shape_name
 
@@ -146,10 +152,6 @@ class AbstractFeature(metaclass=ABCMeta):
             )
 
         data, points, shape_name = self.precompute(self, data, points, shape_name)
-
-        # Cast categorical type to save memory
-        cat_vars = ["cell", "gene", "nucleus"]
-        points[cat_vars] = points[cat_vars].astype("category")
 
         out = (
             dask_geopandas.from_geopandas(points, chunksize=10000)
@@ -237,7 +239,6 @@ class InnerToShapeDist(AbstractFeature):
             Value ranges between [0, 1]. Value closer to 0 denotes farther from shape boundary, value closer to 1 denotes close to shape boundary.
         """
         points, shape, shape_name = super().extract(self, points, shape_name)
-        points = gpd.GeoDataFrame(points)
         inner = points.within(shape)
 
         dist = points[inner].distance(shape.boundary).mean()
