@@ -271,6 +271,17 @@ def rasterize_cells(
         .join(data.obs[["cell_shape", "nucleus_shape"]])
         .reset_index()
     )
+
+    if label_layer:
+        label_df = (
+            data.to_df(label_layer)
+            .reset_index()
+            .melt(id_vars="cell")
+            .set_index(["cell", "gene"])
+        )
+        label_df.columns = ["pattern"]
+        points = points.set_index(["cell", "gene"]).join(label_df).reset_index()
+
     points = geopandas.GeoDataFrame(
         points, geometry=geopandas.points_from_xy(points["x"], points["y"])
     ).sort_values(["cell", "gene"])
@@ -288,7 +299,7 @@ def rasterize_cells(
                 out_dim,
                 overwrite,
             ),
-             meta=("float")
+            meta=("float"),
         )
     )
 
@@ -339,7 +350,7 @@ def _rasterize(
     # TODO does not work for binary indicator labels
     if label_layer:
         labels = dict(
-            zip(genes, list(data[cell_name, genes].layers[label_layer].flatten()))
+            zip(genes, sample_df.set_index("gene").loc[genes, "pattern".tolist()])
         )
     else:
         labels = dict(zip(genes, ["foo"] * len(genes)))
