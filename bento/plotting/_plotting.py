@@ -11,7 +11,7 @@ tf = None
 geopandas = None
 plot = None
 dsshow = None
-mplcyberpunk = None 
+mplcyberpunk = None
 
 import geopandas
 import matplotlib
@@ -22,20 +22,53 @@ import proplot as plot
 import seaborn as sns
 from matplotlib.colors import ListedColormap
 
-from ..preprocessing import get_points
-
 from .._utils import PATTERN_NAMES
+from ..preprocessing import get_points
 
 matplotlib.rcParams["figure.facecolor"] = (0, 0, 0, 0)
 plot.rc["autoformat"] = False
-plot.rc['grid'] = False
+plot.rc["grid"] = False
+
+
+def qc_metrics(adata):
+    """
+    Plot quality control metric distributions.
+    """
+    fig, axs = plt.subplots(1, 4, figsize=(16, 3))
+    plt.subplots_adjust(hspace=1)
+    sns.kdeplot(adata.obs["total_counts"], fill=True, ax=axs[0])
+    sns.kdeplot(adata.obs["n_genes_by_counts"], fill=True, ax=axs[1])
+    sns.kdeplot(adata.obs["cell_area"], fill=True, ax=axs[2])
+    sns.kdeplot(np.log2(adata.X.flatten() + 1), fill=True, ax=axs[3])
+    sns.despine()
+
+    titles = [
+        "Transcripts per Cell",
+        "Genes per Cell",
+        "Cell Area",
+        "Transcripts per Gene",
+    ]
+    xlabels = [
+        "mRNA count",
+        "Gene count",
+        "Area $\mathregular{unit^2}$",
+        "mRNA count",
+    ]
+    for i, ax in enumerate(axs):
+        #     ax.set_yticks([])
+        #     ax.set_ylabel("")
+        ax.set_xlabel(xlabels[i], fontsize=14)
+        ax.set_title(titles[i], fontsize=16)
+
+    axs[3].set_xlabel("log2(tx count + 1)")
+    plt.tight_layout()
 
 
 def pattern_distribution(data, relative=False):
     """Visualize gene pattern distributions.
-    
+
     Each point is a gene, denoting the number of cells the gene is detected in (x-axis) vs pattern frequency (y-axis).
-    
+
     Parameters
     ----------
     data : spatial formatted AnnData
@@ -46,7 +79,12 @@ def pattern_distribution(data, relative=False):
     for p in PATTERN_NAMES:
         p_stats = data.var[[f"{p}_fraction", f"{p}_count", "fraction_detected"]]
         p_stats = p_stats.rename(
-            {f"{p}_fraction": "pattern_fraction", f"{p}_count": "pattern_count"}, axis=1
+            {
+                f"{p}_fraction": "pattern_fraction",
+                f"{p}_count": "pattern_count",
+                "fraction_detected": "cell_fraction",
+            },
+            axis=1,
         )
         p_stats["pattern"] = p
         pattern_stats.append(p_stats)
@@ -64,7 +102,7 @@ def pattern_distribution(data, relative=False):
     with sns.axes_style("white"):
         g.map_dataframe(
             sns.scatterplot,
-            "fraction_detected",
+            "cell_fraction",
             y,
             s=16,
             linewidth=0,
@@ -74,6 +112,7 @@ def pattern_distribution(data, relative=False):
         for ax in g.axes:
             ax.set_xlim(0, 1)
             ax.axvline(0.5, lw=1, c="pink", ls="dotted")
+            ax.set_xlabel(f"cell_fraction ({data.n_obs} cells)")
             sns.despine()
 
     return g
@@ -139,25 +178,28 @@ def gene_patterns(data, gene=None, groups=None, relative=True, stacked=False):
     angles = np.linspace(0, 2 * np.pi, len(PATTERN_NAMES), endpoint=False)
     angles = np.concatenate((angles, [angles[0]]))
 
-    colors = sns.color_palette('muted', n_colors=6)
-
     # Groups x patterns dataframe
     all_pcounts = []
     for p in PATTERN_NAMES:
         if groups:
-            pcounts = data.to_df(p)[gene].groupby(data.obs[groups]).agg('sum')
+            pcounts = data.to_df(p)[gene].groupby(data.obs[groups]).agg("sum")
         else:
             pcounts = pd.Series([data.to_df(p)[gene].sum()], name=p).to_frame()
         all_pcounts.append(pcounts)
 
     all_pcounts = pd.concat(all_pcounts, axis=1)
+
+    # Normalize by number of cells
+    if relative:
+        all_pcounts /= data.n_obs
+
     if all_pcounts.shape[0] == 1:
         all_pcounts.index = [gene]
 
     if stacked or all_pcounts.shape[0] == 1:
         fig = plt.figure(figsize=(4, 4))
         ax = fig.add_subplot(111, polar=True)
-        axs = [ax]*6
+        axs = [ax] * all_pcounts.shape[0]
     else:
         fig, axs = plt.subplots(
             1,
@@ -168,42 +210,41 @@ def gene_patterns(data, gene=None, groups=None, relative=True, stacked=False):
         )
         fig.subplots_adjust(wspace=0.3)
 
+    colors = sns.color_palette("muted", n_colors=all_pcounts.shape[0])
     with sns.axes_style("whitegrid"):
         for i, rowname in enumerate(all_pcounts.index):
             pcounts = all_pcounts.iloc[i].values.tolist()
             pcounts = pcounts + [pcounts[0]]
             current_ax = axs[i]
-          
+
             # Plot gene trace
             current_ax.plot(angles, pcounts, color=colors[i], linewidth=1)
             current_ax.scatter(angles, pcounts, color=colors[i], s=10)
 
             # Set theta axis labels
-            current_ax.set_thetagrids(angles * 180 / np.pi, PATTERN_NAMES + [PATTERN_NAMES[0]])
+            current_ax.set_thetagrids(
+                angles * 180 / np.pi, PATTERN_NAMES + [PATTERN_NAMES[0]]
+            )
             current_ax.tick_params(axis="x", labelsize="medium", pad=15)
 
             # Format r ticks
             current_ax.yaxis.set_major_locator(plt.MaxNLocator(4, prune="lower"))
-            current_ax.tick_params(axis="y", labelsize="medium", labelcolor='gray')
+            current_ax.tick_params(axis="y", labelsize="medium", labelcolor="gray")
 
             # Set grid style
-            current_ax.grid(True, axis='x', linestyle="-", linewidth=0.5, color='gray', alpha=0.5)
-            current_ax.grid(True, axis='y', linestyle=":", linewidth=0.5, color='gray', alpha=0.5)
-            current_ax.set_facecolor((0.98,0.98,0.98))
-            current_ax.spines["polar"].set_color('gray')
+            current_ax.grid(
+                True, axis="x", linestyle="-", linewidth=0.5, color="gray", alpha=0.5
+            )
+            current_ax.grid(
+                True, axis="y", linestyle=":", linewidth=0.5, color="gray", alpha=0.5
+            )
+            current_ax.set_facecolor((0.98, 0.98, 0.98))
+            current_ax.spines["polar"].set_color("gray")
             current_ax.spines["polar"].set_alpha(0.5)
 
-
         handles = [
-            Line2D(
-                [], [], 
-                c=color, 
-                lw=1, 
-                marker="o", 
-                markersize=4, 
-                label=g
-            )
-            for g, color in zip(all_pcounts.index, colors[:all_pcounts.shape[0]])
+            Line2D([], [], c=color, lw=1, marker="o", markersize=4, label=g)
+            for g, color in zip(all_pcounts.index, colors[: all_pcounts.shape[0]])
         ]
         plt.legend(
             handles=handles,
@@ -212,7 +253,7 @@ def gene_patterns(data, gene=None, groups=None, relative=True, stacked=False):
             fontsize="medium",
             frameon=False,
         )
-        
+
         plt.tight_layout()
 
         for ax in axs:
@@ -225,8 +266,7 @@ def gene_patterns(data, gene=None, groups=None, relative=True, stacked=False):
     return fig
 
 
-
-def cell_patterns(data, cells=None, fraction=True):
+def cell_patterns(data, cells=None, relative=True):
     """Plot pattern frequency across cells.
 
     The mean and 95% confidence interval for all cells is denoted with black points and grey boxes.
@@ -236,16 +276,16 @@ def cell_patterns(data, cells=None, fraction=True):
     data : spatial formatted AnnData
     cells : list of str, optional
         A list of cell names, by default None. The mean frequencies are plotted as blue points.
-    fraction : bool, optional
-        Whether to normalize pattern frequencies as a fraction, by default True.
+    relative : bool, optional
+        Whether to normalize pattern frequencies to total cells, by default True.
     Returns
     -------
     Axes
         Returns a matplotlib Axes containing plotted figure elements.
     """
-    pattern_freq = data.obs[PATTERN_NAMES]
+    pattern_freq = data.obs[[f"{p}_count" for p in PATTERN_NAMES]]
 
-    if fraction:
+    if relative:
         pattern_freq /= data.n_vars
 
     # Calculate mean and 95% confidence interval
@@ -295,7 +335,7 @@ def cell_patterns(data, cells=None, fraction=True):
         )
 
     # styling
-    if fraction:
+    if relative:
         plt.xlim(0, 1)
         plt.xlabel(f"Fraction ({data.n_vars} genes)")
     else:
