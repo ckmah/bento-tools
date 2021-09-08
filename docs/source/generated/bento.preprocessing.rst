@@ -1,7 +1,7 @@
-﻿bento.io
-========
+bento.preprocessing
+===================
 
-.. automodule:: bento.io
+.. automodule:: bento.preprocessing
   
    
    
@@ -14,10 +14,10 @@
    .. autosummary::
       :toctree:                                        
    
-      concatenate
-      read_geodata
-      read_h5ad
-      write_h5ad
+      filter_points
+      get_points
+      set_points
+      subsample
    
    
 

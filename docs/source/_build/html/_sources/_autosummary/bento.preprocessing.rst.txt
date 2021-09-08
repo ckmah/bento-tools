@@ -1,4 +1,4 @@
-﻿bento.preprocessing
+bento.preprocessing
 ===================
 
 .. automodule:: bento.preprocessing

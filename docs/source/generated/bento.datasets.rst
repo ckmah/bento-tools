@@ -1,7 +1,7 @@
-﻿bento.plotting
+bento.datasets
 ==============
 
-.. automodule:: bento.plotting
+.. automodule:: bento.datasets
   
    
    
@@ -14,11 +14,9 @@
    .. autosummary::
       :toctree:                                        
    
-      gene_umap
-      plot_cells
-      spots_all_distr
-      spots_diff
-      spots_distr
+      get_dataset_info
+      load_dataset
+      sample_data
    
    
 
