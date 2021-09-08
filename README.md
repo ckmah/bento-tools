@@ -1,4 +1,5 @@
 [![PyPI version](https://badge.fury.io/py/bento-tools.svg)](https://badge.fury.io/py/bento-tools)
+[![Python Package Tests](https://github.com/ckmah/bento-tools/actions/workflows/python-package.yml/badge.svg)](https://github.com/ckmah/bento-tools/actions/workflows/python-package.yml)
 
 # Bento
 Bento is a toolkit for ingesting, visualizing, and analyzing spatial transcriptomics data at subcellular resolution. 
