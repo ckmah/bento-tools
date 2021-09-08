@@ -4,4 +4,6 @@ from ._plotting import (
     pattern_diff,
     pattern_distribution,
     plot_cells,
+    qc_metrics,
 )
+from ._tensor_decomposition import factors
