@@ -317,7 +317,7 @@ def cell_patterns(data, cells=None, relative=True):
     if cells is not None:
         stats["value"] = data.obs.loc[cells, PATTERN_NAMES].mean()
 
-        if fraction:
+        if relative:
             stats["value"] /= data.n_vars
         plt.scatter(
             x=stats["value"], y=stats.index, c="skyblue", s=base_size ** 2, zorder=100
