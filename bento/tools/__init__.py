@@ -10,6 +10,6 @@ from ._locfish_features import (
     ripley_features,
 )
 from ._pattern_models import predict_patterns
-from ._sample_features import asymmetry, proximity
+from ._sample_features import ShapeProximity, ShapeAsymmetry, Ripley, CellOpenEnrichment
 from ._tensor_tools import to_tensor, decompose_tensor, select_tensor_rank, assign_factors
 
