@@ -118,7 +118,6 @@ def read_geodata(points, cell, other={}):
             uns_points[["cell", "gene"]]
             .groupby(["cell", "gene"])
             .apply(lambda x: x.shape[0])
-            .to_frame()
             .reset_index()
         )
     else:

@@ -154,7 +154,7 @@ def pattern_diff(data, phenotype, group_name, relative=False):
     return g
 
 
-def gene_patterns(data, gene=None, groups=None, relative=True, stacked=False):
+def gene_patterns(data, gene=None, groups=None, ci=True, relative=True, stacked=False):
     """Plot pattern frequency of genes.
     Parameters
     ----------
@@ -180,18 +180,47 @@ def gene_patterns(data, gene=None, groups=None, relative=True, stacked=False):
 
     # Groups x patterns dataframe
     all_pcounts = []
+    all_stats = []
     for p in PATTERN_NAMES:
         if groups:
             pcounts = data.to_df(p)[gene].groupby(data.obs[groups]).agg("sum")
+
+            # Calculate mean and 95% confidence interval
+            pattern_freq = data.to_df(p).groupby(data.obs[groups]).agg("sum")
+            stats = pattern_freq.apply(
+                lambda pattern: pd.Series(
+                    [pattern.mean(), *np.percentile(pattern, [2.5, 97.5])],
+                    index=["mean", "p2.5", "p97.5"],
+                ),
+                axis=1,
+            ).T
+            stats["pattern"] = p
+
         else:
             pcounts = pd.Series([data.to_df(p)[gene].sum()], name=p).to_frame()
+            
+            stats = data.to_df(p).sum()
+            stats = pd.DataFrame(
+                [np.mean(stats), *np.percentile(stats, [2.5, 97.5])],
+                index=["mean", "p2.5", "p97.5"], columns=[gene]
+            )
+            stats["pattern"] = p
+
         all_pcounts.append(pcounts)
+        all_stats.append(stats)
 
     all_pcounts = pd.concat(all_pcounts, axis=1)
+    all_stats = pd.concat(all_stats, axis=0)
+    all_stats = all_stats.reset_index().set_index("pattern")
+    all_stats = all_stats.rename(columns={"index": "stat"})
 
     # Normalize by number of cells
     if relative:
         all_pcounts /= data.n_obs
+        numeric_cols = all_stats.select_dtypes(include=np.number).columns
+        all_stats.loc[all_stats["stat"] == "p97.5", numeric_cols] += 1
+
+        all_stats[numeric_cols] = all_stats[numeric_cols] / data.n_obs
 
     if all_pcounts.shape[0] == 1:
         all_pcounts.index = [gene]
@@ -217,9 +246,24 @@ def gene_patterns(data, gene=None, groups=None, relative=True, stacked=False):
             pcounts = pcounts + [pcounts[0]]
             current_ax = axs[i]
 
+            # Plot confidence interval
+            if ci:
+                lower_ci_values = all_stats.loc[
+                    all_stats["stat"] == "p2.5", rowname
+                ].values.tolist()
+                lower_ci_values = lower_ci_values + [lower_ci_values[0]]
+                upper_ci_values = all_stats.loc[
+                    all_stats["stat"] == "p97.5", rowname
+                ].values.tolist()
+                upper_ci_values = upper_ci_values + [upper_ci_values[0]]
+
+                current_ax.fill_between(
+                    angles, lower_ci_values, upper_ci_values, color=colors[i], alpha=0.3
+                )
+            
             # Plot gene trace
-            current_ax.plot(angles, pcounts, color=colors[i], linewidth=1)
-            current_ax.scatter(angles, pcounts, color=colors[i], s=10)
+            current_ax.plot(angles, pcounts, color=colors[i], linewidth=0.8)
+            current_ax.scatter(angles, pcounts, color=colors[i], s=8)
 
             # Set theta axis labels
             current_ax.set_thetagrids(
@@ -255,12 +299,6 @@ def gene_patterns(data, gene=None, groups=None, relative=True, stacked=False):
         )
 
         plt.tight_layout()
-
-        for ax in axs:
-            mplcyberpunk.make_lines_glow(ax, n_glow_lines=3)
-            mplcyberpunk.add_underglow(ax, alpha_underglow=0.2)
-            if ax == axs[-1]:
-                break
 
     plt.close()
     return fig
