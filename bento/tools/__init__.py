@@ -1,6 +1,6 @@
-from ._pattern_stats import pattern_diff, pattern_stats
+from ._pattern_stats import pattern_diff, pattern_stats, spots_diff
 
-from ._cell_features import cell_area, cell_aspect_ratio, cell_radius, is_nuclear
+from ._cell_features import cell_area, cell_aspect_ratio, cell_radius, is_nuclear, cell_morph_open
 from ._features import coloc_cluster_genes, coloc_sim, gene_leiden, rasterize_cells
 from ._locfish_features import (
     distance_features,

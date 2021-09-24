@@ -1,7 +1,13 @@
+import warnings
+
 import numpy as np
 import pandas as pd
+import statsmodels.formula.api as sfm
+from patsy import PatsyError
+from statsmodels.stats.multitest import multipletests
+from statsmodels.tools.sm_exceptions import PerfectSeparationError
 
-from .._utils import track, PATTERN_NAMES
+from .._utils import PATTERN_NAMES, track
 
 
 @track
@@ -113,6 +119,7 @@ def pattern_diff(data, phenotype=None, copy=False):
         def log2fc(group_col):
             """
             Return
+            ------
             log2fc : int
                 log2fc of group_count / rest, pseudocount of 1
             group_count : int
@@ -144,5 +151,121 @@ def pattern_diff(data, phenotype=None, copy=False):
     gene_fc_stats = pd.concat(gene_fc_stats)
     gene_fc_stats = gene_fc_stats.reset_index()
     adata.uns[f"{phenotype}_dp"] = gene_fc_stats
+
+    return adata if copy else None
+
+
+def _spots_diff_gene(cell_by_pattern, phenotype, phenotype_vector):
+    """Perform pairwise comparison between groupby and every class.
+    Parameters
+    ----------
+    Returns
+    -------
+    DataFrame
+        Differential localization test results. [# of patterns, ]
+    """
+    results = []
+
+    # One hot encode categories
+    group_dummies = pd.get_dummies(pd.Series(phenotype_vector))
+    group_dummies.columns = [f"{phenotype}_{g}" for g in group_dummies.columns]
+    group_names = group_dummies.columns.tolist()
+    group_data = pd.concat([cell_by_pattern, group_dummies], axis=1)
+    group_data.columns = group_data.columns.astype(str)
+
+    # Perform one group vs rest logistic regression
+    for g in group_names:
+        try:
+            res = sfm.logit(
+                formula=f"{g} ~ {' + '.join(PATTERN_NAMES)}", data=group_data
+            ).fit(disp=0)
+
+            # Look at marginal effect of each pattern coefficient
+            r = res.get_margeff(dummy=True).summary_frame()
+            r["phenotype"] = g
+
+            r.columns = [
+                "dy/dx",
+                "std_err",
+                "z",    
+                "pvalue",
+                "ci_low",
+                "ci_high",
+                "gene",
+                "phenotype",
+            ]
+            r = r.reset_index().rename({"index": "pattern"}, axis=1)
+
+            results.append(r)
+        except (np.linalg.LinAlgError, PerfectSeparationError, PatsyError):
+            continue
+
+    return pd.concat(results) if len(results) > 0 else None
+
+
+def spots_diff(
+    data, phenotype=None, continuous=False, combined=False, n_cores=1, copy=False
+):
+    """Gene-wise test for differential localization across phenotype of interest.
+    Parameters
+    ----------
+    data : AnnData
+        Anndata formatted spatial data.
+    phenotype : str
+        Variable grouping cells for differential analysis. Must be in data.obs_names.
+    continuous : bool
+        Whether the phenotype is continuous or categorical. By default False.
+    n_cores : int, optional
+        cores used for multiprocessing, by default 1
+    copy : bool, optional
+        Return view of AnnData if False, return copy if True. By default False.
+    """
+    adata = data.copy() if copy else data
+
+    # need patterns as columns, cells and genes as index
+    pattern_df = []
+    for p in PATTERN_NAMES:
+        p_df = pd.DataFrame(
+            adata.layers[p], index=adata.obs_names, columns=adata.var_names
+        )
+        p_df = p_df.reset_index().melt(id_vars="cell")
+        p_df["pattern"] = p
+        pattern_df.append(p_df)
+
+    pattern_df = pd.concat(pattern_df)
+    pattern_df = pattern_df.pivot(
+        index=["cell", "gene"], columns="pattern", values="value"
+    ).reset_index()
+
+    phenotype_vector = adata.obs[phenotype].tolist()
+
+    diff_output = pattern_df.groupby("gene").apply(
+        lambda gp: _spots_diff_gene(gp, phenotype, phenotype_vector)
+    )
+
+    # Format pattern column
+    diff_output = pd.concat(diff_output)
+
+    # FDR correction
+    results_adj = []
+    for _, df in diff_output.groupby("pattern"):
+        df["padj"] = multipletests(df["pvalue"], method="hs")[1]
+        results_adj.append(df)
+
+    results_adj = pd.concat(results_adj).dropna()
+
+    # -log10pvalue, padj
+    results_adj["-log10p"] = -np.log10(results_adj["pvalue"].astype(np.float32))
+    results_adj["-log10padj"] = -np.log10(results_adj["padj"].astype(np.float32))
+
+    # Cap significance values
+    results_adj.loc[results_adj["-log10p"] > 20, "-log10p"] = 20
+    results_adj.loc[results_adj["-log10padj"] > 12, "-log10padj"] = 12
+
+    # Sort results
+    results_adj = results_adj.sort_values("pvalue")
+
+    # Save back to AnnData
+    adata.uns[f"diff_{phenotype}"] = results_adj
 
     return adata if copy else None

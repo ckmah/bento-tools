@@ -118,19 +118,14 @@ def pattern_distribution(data, relative=False):
     return g
 
 
-def pattern_diff(data, phenotype, group_name, relative=False):
-    """Visualize gene pattern frequencies between groups of cells by plotting log2 fold change and pattern count."""
+def pattern_diff(data, phenotype, group_name):
+    """Visualize gene pattern frequencies between groups of cells by plotting log2 fold change and -log10p."""
     diff_stats = data.uns[f"{phenotype}_dp"]
-
-    if relative:
-        y = "n_cells_detected"
-    else:
-        y = "pattern_count"
 
     g = sns.relplot(
         data=diff_stats,
         x=f"{group_name}_log2fc",
-        y=y,
+        y="-log10padj",
         # size="cell_fraction",
         # sizes=(2**2, 2**6),
         hue=f"{group_name}_rank",
