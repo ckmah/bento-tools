@@ -475,6 +475,7 @@ def pheno_to_color(pheno, palette):
     return study2color, sample_colors
 
 def simplex_plot(simplex_df,
+                 num_classes,
                  colors,
                  s=30,
                  alpha=0.5,
@@ -489,7 +490,7 @@ def simplex_plot(simplex_df,
     # population 1 is the reference population
     # population 2 spots (genes) will be colored as they are classified in population 1
     # simplex coordinates are pre-computed to be a sum of unit vectors determined by the number of classes
-    unit_vecs = _unit_vectors(len(np.unique(simplex_df['population1_class'])))
+    unit_vecs = _unit_vectors(num_classes)
     fig, (ax1,ax2) = plt.subplots(1,2,figsize=(15,15))
     # create frame of simplex plot
     for n in range(len(unit_vecs)-1):
