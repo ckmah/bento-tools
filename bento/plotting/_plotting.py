@@ -501,8 +501,8 @@ def simplex_plot(simplex_df,
     # scatter plot simplex plot data
     for cls in list(np.unique(simplex_df['population1_class'])):
         df_cls = simplex_df[simplex_df['population1_class'] == cls]
-        ax1.scatter(x=df_cls['population1_simplex_x'],y=df_cls['population1_simplex_x'],s=s,alpha=alpha,c=colors[cls])
-        ax2.scatter(x=df_cls['population2_simplex_x'],y=df_cls['population2_simplex_x'],s=s,alpha=alpha,c=colors[cls])
+        ax1.scatter(x=df_cls['population1_simplex_x'],y=df_cls['population1_simplex_y'],s=s,alpha=alpha,c=colors[cls])
+        ax2.scatter(x=df_cls['population2_simplex_x'],y=df_cls['population2_simplex_y'],s=s,alpha=alpha,c=colors[cls])
     ax1.axis('off')
     ax2.axis('off')
     ax1.set_box_aspect(1)

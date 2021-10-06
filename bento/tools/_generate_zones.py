@@ -84,8 +84,8 @@ def compare_subcellular_enrichment(data, cell_pop1, cell_pop2,genes=[],threshold
     adata.uns['enrichment_comparison']['cell_population2'] = cell_pop2
     adata.uns['enrichment_comparison']['genes'] = list(simplex_df.index)
     adata.uns['enrichment_comparison']['simplex_summary'] = simplex_df
-    adata.uns['enrichment_comparison']['popupation1_enrichment'] = pop1_enr_df
-    adata.uns['enrichment_comparison']['popupation2_enrichment'] = pop2_enr_df
+    adata.uns['enrichment_comparison']['population1_enrichment'] = pop1_enr_df
+    adata.uns['enrichment_comparison']['population2_enrichment'] = pop2_enr_df
     return adata if copy else None
 
 def _unit_vec_assign(enrichment_data,classes):
