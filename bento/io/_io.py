@@ -6,6 +6,8 @@ import geopandas
 import numpy as np
 import pandas as pd
 from shapely import geometry, wkt
+from read_roi import read_roi_file
+import os
 
 
 def read_h5ad(filename, backed=None):
@@ -67,13 +69,13 @@ def write_h5ad(data, filename):
     adata.write(filename)
 
 
-def read_geodata(points, cell, other={}):
+def read_data(points, cell, other={},fovs=[]):
     """Load spots and masks for many cells.
 
     Parameters
     ----------
     points : str
-        Filepath to spots .shp file. Expects GeoDataFrame with geometry of Points, and 'gene' column at minimum.
+        Filepath to spots .txt or .csv file. Expects 'x' and 'y' coordinates of Points, and 'gene' column at minimum.
     cell : str
         Filepath to cell segmentation masks .shp file. Expects GeoDataFrame with geometry of Polygons.
     other : dict(str)
@@ -84,7 +86,16 @@ def read_geodata(points, cell, other={}):
         AnnData object
     """
     print("Loading points...")
-    points = geopandas.read_file(points)
+    # import anndata
+    global anndata
+    if anndata is None:
+        import anndata
+    if '.txt' in points or '.tsv' in points:
+        points = pd.read_csv(points,sep='\t')
+    elif '.csv' in points:
+        points = pd.read_csv(points,sep=',')
+    #points = geopandas.read_file(points)
+    points = geopandas.GeoDataFrame(points,geometry=geopandas.points_from_xy(points.x,points.y))
 
     # Load masks
     print("Loading masks...")
@@ -132,7 +143,6 @@ def read_geodata(points, cell, other={}):
         )
 
     # Create cell x gene matrix
-    print("Processing expression...")
     cellxgene = expression.pivot_table(
         index=["cell"], columns=["gene"], aggfunc="sum"
     ).fillna(0)
@@ -168,8 +178,42 @@ def read_geodata(points, cell, other={}):
     print("Done.")
     return adata
 
-
 def _load_masks(path):
+    """Load ROIs from path.
+
+    Parameters
+    ----------
+    path : str
+        Path to .roi file.
+
+    Returns
+    -------
+    GeoDataFrame
+        Contains masks as Polygons.
+    """
+    if path[-1] == '/':
+        pass
+    else:
+        path += '/'
+    rois = os.listdir(path)
+    roi_shapes = []
+    for r in rois:
+        raw = read_roi_file(path+r)
+        k = r.split('.roi')[0]
+        roi = geometry.Polygon(zip(raw[k]['x'],raw[k]['y']))
+        roi_shapes.append(roi)
+    mask = geopandas.GeoDataFrame(geometry=geopandas.GeoSeries(roi_shapes))
+    mask.index = mask.index.astype(str)
+
+    for i, poly in enumerate(mask["geometry"]):
+        if type(poly) == geometry.MultiPolygon:
+            print(f"Object at index={i} is a MultiPolygon.")
+            print(poly)
+            return
+
+    return mask
+
+def _load_masks_deprecated(path):
     """Load GeoDataFrame from path.
 
     Parameters

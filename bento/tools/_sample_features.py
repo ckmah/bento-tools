@@ -1,9 +1,10 @@
 from abc import ABCMeta, abstractmethod
-
+from shapely.geometry import Point, LineString
 import pandas as pd
 from joblib import Parallel, delayed, parallel_backend
 from tqdm.auto import tqdm
 import geopandas as gpd
+import numpy as np
 
 
 def extract_many():
@@ -21,6 +22,18 @@ def extract(data, feature_name, n_jobs=1, copy=False):
         IntranuclearDistanceToNucleus().transform(
             adata, ["nucleus_shape"], feature_name, n_jobs
         )
+    elif feature_name == "zone_enrichment":
+        for zone in adata.uns['zones']:
+            print("Processing enrichment in " + zone)
+            ZoneEnrichment().transform(
+                adata, [zone], zone+'_enrichment', n_jobs
+            )
+    elif feature_name == "zone_polarization":
+        for zone in adata.uns['zones']:
+            print("Computing polarization in " + zone)
+            ZonePolarization().transform(
+                adata, [zone], zone+'_polarization', n_jobs
+            )
     else:
         raise ValueError("Not a valid 'feature_name'.")
 
@@ -142,3 +155,46 @@ class IntranuclearDistanceToNucleus(AbstractFeature):
         nuclear = points["nucleus"].astype(str) != "-1"
 
         return points[nuclear].distance(nuclear_shape.boundary).mean()
+
+class ZoneEnrichment(AbstractFeature):
+    def extract(self, points, shapes):
+        """Given a set of points and a subcellular region, calculate the proportion of points in said region.
+
+        Parameters
+        ----------
+        points : GeoDataFrame
+            Point coordinates. Assumes "nuclear" column is present.
+        shapes : list of Polygon objects (Shapely)
+            Assumes first element is zone shape.
+        """
+        points, shapes = super().extract(self, points, shapes)
+        zone_shape = shapes[0]
+
+        return list(points.within(zone_shape)).count(True)/len(points)
+
+class ZonePolarization(AbstractFeature):
+    def extract(self, points, shapes):
+        """Given a set of points and zone shape, compute how distant the centroid of the point cloud is from the centroid of the shape normalized to the major axis of the shape.
+
+        Parameters
+        ----------
+        points : GeoDataFrame
+            Point coordinates. Assumes "nuclear" column is present.
+        shapes : list of Polygon objects (Shapely)
+            Assumes first element is zone shape.
+        """
+        points, shapes = super().extract(self, points, shapes)
+        shape = shapes[0]
+        # define major axis of shape
+        # get the minimum bounding rectangle and zip coordinates into a list of point-tuples
+        mbr_points = list(zip(*shape.minimum_rotated_rectangle.exterior.coords.xy))
+        # calculate the length of each side of the minimum bounding rectangle
+        mbr_lengths = [LineString((mbr_points[i], mbr_points[i+1])).length for i in range(len(mbr_points) - 1)]
+        # get major/minor axis measurements
+        #minor_axis = min(mbr_lengths)
+        major_axis = max(mbr_lengths)
+        shape_centroid = shape.centroid
+        pnt_centroid = Point(np.mean(points.x),np.mean(points.y))
+        centroid_diff = shape_centroid.distance(pnt_centroid)
+
+        return abs(centroid_diff/major_axis)

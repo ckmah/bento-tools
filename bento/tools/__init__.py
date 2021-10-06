@@ -6,3 +6,4 @@ from ._locfish_features import (distance_features, moment_stats,
                                 ripley_features)
 from ._sample_features import extract
 from ._loc_patterns import PATTERN_NAMES, predict_patterns, distr_to_var, spots_diff
+from ._generate_zones import define_zones, compare_subcellular_enrichment

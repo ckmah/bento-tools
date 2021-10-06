@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import math
 from matplotlib.colors import ListedColormap
 
 from ..preprocessing import get_points
@@ -472,3 +473,47 @@ def pheno_to_color(pheno, palette):
     study2color = dict(zip(values, palette))
     sample_colors = [study2color[v] for v in pheno]
     return study2color, sample_colors
+
+def simplex_plot(simplex_df,
+                 colors,
+                 s=30,
+                 alpha=0.5,
+                 linewidth=2):
+    # simplex_df is a pandas dataframe with 6 columns:
+    #   - population1_class
+    #   - population2_class
+    #   - population1_simplex_x
+    #   - population1_simplex_y
+    #   - population2_simplex_x
+    #   - population2_simplex_y
+    # population 1 is the reference population
+    # population 2 spots (genes) will be colored as they are classified in population 1
+    # simplex coordinates are pre-computed to be a sum of unit vectors determined by the number of classes
+    unit_vecs = _unit_vectors(len(np.unique(simplex_df['population1_class'])))
+    fig, (ax1,ax2) = plt.subplots(1,2,figsize=(15,15))
+    # create frame of simplex plot
+    for n in range(len(unit_vecs)-1):
+        ax1.plot([unit_vecs[n][0],unit_vecs[n+1][0]],[unit_vecs[n][1],unit_vecs[n+1][1]],color='k',linestyle='--',linewidth=linewidth)
+        ax2.plot([unit_vecs[n][0],unit_vecs[n+1][0]],[unit_vecs[n][1],unit_vecs[n+1][1]],color='k',linestyle='--',linewidth=linewidth)
+    ax1.plot([unit_vecs[0][0],unit_vecs[-1][0]],[unit_vecs[0][1],unit_vecs[-1][1]],color='k',linestyle='--',linewidth=linewidth)
+    ax2.plot([unit_vecs[0][0],unit_vecs[-1][0]],[unit_vecs[0][1],unit_vecs[-1][1]],color='k',linestyle='--',linewidth=linewidth)
+    # scatter plot simplex plot data
+    for cls in list(np.unique(simplex_df['population1_class'])):
+        df_cls = simplex_df[simplex_df['population1_class'] == cls]
+        ax1.scatter(x=df_cls['population1_simplex_x'],y=df_cls['population1_simplex_x'],s=s,alpha=alpha,c=colors[cls])
+        ax2.scatter(x=df_cls['population2_simplex_x'],y=df_cls['population2_simplex_x'],s=s,alpha=alpha,c=colors[cls])
+    ax1.axis('off')
+    ax2.axis('off')
+    ax1.set_box_aspect(1)
+    ax2.set_box_aspect(1)
+    handles, labels = ax1.get_legend_handles_labels()
+    plt.tight_layout
+    
+def _unit_vectors(num_zones):
+    vectors = []
+    for i in range(num_zones):
+        rad = (math.pi*(4*i + num_zones))/(2*num_zones)
+        x = round(math.cos(rad),2)
+        y = round(math.sin(rad),2)
+        vectors.append([x,y])
+    return vectors
