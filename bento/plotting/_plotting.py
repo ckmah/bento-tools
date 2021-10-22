@@ -14,57 +14,83 @@ dsshow = None
 mplcyberpunk = None
 
 import geopandas
-import matplotlib
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import proplot as plot
 import seaborn as sns
 from matplotlib.colors import ListedColormap
+import scanpy as sc
 
 from .._utils import PATTERN_NAMES
 from ..preprocessing import get_points
 
-matplotlib.rcParams["figure.facecolor"] = (0, 0, 0, 0)
-plot.rc["autoformat"] = False
-plot.rc["grid"] = False
 
-
-def qc_metrics(adata):
+def qc_metrics(adata, fname=None, **kwargs):
     """
     Plot quality control metric distributions.
     """
-    fig, axs = plt.subplots(1, 4, figsize=(16, 3))
-    plt.subplots_adjust(hspace=1)
-    sns.kdeplot(adata.obs["total_counts"], fill=True, ax=axs[0])
-    sns.kdeplot(adata.obs["n_genes_by_counts"], fill=True, ax=axs[1])
-    sns.kdeplot(adata.obs["cell_area"], fill=True, ax=axs[2])
-    sns.kdeplot(np.log2(adata.X.flatten() + 1), fill=True, ax=axs[3])
-    sns.despine()
+    color = "lightseagreen"
+
+    fig, axs = plt.subplots(2, 3, figsize=(8, 5))
+
+    kde_params = dict(color=color, shade=True, legend=False)
+
+    with sns.axes_style("ticks"):
+        sns.kdeplot(adata.obs["total_counts"], ax=axs[0][0], **kde_params)
+
+        sns.distplot(
+            adata.X.flatten() + 1,
+            color=color,
+            kde=False,
+            hist_kws=dict(log=True),
+            ax=axs[0][1],
+        )
+
+        sns.kdeplot(adata.obs["n_genes_by_counts"], ax=axs[0][2], **kde_params)
+
+        sns.kdeplot(adata.obs["cell_area"], ax=axs[1][0], **kde_params)
+
+        sns.kdeplot(adata.obs["cell_perimeter"], ax=axs[1][1], **kde_params)
+
+        dual_colors = sns.light_palette(color, n_colors=2, reverse=True)
+        no_nucleus_count = (adata.obs["nucleus_shape"] == None).sum()
+        pie_values = [adata.n_obs - no_nucleus_count, no_nucleus_count]
+        pie_percents = np.array(pie_values) / adata.n_obs * 100
+        pie_labels = [
+            f"Yes\n{pie_values[0]} ({pie_percents[0]:.1f}%)",
+            f"No\n{pie_values[1]} ({pie_percents[1]:.1f}%)",
+        ]
+        axs[1][2].pie(pie_values, labels=pie_labels, colors=dual_colors)
+        pie_inner = plt.Circle((0, 0), 0.6, color="white")
+        axs[1][2].add_artist(pie_inner)
+
+        sns.despine()
 
     titles = [
         "Transcripts per Cell",
+        "Transcripts per Gene",
         "Genes per Cell",
         "Cell Area",
-        "Transcripts per Gene",
+        "Cell Perimeter",
+        "Cell has Nucleus",
     ]
-    xlabels = [
-        "mRNA count",
-        "Gene count",
-        "Area $\mathregular{unit^2}$",
-        "mRNA count",
-    ]
-    for i, ax in enumerate(axs):
-        #     ax.set_yticks([])
-        #     ax.set_ylabel("")
-        ax.set_xlabel(xlabels[i], fontsize=14)
-        ax.set_title(titles[i], fontsize=16)
+    xlabels = ["mRNA count", "Gene count", "Gene count", "Pixels", "Pixels", ""]
 
-    axs[3].set_xlabel("log2(tx count + 1)")
+    for i, ax in enumerate(np.array(axs).reshape(-1)):
+        #         ax.ticklabel_format(axis='y', style='sci', scilimits=(-2,2))
+        ax.yaxis.set_major_formatter(mpl.ticker.FormatStrFormatter("%1.e"))
+        ax.set_xlabel(xlabels[i], fontsize=12)
+        ax.set_title(titles[i], fontsize=14)
+        ax.grid(False)
+
     plt.tight_layout()
 
+    if fname:
+        fig.savefig(fname, **kwargs)
 
-def pattern_distribution(data, relative=False):
+
+def pattern_distribution(data, kde=False, relative=False):
     """Visualize gene pattern distributions.
 
     Each point is a gene, denoting the number of cells the gene is detected in (x-axis) vs pattern frequency (y-axis).
@@ -90,60 +116,70 @@ def pattern_distribution(data, relative=False):
         pattern_stats.append(p_stats)
     pattern_stats = pd.concat(pattern_stats).reset_index()
 
-    g = sns.FacetGrid(
-        data=pattern_stats, col="pattern", hue="pattern", col_wrap=3, size=2
-    )
-
     if relative:
         y = "pattern_fraction"
     else:
         y = "pattern_count"
 
     with sns.axes_style("white"):
-        g.map_dataframe(
-            sns.scatterplot,
-            "cell_fraction",
-            y,
-            s=16,
-            linewidth=0,
-            alpha=0.5,
-        )
+        if kde:
+            if pattern_stats.shape[0] > 1000:
+                stat_sample = pattern_stats.sample(1000).sort_values("pattern")
+            g = sns.FacetGrid(
+                data=stat_sample, col="pattern", hue="pattern", col_wrap=6, size=2, aspect=0.8, 
+            )
+            g.map(sns.kdeplot, "cell_fraction", y, shade=True, shade_lowest=False)
+
+        else:
+            g = sns.FacetGrid(
+                data=pattern_stats, col="pattern", hue="pattern", col_wrap=6, size=2, aspect=0.8
+            )
+            g.map_dataframe(
+                sns.scatterplot,
+                "cell_fraction",
+                y,
+                s=4,
+                linewidth=0,
+                alpha=0.1,
+            )
+
+        g.set_titles(col_template="{col_name}")
 
         for ax in g.axes:
             ax.set_xlim(0, 1)
             ax.axvline(0.5, lw=1, c="pink", ls="dotted")
-            ax.set_xlabel(f"cell_fraction ({data.n_obs} cells)")
+#             g.set_xlabel(f"cell_fraction ({data.n_obs} cells)")
             sns.despine()
+
+    plt.tight_layout()
 
     return g
 
 
-def pattern_diff(data, phenotype, group_name):
+def pattern_diff(data, phenotype):
     """Visualize gene pattern frequencies between groups of cells by plotting log2 fold change and -log10p."""
-    diff_stats = data.uns[f"{phenotype}_dp"]
+    diff_stats = data.uns[f"diff_{phenotype}"]
 
     g = sns.relplot(
         data=diff_stats,
-        x=f"{group_name}_log2fc",
+        x=f"log2fc",
         y="-log10padj",
-        # size="cell_fraction",
-        # sizes=(2**2, 2**6),
-        hue=f"{group_name}_rank",
-        col="pattern",
+        size=4,
+        hue="pattern",
+        col="phenotype",
         col_wrap=3,
         height=2.5,
-        palette="crest",
+        palette="tab10",
         s=20,
-        # alpha=0.4,
+        #         alpha=0.4,
         linewidth=0,
     )
 
     for ax in g.axes:
-        # ax.set_xlim(-4, 4)
         ax.axvline(0, lw=0.5, c="grey")
         ax.axvline(-2, lw=1, c="pink", ls="dotted")
         ax.axvline(2, lw=1, c="pink", ls="dotted")
-
+        ax.axhline(-np.log10(0.05), c="pink", ls="dotted", zorder=0)
         sns.despine()
 
     return g
@@ -261,7 +297,7 @@ def gene_patterns(data, gene=None, groups=None, relative=True, stacked=False):
     return fig
 
 
-def cell_patterns(data, cells=None, relative=True):
+def cell_patterns(data, fname=None, **kwargs):
     """Plot pattern frequency across cells.
 
     The mean and 95% confidence interval for all cells is denoted with black points and grey boxes.
@@ -279,69 +315,41 @@ def cell_patterns(data, cells=None, relative=True):
         Returns a matplotlib Axes containing plotted figure elements.
     """
     pattern_freq = data.obs[[f"{p}_count" for p in PATTERN_NAMES]]
+    pattern_freq = pattern_freq.sum()
+    n_samples = pattern_freq.sum()
+    fig, ax = plt.subplots(1, 1, figsize=(3, 2))
 
-    if relative:
-        pattern_freq /= data.n_vars
+    sns.barplot(x=pattern_freq, y=PATTERN_NAMES, palette="muted6", ax=ax)
+    sns.despine(bottom=True, left=True)
+    ax.grid(False)
+    plt.minorticks_off()
+    ax.set_xticks([])
+    ax.yaxis.set_tick_params(length=0)
+    ax.set_yticklabels(PATTERN_NAMES)
 
-    # Calculate mean and 95% confidence interval
-    stats = pattern_freq.apply(
-        lambda pattern: [pattern.mean(), *np.percentile(pattern, [2.5, 97.5])]
-    )
-    stats.index = ["mean", "ci_lower", "ci_upper"]
-    stats = stats.T
-
-    stats = stats.sort_values("mean", ascending=True)
-
-    # Plot mean as points
-    ax = plt.gca()
-    base_size = 7
-    plt.scatter(x=stats["mean"], y=stats.index, c="grey", s=base_size ** 2, zorder=100)
-
-    # Plot CI as grey box
-    plt.hlines(
-        y=range(stats.shape[0]),
-        xmin=stats["ci_lower"],
-        xmax=stats["ci_upper"],
-        color="grey",
-        alpha=0.1,
-        linewidth=2 * base_size,
-        zorder=1,
-    )
-
-    # Values to compare
-    if cells is not None:
-        stats["value"] = data.obs.loc[cells, PATTERN_NAMES].mean()
-
-        if relative:
-            stats["value"] /= data.n_vars
-        plt.scatter(
-            x=stats["value"], y=stats.index, c="skyblue", s=base_size ** 2, zorder=100
+    for i, label in enumerate(pattern_freq.index):
+        plt.text(
+            x=pattern_freq[label] + (n_samples * 0.01),
+            y=i,
+            s=f"{pattern_freq[label]/n_samples*100:.1f}%",
+            size=10,
+            va="center",
         )
 
-        # Stems
-        plt.hlines(
-            y=range(stats.shape[0]),
-            xmin=stats["mean"],
-            xmax=stats["value"],
-            color="skyblue",
-            alpha=1,
-            linewidth=1,
-            zorder=10,
-        )
+    plt.tight_layout()
 
-    # styling
-    if relative:
-        plt.xlim(0, 1)
-        plt.xlabel(f"Fraction ({data.n_vars} genes)")
-    else:
-        plt.xlim(0, data.n_vars)
-        plt.xlabel(f"Frequency ({data.n_vars} genes)")
-    ax.set_title(f"n = {data.n_obs} cells")
+    if fname:
+        fig.savefig(fname, **kwargs)
+    plt.close()
+    return fig
 
-    ax.tick_params(axis="y", length=0)
-    sns.despine(left=True)
 
-    return ax
+def umap(data, **kwargs):
+    f"""{sc.pl.umap.__doc__}"""
+    adata = data.copy()
+
+    adata.obs = adata.obs.loc[:, adata.obs.dtypes != "geometry"]
+    sc.pl.umap(adata, **kwargs)
 
 
 def plot_cells(
@@ -353,6 +361,7 @@ def plot_cells(
     genes=None,
     pattern=None,
     markersize=3,
+    lw=0.3,
     alpha=1,
     cmap="blues",
     ncols=4,
@@ -360,7 +369,7 @@ def plot_cells(
     binwidth=3,
     spread=False,
     legend=False,
-    cbar=True,
+    cbar=False,
     frameon=True,
     size=4,
 ):
@@ -447,6 +456,12 @@ def plot_cells(
         ax_radius = 1.1 * (max(cell_maxw, cell_maxh) / 2)
 
         # Create subplots
+        import proplot as plot
+
+        plot.rc["autoformat"] = False
+        plot.rc["grid"] = False
+        mpl.rcParams["figure.facecolor"] = (0, 0, 0, 0)
+
         fig, axs = plot.subplots(
             nrows=nrows, ncols=ncols, sharex=False, sharey=False, axwidth=size, space=0
         )
@@ -470,6 +485,7 @@ def plot_cells(
                     kind,
                     p,
                     markersize,
+                    lw,
                     alpha,
                     binwidth,
                     spread,
@@ -501,6 +517,7 @@ def plot_cells(
             kind,
             points,
             markersize,
+            lw,
             alpha,
             binwidth,
             spread,
@@ -514,8 +531,8 @@ def plot_cells(
     if pattern:
         ax.set_title(pattern)
 
-    plt.close(fig)
-    return fig
+#     plt.close(fig)
+#     return fig
 
 
 def _plot_cells(
@@ -525,6 +542,7 @@ def _plot_cells(
     kind,
     points_c,
     markersize,
+    lw,
     alpha,
     binwidth,
     spread,
@@ -537,7 +555,7 @@ def _plot_cells(
     # Plot mask outlines
     for mask in masks:
         shapes.set_geometry(mask).plot(
-            color=(0, 0, 0, 0.05), edgecolor=(0, 0, 0, 0.3), ax=ax
+            color=(0, 0, 0, 0), edgecolor=(0, 0, 0, 0.8), lw=lw, ax=ax
         )
 
     if points_c.shape[0] == 0:
@@ -624,39 +642,3 @@ def _plot_cells(
     ax.set_ylim(bounds[1], bounds[3])
 
     return ax
-
-
-def pheno_to_color(pheno, palette):
-    """
-    Maps list of categorical labels to a color palette.
-    Input values are first sorted alphanumerically least to greatest before mapping to colors.
-    This ensures consistent colors regardless of input value order.
-
-    Parameters
-    ----------
-    pheno : pd.Series
-        Categorical labels to map
-    palette: None, string, or sequence, optional
-        Name of palette or None to return current palette.
-        If a sequence, input colors are used but possibly cycled and desaturated.
-        Taken from sns.color_palette() documentation.
-
-    Returns
-    -------
-    dict
-        Mapping of label to color in RGBA
-    tuples
-        List of converted colors for each sample, formatted as RGBA tuples.
-
-    """
-    if type(palette) is str:
-        palette = sns.color_palette(palette)
-    else:
-        palette = palette
-
-    values = list(set(pheno))
-    values.sort()
-    palette = sns.color_palette(palette, n_colors=len(values))
-    study2color = dict(zip(values, palette))
-    sample_colors = [study2color[v] for v in pheno]
-    return study2color, sample_colors

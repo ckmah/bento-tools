@@ -1,20 +1,22 @@
 from abc import ABCMeta, abstractmethod
 
+import matplotlib.path as mplPath
 from astropy.stats.spatial import RipleysKEstimator
 from scipy.spatial.kdtree import distance_matrix
 from scipy.stats.stats import spearmanr
+from scipy.spatial import distance
 
 import dask_geopandas
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from dask import dataframe as dd
 from dask.diagnostics import ProgressBar
-from joblib import Parallel, delayed, parallel_backend
-from tqdm.auto import tqdm
 
 from .. import tools as tl
 from .._utils import track
+from ..preprocessing import get_points
+
+from tqdm.auto import tqdm
 
 
 class AbstractFeature(metaclass=ABCMeta):
@@ -57,7 +59,6 @@ class AbstractFeature(metaclass=ABCMeta):
     @abstractmethod
     def precompute(self, data, points):
         """Precompute cell-level features. This prevents recomputing once per sample. Also map shape to points."""
-
         # Save shape to points column
         points = (
             points.set_index("cell")
@@ -73,10 +74,13 @@ class AbstractFeature(metaclass=ABCMeta):
 
         # Cast categorical type to save memory
         cat_vars = ["cell", "gene", "nucleus"]
-        points[cat_vars] = points[cat_vars].astype("category")
+        for v in cat_vars:
+            points[v] = points[v].astype("category").cat.as_ordered()
 
+        points = points.set_index("cell")
         return data, points
 
+    @track
     def transform(self, data, copy=False):
         """Applies self.extract() to all points grouped by cell and gene.
 
@@ -89,7 +93,8 @@ class AbstractFeature(metaclass=ABCMeta):
         """
         adata = data.copy() if copy else data
 
-        points = adata.uns["points"].copy()
+        # Only include points for samples in data.obs_names and data.var_names
+        points = get_points(adata)
 
         # Check points DataFrame for missing columns
         if not self.__point_metadata.isin(points.columns).all():
@@ -99,17 +104,27 @@ class AbstractFeature(metaclass=ABCMeta):
 
         adata, points = self.precompute(adata, points)
 
-        out = (
-            dask_geopandas.from_geopandas(points, chunksize=10000)
-            .groupby(["cell", "gene"])
-            .apply(self.extract, meta=self.metadata)
-            .reset_index()
-        )
+        ngroups = points.groupby(["cell", "gene"]).ngroups
+        if ngroups > 100:
+            npartitions = min(1000, ngroups)
 
-        with ProgressBar():
-            feature_df = out.compute()
+            out = (
+                dask_geopandas.from_geopandas(points, npartitions=npartitions)
+                .groupby(["cell", "gene"])
+                .apply(self.extract, meta=self.metadata)
+            )
 
-        feature_df = feature_df.drop("tmp_index", axis=1)
+            #             from dask.diagnostics import Profiler, CacheProfiler, ResourceProfiler, visualize
+            #             with ProgressBar() as p, Profiler() as prof, CacheProfiler() as cprof, ResourceProfiler() as rprof:
+            with ProgressBar():
+                feature_df = out.compute()
+        #                 visualize([prof, cprof, rprof])
+
+        else:
+            tqdm.pandas()
+            feature_df = points.groupby(["cell", "gene"]).progress_apply(self.extract)
+
+        feature_df = feature_df.reset_index().drop("tmp_index", axis=1)
 
         # Save results to data layers
         feature_names = feature_df.columns[~feature_df.columns.isin(["cell", "gene"])]
@@ -135,8 +150,6 @@ class ShapeProximity(AbstractFeature):
     def extract(self, points):
         """Given a set of points, calculate and return the average proximity between points outside to the shape boundary, and points inside to the shape boundary.
 
-        Only considers points inside the same major subcellular compartment (cytoplasm or nucleus).
-
         Parameters
         ----------
         points : GeoDataFrame
@@ -154,25 +167,25 @@ class ShapeProximity(AbstractFeature):
         # Get shape polygon
         shape = points[self.shape_name].values[0]
 
-        # Get points in same major subcellular compartment
-        shape_prefix = self.shape_name.split("_shape")[0]
-        if points[f"{shape_prefix}_in_nucleus"].values[0]:
-            in_compartment = points["nucleus"] != "-1"
-        else:
-            in_compartment = points["nucleus"] == "-1"
-
         # Get points outside shape
         inner = points.within(shape)
         outer = ~inner
 
-        inner_dist = points[in_compartment & inner].distance(shape.boundary).mean()
-        outer_dist = points[in_compartment & outer].distance(shape.boundary).mean()
+        inner_dist = points[inner].distance(shape.boundary).mean()
+        outer_dist = points[outer].distance(shape.boundary).mean()
 
         # Scale from [0, 1], where 1 is close and 0 is far.
         cell_radius = points["cell_radius"].values[0]
         inner_proximity = (cell_radius - inner_dist) / cell_radius
         outer_proximity = (cell_radius - outer_dist) / cell_radius
 
+        if np.isnan(inner_proximity):
+            inner_proximity = 0
+
+        if np.isnan(outer_proximity):
+            outer_proximity = 0
+
+        shape_prefix = self.shape_name.split("_shape")[0]
         return pd.DataFrame(
             {
                 f"{shape_prefix}_inner_proximity": inner_proximity,
@@ -185,15 +198,10 @@ class ShapeProximity(AbstractFeature):
         data, points = super().precompute(data, points)
 
         tl.cell_radius(data)
-        tl.is_nuclear(data, self.shape_name)
 
         # Join attributes to points
         shape_prefix = self.shape_name.split("_shape")[0]
-        points = (
-            points.set_index("cell")
-            .join(data.obs[["cell_radius", f"{shape_prefix}_in_nucleus"]])
-            .reset_index()
-        )
+        points = points.join(data.obs["cell_radius"])
 
         return data, points
 
@@ -229,26 +237,24 @@ class ShapeAsymmetry(AbstractFeature):
 
         # Get points in same major subcellular compartment
         shape_prefix = self.shape_name.split("_shape")[0]
-        if points[f"{shape_prefix}_in_nucleus"].values[0]:
-            in_compartment = points["nucleus"] != "-1"
-        else:
-            in_compartment = points["nucleus"] == "-1"
 
         # Get points outside shape
         inner = points.within(shape)
         outer = ~inner
 
-        inner_to_centroid = (
-            points[in_compartment & inner].distance(shape.centroid).mean()
-        )
-        outer_to_centroid = (
-            points[in_compartment & outer].distance(shape.centroid).mean()
-        )
+        inner_to_centroid = points[inner].distance(shape.centroid).mean()
+        outer_to_centroid = points[outer].distance(shape.centroid).mean()
 
         # Values [0, 1], where 1 is asymmetrical and 0 is symmetrical.
         cell_radius = points["cell_radius"].values[0]
         inner_asymmetry = inner_to_centroid / cell_radius
         outer_asymmetry = outer_to_centroid / cell_radius
+
+        if np.isnan(inner_asymmetry):
+            inner_asymmetry = 0
+
+        if np.isnan(outer_asymmetry):
+            outer_asymmetry = 0
 
         return pd.DataFrame(
             {
@@ -262,17 +268,166 @@ class ShapeAsymmetry(AbstractFeature):
         data, points = super().precompute(data, points)
 
         tl.cell_radius(data)
-        tl.is_nuclear(data, self.shape_name)
 
         # Join attributes to points
         shape_prefix = self.shape_name.split("_shape")[0]
-        points = (
-            points.set_index("cell")
-            .join(data.obs[["cell_radius", f"{shape_prefix}_in_nucleus"]])
-            .reset_index()
-        )
+        points = points.join(data.obs["cell_radius"])
 
         return data, points
+
+
+class PointDispersion(AbstractFeature):
+    def __init__(self):
+        shape_name = "cell_shape"
+        super().__init__("cell_shape")
+        self.metadata = {
+            "point_dispersion": float,
+        }
+
+    def extract(self, points):
+        """Given a set of points, calculate the normalized central second moment.
+
+        Parameters
+        ----------
+        points : GeoDataFrame
+            Point coordinates.
+
+        Return
+        ------
+
+        """
+        points = super().extract(points)
+
+        # Get precomputed centroid and cell moment
+        pt_centroid = points[["x", "y"]].values.mean(axis=0).reshape(1, 2)
+        cell_coords = points["cell_coords"].values[0]
+
+        # calculate points moment
+        point_moment = _second_moment(pt_centroid, points[["x", "y"]].values)
+        cell_moment = _second_moment(pt_centroid, cell_coords)
+
+        # Normalize by cell moment
+        norm_moment = point_moment / cell_moment
+
+        return pd.DataFrame(
+            {
+                f"point_dispersion": norm_moment,
+            },
+            index=pd.Index([0], name="tmp_index"),
+        )
+
+    def precompute(self, data, points):
+        data, points = super().precompute(data, points)
+
+        # Second moment of cell relative to shape centroid
+        cell_coords = data.obs["cell_shape"].apply(_raster_polygon)
+
+        cell_coords = pd.Series(
+            cell_coords,
+            index=data.obs_names,
+            name="cell_coords",
+        )
+
+        # Join attributes to points
+        points = points.join(cell_coords)
+
+        return data, points
+
+
+class ShapeDispersion(AbstractFeature):
+    def __init__(self, shape_name):
+        super().__init__(shape_name)
+        shape_prefix = shape_name.split(sep="_shape")[0]
+        self.metadata = {
+            f"{shape_prefix}_dispersion": float,
+        }
+
+    def extract(self, points):
+        """Given a set of points, calculate the normalized central second moment (analogous to MSE) in reference to a shape.
+
+        Parameters
+        ----------
+        points : GeoDataFrame
+            Point coordinates.
+
+        Return
+        ------
+
+        """
+        points = super().extract(points)
+        shape_prefix = self.shape_name.split("_shape")[0]
+
+        # Get precomputed centroid and cell moment
+        ref_centroid = points[f"{shape_prefix}_centroid"].iloc[0]
+        cell_moment = points["cell_moments"].iloc[0]
+
+        # calculate points moment
+        point_moment = _second_moment(ref_centroid, points[["x", "y"]].values)
+
+        # Normalize by cell moment
+        norm_moment = point_moment / cell_moment
+
+        return pd.DataFrame(
+            {
+                f"{shape_prefix}_dispersion": norm_moment,
+            },
+            index=pd.Index([0], name="tmp_index"),
+        )
+
+    def precompute(self, data, points):
+        data, points = super().precompute(data, points)
+        shape_prefix = self.shape_name.split("_shape")[0]
+
+        # Second moment of cell relative to shape centroid
+        cell_rasters = data.obs["cell_shape"].apply(_raster_polygon)
+        shape_centroids = gpd.GeoSeries(data.obs[self.shape_name]).centroid
+        cell_moments = [
+            _second_moment(np.array(centroid.xy).reshape(1, 2), cell_coords)
+            for centroid, cell_coords in zip(shape_centroids, cell_rasters)
+        ]
+        cell_stats = pd.DataFrame(
+            {"cell_moments": cell_moments, f"{shape_prefix}_centroid": shape_centroids},
+            index=data.obs_names,
+        )
+
+        # Join attributes to points
+        points = points.join(cell_stats)
+
+        return data, points
+
+
+def _second_moment(centroid, pts):
+    """
+    Calculate second moment of points with centroid as reference.
+
+    Parameters
+    ----------
+    centroid : [1 x 2] float
+    pts : [n x 2] float
+    """
+    centroid = np.array(centroid).reshape(1, 2)
+    radii = distance.cdist(centroid, pts)
+    second_moment = np.sum(radii * radii / len(pts))
+    return second_moment
+
+
+def _raster_polygon(polygon):
+    """
+    Rasterize polygon and return list of coordinates in body of polygon.
+    """
+    minx, miny, maxx, maxy = polygon.bounds
+    x, y = np.meshgrid(
+        np.arange(minx, maxx, step=np.float(1)),
+        np.arange(miny, maxy, step=np.float(1)),
+    )
+    x = x.flatten()
+    y = y.flatten()
+    xy = np.array([x, y]).T
+    polygon_path = mplPath.Path(np.array(polygon.exterior.xy).T)
+    polygon_cell_mask = polygon_path.contains_points(xy)
+    xy = xy[polygon_cell_mask]
+
+    return xy
 
 
 class Ripley(AbstractFeature):
@@ -332,6 +487,10 @@ class Ripley(AbstractFeature):
         # Max and min value of the gradient of L
         ripley_smooth = pd.Series(stats).rolling(5).mean()
         ripley_smooth.dropna(inplace=True)
+
+        # Can't take gradient of single number
+        if len(ripley_smooth) < 2:
+            ripley_smooth = np.array([0, 0])
 
         ripley_gradient = np.gradient(ripley_smooth)
         l_max_gradient = ripley_gradient.max()
@@ -416,10 +575,6 @@ class CellOpenEnrichment(AbstractFeature):
         tl.cell_morph_open(data, 0.1)
 
         # Join attributes to points
-        points = (
-            points.set_index("cell")
-            .join(data.obs[["cell_open_0.05_shape", "cell_open_0.1_shape"]])
-            .reset_index()
-        )
+        points = points.join(data.obs[["cell_open_0.05_shape", "cell_open_0.1_shape"]])
 
         return data, points

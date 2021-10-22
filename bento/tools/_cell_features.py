@@ -43,6 +43,16 @@ def cell_area(data, copy=False):
 
     return adata if copy else None
 
+
+@track
+def cell_perimeter(data, copy=False):
+    adata = data.copy() if copy else data
+    
+    adata.obs["cell_perimeter"] = gpd.GeoSeries(adata.obs["cell_shape"]).length
+
+    return adata if copy else None
+
+
 @track
 def cell_radius(data, overwrite=False, copy=False):
     """
