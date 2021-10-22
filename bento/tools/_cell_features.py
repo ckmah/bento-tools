@@ -43,6 +43,16 @@ def cell_area(data, copy=False):
 
     return adata if copy else None
 
+
+@track
+def cell_perimeter(data, copy=False):
+    adata = data.copy() if copy else data
+    
+    adata.obs["cell_perimeter"] = gpd.GeoSeries(adata.obs["cell_shape"]).length
+
+    return adata if copy else None
+
+
 @track
 def cell_radius(data, overwrite=False, copy=False):
     """
@@ -85,5 +95,29 @@ def is_nuclear(data, shape_name, overwrite=False, copy=False):
 
         shape_in_nucleus = shapes.within(nuclei)
         adata.obs[f"{shape_prefix}_in_nucleus"] = shape_in_nucleus
+
+    return adata if copy else None
+
+
+@track
+def cell_morph_open(data, proportion, overwrite=False, copy=False):
+    """
+    Perform opening (morphological) of distance d on cell_shape.
+    """
+    adata = data.copy() if copy else data
+    
+    shape_name = f"cell_open_{proportion}_shape"
+
+    if not overwrite and shape_name in adata.obs.columns:
+        return adata if copy else None
+
+    # Compute cell radius as needed
+    cell_radius(adata)
+
+    cells = gpd.GeoSeries(adata.obs["cell_shape"])
+    d = proportion * data.obs["cell_radius"]
+    
+    # Opening
+    adata.obs[shape_name] = cells.buffer(-d).buffer(d)
 
     return adata if copy else None

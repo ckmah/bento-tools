@@ -1,10 +1,15 @@
-import proplot as plot
+# import proplot as plot
 
 from sklearn.preprocessing import LabelEncoder
 
+import matplotlib.pyplot as plt
 import seaborn as sns
+import pandas as pd
 
-def factors(data, axis="cell"):
+from .._utils import pheno_to_color
+
+
+def factors(data, axis="cell", palette="Paired", figsize=(6, 6)):
     # Load factor loadings
     if axis == "cell":
         load = data.uns["tensor_loadings"]["Cells"]
@@ -29,30 +34,61 @@ def factors(data, axis="cell"):
     else:
         unit_order = load.index
 
-    # Plot cluster labels
-    if axis != "feature":
-        fig, ax = plot.subplots(axwidth=3, axheight=0.25, hspace=0)
-        ax[0].heatmap(
-            [cluster_labels] * 2,
-            cmap="Set1",
-        )
-        ax.format(
-            xticks="null",
-            yticks="null",
-            leftlabels=["Clusters    "],
-            title=f"{axis.capitalize()} Loadings",
-        )
+    factor2color, factor_colors = pheno_to_color(load.columns, palette=palette)
 
-    # Plot factor loadings
-    fig, axes = plot.subplots(
-        ncols=1, nrows=load.shape[1], axwidth=3, axheight=0.5, hspace="1em"
+    clustermap_params = dict(
+        row_cluster=False,
+        col_cluster=False,
+        row_colors=factor_colors,
+        cmap="Reds",
+        figsize=figsize,
     )
 
-    for f, ax in zip(load.columns, axes):
-        ax.bar(range(load.shape[0]), load.loc[unit_order,f], linewidth=0)
-        sns.despine()
-    #     break
-    axes.format(xticks="null",
-#                 yticks="null",
-                leftlabels=load.columns.tolist()
-               )
+    if axis != "feature":
+        cluster2color, sample_colors = pheno_to_color(cluster_labels, palette=palette)
+        g = sns.clustermap(
+            load.loc[unit_order].T,
+            col_colors=sample_colors,
+            xticklabels=False,
+            **clustermap_params,
+        )
+    else:
+        g = sns.clustermap(
+            load.loc[unit_order].T,
+            xticklabels=True,
+            **clustermap_params,
+        )
+
+    plt.setp(g.ax_heatmap.get_yticklabels(), rotation=0)
+
+    plt.tight_layout()
+
+    # Plot cluster labels
+
+
+#     if axis != "feature":
+#         fig, ax = plot.subplots(axwidth=3, axheight=0.25, hspace=0)
+#         ax[0].heatmap(
+#             [cluster_labels] * 2,
+#             cmap="Set1",
+#         )
+#         ax.format(
+#             xticks="null",
+#             yticks="null",
+#             leftlabels=["Clusters    "],
+#             title=f"{axis.capitalize()} Loadings",
+#         )
+
+#     # Plot factor loadings
+#     fig, axes = plot.subplots(
+#         ncols=1, nrows=load.shape[1], axwidth=3, axheight=0.5, hspace="1em"
+#     )
+
+#     for f, ax in zip(load.columns, axes):
+#         ax.bar(range(load.shape[0]), load.loc[unit_order,f], linewidth=0)
+#         sns.despine()
+#     #     break
+#     axes.format(xticks="null",
+# #                 yticks="null",
+#                 leftlabels=load.columns.tolist()
+#                )

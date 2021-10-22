@@ -2067,7 +2067,7 @@ heapdict = "*"
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8,<3.10"
-content-hash = "b70e3de9e932e0bec1dd27679902f36189101f3a1787b1d5bade03c1b281569e"
+content-hash = "bc8758e7cbedb2249f5575664bbe76e77fcf494ced7d6535cea1e6be60bc4d42"
 
 [metadata.files]
 affine = [

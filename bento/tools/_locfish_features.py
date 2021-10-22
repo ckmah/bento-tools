@@ -96,8 +96,8 @@ def ripley_features(data, n_cores=1, copy=False):
                 data=gene_pts[["x", "y"]].values, radii=[l_4_dist], mode="none"
             )[0]
 
-            gene_features.extend([max_l, max_gradient, min_gradient, l_corr, l_4])
-            features.append(gene_features)
+            gene_features.extend(np.array([max_l, max_gradient, min_gradient, l_corr, l_4]).astype(float))
+            features.append(np.array(gene_features))
 
         return features
 
@@ -111,6 +111,9 @@ def ripley_features(data, n_cores=1, copy=False):
         for cell_name in tqdm(adata.obs_names.tolist())
     )
 
+    for a in cell_features:
+        if len(a) == 100:
+            print(np.array(a))
     cell_features = np.array(cell_features).reshape(-1, 7)
 
     colnames = [
