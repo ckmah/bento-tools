@@ -1,6 +1,8 @@
 import inspect
 from functools import wraps
 
+from anndata import AnnData
+
 PATTERN_NAMES = [
     "cell_edge",
     "foci",
@@ -30,7 +32,11 @@ def track(func):
         kwargs = get_default_args(func)
         kwargs.update(kwds)
 
-        adata = args[0]
+        if type(args[0]) == AnnData:
+            adata = args[0]
+        else:
+            adata = args[1]
+            
         old_attr = list_attributes(adata)
 
         if kwargs["copy"]:
@@ -63,9 +69,9 @@ def track(func):
                 modified = True
                 out += f"\n    {attr}:"
                 if len(removed) > 0:
-                    out += f"\n        - removed: {', '.join(removed)}"
+                    out += f"\n        - {', '.join(removed)}"
                 if len(added) > 0:
-                    out += f"\n        + added: {', '.join(added)}"
+                    out += f"\n        + {', '.join(added)}"
 
         if modified:
             print(out)
@@ -91,3 +97,44 @@ def list_attributes(adata):
         found_attr[attr] = keys
 
     return found_attr
+
+
+
+def pheno_to_color(pheno, palette):
+    """
+    Maps list of categorical labels to a color palette.
+    Input values are first sorted alphanumerically least to greatest before mapping to colors.
+    This ensures consistent colors regardless of input value order.
+
+    Parameters
+    ----------
+    pheno : pd.Series
+        Categorical labels to map
+    palette: None, string, or sequence, optional
+        Name of palette or None to return current palette.
+        If a sequence, input colors are used but possibly cycled and desaturated.
+        Taken from sns.color_palette() documentation.
+
+    Returns
+    -------
+    dict
+        Mapping of label to color in RGBA
+    tuples
+        List of converted colors for each sample, formatted as RGBA tuples.
+
+    """
+    import seaborn as sns
+    
+    if type(palette) is str:
+        palette = sns.color_palette(palette)
+    else:
+        palette = palette
+
+    values = list(set(pheno))
+    values.sort()
+    palette = sns.color_palette(palette, n_colors=len(values))
+    study2color = dict(zip(values, palette))
+    sample_colors = [study2color[v] for v in pheno]
+    return study2color, sample_colors
+
+

@@ -33,6 +33,7 @@ statsmodels = "0.12.2"
 dask-geopandas = "^0.1.0-alpha.4"
 mplcyberpunk = "^0.3.0"
 cell2cell = "^0.5.2"
+scanpy = "^1.8.1"
 
 [tool.poetry.dev-dependencies]
 Sphinx = "^4.1.2"

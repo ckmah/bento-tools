@@ -30,6 +30,8 @@ def read_h5ad(filename, backed=None):
 
     adata = anndata.read_h5ad(filename, backed=backed)
 
+    
+    
     # Load obs columns that are shapely geometries
     adata.obs = adata.obs.apply(
         lambda col: geopandas.GeoSeries(
@@ -38,6 +40,9 @@ def read_h5ad(filename, backed=None):
         if col.astype(str).str.startswith("POLYGON").any()
         else geopandas.GeoSeries(col)
     )
+    
+    adata.obs.index.name = 'cell'
+    adata.var.index.name = 'gene'
 
     return adata
 
@@ -62,6 +67,8 @@ def write_h5ad(data, filename):
         if col.astype(str).str.startswith("POLYGON").any()
         else col
     )
+    
+    adata.uns['points'] = adata.uns['points'].drop('geometry', axis=1, errors='ignore')
 
     # Write to h5ad
     adata.write(filename)

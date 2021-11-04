@@ -11,26 +11,38 @@ from .._utils import track
 
 
 @track
-def to_tensor(data, layers, scale=None, mask=False, copy=False):
+def to_tensor(data, layers, use_highly_variable_genes=False, scale=None, mask=False, copy=False):
     adata = data.copy() if copy else data
-
+    
     n_features = len(layers)
+    cells = data.obs_names.tolist()
+    n_cells = len(cells)
     tensor = []
+    
+    # TODO calculating highly variable genes not integrated, relies on scanpy
+    
     for l in layers:
-        tensor.append(data.to_df(l).values)
+        if use_highly_variable_genes:
+            n_genes = adata.var['highly_variable'].sum()
+            genes = adata.var_names[adata.var['highly_variable']].tolist()
+            tensor.append(adata.to_df(l).loc[:,adata.var['highly_variable']].values)
+        else:
+            n_genes = adata.n_vars
+            genes = adata.var_names.tolist()
+            tensor.append(adata.to_df(l).values)
     tensor = np.array(tensor)
 
     if scale == "z_score":
         tensor = (
             StandardScaler()
             .fit_transform(tensor.reshape(n_features, -1).T)
-            .reshape(n_features, data.n_obs, data.n_vars)
+            .reshape(n_features, n_cells, n_genes)
         )
     elif scale == "unit":
         tensor = (
             MinMaxScaler()
             .fit_transform(tensor.reshape(n_features, -1).T)
-            .reshape(n_features, data.n_obs, data.n_vars)
+            .reshape(n_features, n_cells, n_genes)
         )
 
     if mask:
@@ -40,8 +52,8 @@ def to_tensor(data, layers, scale=None, mask=False, copy=False):
     adata.uns["tensor"] = tensor
     adata.uns["tensor_labels"] = [
         layers,
-        data.obs_names.tolist(),
-        data.var_names.tolist(),
+        cells,
+        genes
     ]
 
     return adata
@@ -94,45 +106,20 @@ def assign_factors(data, n_clusters=None, copy=False):
         zscore(gene_load, axis=1), index=gene_load.index, columns=gene_load.columns
     )
 
-    # Cluster cells by loadings
-    if n_clusters is None:
-        n_clusters = feature_load.shape[1]
-
-    cell_clusters = AgglomerativeClustering(
-        n_clusters=n_clusters, linkage="average"
-    ).fit_predict(cell_load)
-
-    # Assign cluster with largest average loading to factor
-    cell_to_factor = cell_load.apply(
-        lambda col: col.groupby(cell_clusters).agg(np.mean).idxmax(), axis=0
-    )
-
-    # Cell cluster to factor lookup
-    cell_to_factor = dict(zip(cell_to_factor.values.flatten(), cell_to_factor.index))
-
+    # Assign cluster with largest factor loading
+    cell_to_factor = cell_load.idxmax(axis=1)
+    
     # Save associated tensor decomposition factor to adata.obs
-    adata.obs.loc[cell_load.index, "td_cluster"] = [
-        cell_to_factor[i] for i in cell_clusters
-    ]
-
+    adata.obs["td_cluster"] = cell_to_factor
+    
+    
     # Repeat the same assignment procedure for genes...
 
     # Cluster genes by loadings
-    gene_clusters = AgglomerativeClustering(
-        n_clusters=n_clusters, linkage="average"
-    ).fit_predict(gene_load)
-
-    # Assign cluster with largest average loading to factor
-    gene_to_factor = gene_load.apply(
-        lambda col: col.groupby(gene_clusters).agg(np.mean).idxmax(), axis=0
-    )
-    # Cell cluster to factor lookup
-    gene_to_factor = dict(zip(gene_to_factor.values.flatten(), gene_to_factor.index))
+    gene_to_factor = gene_load.idxmax(axis=1)
 
     # Save associated tensor decomposition factor to adata.obs
-    adata.var.loc[gene_load.index, "td_cluster"] = [
-        gene_to_factor[i] for i in gene_clusters
-    ]
+    adata.var["td_cluster"] = gene_to_factor
     return adata
 
 
@@ -140,7 +127,8 @@ def init_tensor(data, device="auto"):
 
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
-
+    print(f"Device: {device}")
+    
     tensor_c2c = c2c.tensor.PreBuiltTensor(
         data.uns["tensor"],
         order_names=data.uns["tensor_labels"],
@@ -153,5 +141,6 @@ def init_tensor(data, device="auto"):
         metadata_dicts=[None, None, None],
         fill_with_order_elements=True,
     )
+
 
     return tensor_c2c, meta_tf

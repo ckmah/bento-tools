@@ -5,5 +5,6 @@ from ._plotting import (
     pattern_distribution,
     plot_cells,
     qc_metrics,
+    umap
 )
 from ._tensor_decomposition import factors
