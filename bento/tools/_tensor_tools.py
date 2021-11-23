@@ -78,6 +78,14 @@ def to_tensor(
 
 
 def select_tensor_rank(data, upper_rank=10, runs=5, device="auto", random_state=888):
+    '''
+    Parameters
+    ----------
+    upper_rank : int
+        Maximum rank to perform decomposition.
+    runs : int
+        Number of times to run decomposition for calculating the confidence interval.
+    '''
     tensor_c2c, meta_tf = init_tensor(data, device=device)
 
     fig, error = tensor_c2c.elbow_rank_selection(
