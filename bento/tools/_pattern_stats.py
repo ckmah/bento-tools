@@ -17,7 +17,7 @@ tqdm.pandas()
 
 @track
 def pattern_stats(data, copy=False):
-    """Computes frequencies of input layer values across cells and across genes.
+    """Computes frequencies of intracellular patterns across cells and across genes.
     Assumes layer values are categorical.
 
     Parameters

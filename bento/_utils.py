@@ -3,16 +3,19 @@ from functools import wraps
 
 from anndata import AnnData
 
-PATTERN_NAMES = [
-    "cell_edge",
-    "foci",
-    "nuclear_edge",
-    "perinuclear",
-    "protrusions",
-    "random",
-]
+import seaborn as sns
 
+PATTERN_NAMES = ["cell_edge", "cytoplasmic", "none", "nuclear", "nuclear_edge"]
 
+PATTERN_PROBS = [f"{p}_prob" for p in PATTERN_NAMES]
+
+# Colors correspond to order of PATTERN_NAMES: cyan, blue, gray, orange, red
+PATTERN_COLORS = ['#17becf', '#1f77b4', '#7f7f7f', '#ff7f0e', '#d62728']
+
+# Colors to represent each dimension (features, cells, genes); Set2 palette n_colors=3
+DIM_COLORS = ['#66c2a5', '#fc8d62', '#8da0cb']
+# ['#AD6A6C', '#f5b841', '#0cf2c9']
+# 7349fd
 def get_default_args(func):
     signature = inspect.signature(func)
     return {
@@ -36,7 +39,7 @@ def track(func):
             adata = args[0]
         else:
             adata = args[1]
-            
+
         old_attr = list_attributes(adata)
 
         if kwargs["copy"]:
@@ -99,7 +102,6 @@ def list_attributes(adata):
     return found_attr
 
 
-
 def pheno_to_color(pheno, palette):
     """
     Maps list of categorical labels to a color palette.
@@ -124,7 +126,7 @@ def pheno_to_color(pheno, palette):
 
     """
     import seaborn as sns
-    
+
     if type(palette) is str:
         palette = sns.color_palette(palette)
     else:
@@ -136,5 +138,3 @@ def pheno_to_color(pheno, palette):
     study2color = dict(zip(values, palette))
     sample_colors = [study2color[v] for v in pheno]
     return study2color, sample_colors
-
-

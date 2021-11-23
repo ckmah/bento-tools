@@ -1,10 +1,8 @@
 from ._plotting import (
-    cell_patterns,
-    gene_patterns,
     pattern_diff,
-    pattern_distribution,
+    pattern_plot,
     plot_cells,
     qc_metrics,
-    umap
+    umap,
 )
 from ._tensor_decomposition import factors

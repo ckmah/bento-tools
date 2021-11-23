@@ -1,116 +1,166 @@
-# import proplot as plot
-
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import numpy as np
 
-from .._utils import pheno_to_color
+from .._utils import pheno_to_color, DIM_COLORS
+from ._utils import savefig
 
 
-def factors(data, axis="cell", palette="Paired", figsize=(6, 6)):
-    # Load factor loadings
-    if axis == "cell":
-        load = data.uns["tensor_loadings"]["Cells"]
-    elif axis == "gene":
-        load = data.uns["tensor_loadings"]["Genes"]
-    elif axis == "feature":
-        load = data.uns["tensor_loadings"]["Features"]
-    else:
-        raise ValueError("Invalid axis specified.")
+def _get_loading(data, load, dim, zscore):
 
-    # Get cluster labels
-    if axis == "cell":
-        cluster_labels = data.obs.sort_values("td_cluster")["td_cluster"]
-        unit_order = cluster_labels.index.tolist()
-    elif axis == "gene":
-        cluster_labels = data.var.sort_values("td_cluster")["td_cluster"].dropna()
-        unit_order = cluster_labels.index.tolist()
-    else:
+    if dim == "Features":
         cluster_labels = np.zeros(len(load))
         unit_order = load.index
 
-    factor2color, factor_colors = pheno_to_color(load.columns, palette=palette)
-    cluster2color, cluster_colors = pheno_to_color(cluster_labels, palette=palette)
+    elif dim == "Cells":
+        cluster_labels = data.obs["td_cluster"].sort_values().dropna()
+        unit_order = cluster_labels.index.tolist()
+    elif dim == "Genes":
+        cluster_labels = data.var["td_cluster"].sort_values().dropna()
+        unit_order = cluster_labels.index.tolist()
 
-    #     clustermap_params = dict(
-    #         row_cluster=False,
-    #         col_cluster=False,
-    #         row_colors=factor_colors,
-    #         cmap="Reds",
-    #         figsize=figsize,
-    #     )
+    load_df = pd.DataFrame(
+        [
+            range(load.shape[0]),
+            load.loc[unit_order],
+            cluster_labels,
+            load.index.tolist(),
+        ],
+        index=["index", "load", "group", "cell"],
+    ).T
+    load_df = load_df.astype({"index": int, "load": float, "group": str, "cell": str})
+    
+    if zscore:
+        load_df["load"] = StandardScaler().fit_transform(load_df[["load"]])
+        
+    load_df["group"] = (
+        load_df["group"].str.replace("Factor", "Group").astype("category")
+    )
+    return load_df
 
-    #     if axis != "feature":
-    #         cluster2color, sample_colors = pheno_to_color(cluster_labels, palette=palette)
-    #         g = sns.clustermap(
-    #             load.loc[unit_order].T,
-    #             col_colors=sample_colors,
-    #             xticklabels=False,
-    #             **clustermap_params,
-    #         )
-    #     else:
-    #         g = sns.clustermap(
-    #             load.loc[unit_order].T,
-    #             xticklabels=True,
-    #             **clustermap_params,
-    #         )
 
-    #     plt.setp(g.ax_heatmap.get_yticklabels(), rotation=0)
+@savefig
+def factors(data, zscore=False, fname=None):
+    dims = list(data.uns["tensor_loadings"].keys())
+    factors = list(data.uns["tensor_loadings"][dims[0]].columns)
+    n_factors = len(factors)
+    n_dims = len(dims)
 
-    #     plt.tight_layout()
+    fig = plt.figure(figsize=(3*n_dims,2*n_factors))
+    gs = fig.add_gridspec(1, 2, width_ratios=[3, 10])
+    gs0 = gs[0].subgridspec(n_factors, 1)
+    gs1 = gs[1].subgridspec(n_factors * 3, n_dims - 1, height_ratios=[1,3,1] * n_factors)
+    # Plot feature loadings
+    for row, factor in enumerate(factors):
 
-    # Plot cluster labels
+        if row == 0:
+            ax = fig.add_subplot(gs0[row, 0])
+        else:
+            ax = fig.add_subplot(gs0[row, 0], sharex=fig.axes[0])
 
-#     --------------------------------
-#     n_factors = load.shape[1]
-#     fig, axes = plt.subplots(n_factors, 1)
+        load = data.uns["tensor_loadings"]["Features"][factor]
+        load_df = _get_loading(data, load, "Features", zscore=False)
 
-    # Plot factor loadings
-#     for f, ax in zip(load.columns, axes):
-#         load_df = pd.DataFrame(
-#             [range(load.shape[0]), load.loc[unit_order, f], cluster_labels],
-#             index=["x", "y", "hue"],
-#         ).T
+        # Feature barplots
+        sns.barplot(
+            y=load.index.fillna("na").tolist(),
+            x=load_df["load"],
+            color=DIM_COLORS[0],
+            # alpha=0.5,
+            ax=ax,
+        )
 
-#         if axis != "feature":
-#             sns.scatterplot(
-#                 data=load_df,
-#                 x="x",
-#                 y="y",
-#                 hue="hue",
-#                 s=8,
-#                 linewidth=0,
-#                 palette=palette,
-#                 legend=False,
-#                 ax=ax,
-#             )
-#             ax.set_xticks([])
-#         else:
-#             sns.barplot(
-#                 x=load.index.fillna("na").tolist(),
-#                 y=load_df["y"],
-#                 hue=load_df["hue"],
-#                 palette=palette,
-#                 ax=ax,
-#             )
-#             ax.get_legend().remove()
+        if row == 0:
+            ax.set_title("Features", weight="600")
+        
+        # Set row labels
+        ax.set_ylabel(factor, labelpad=30, rotation=0, weight="600")
 
-#             if ax == axes[-1]:
-#                 ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha="right")
-#             else:
-#                 ax.set_xticks([])
+        # Turn off xlabels except bottom row
+        if factor != factors[-1]:
+            ax.set(xlabel=None)
+        else:
+            ax.set(xlabel="loading")
 
-#         ax.set_ylabel(f, labelpad=30, rotation=0, weight="600")
-#         ax.set_xlabel("")
-#         sns.despine()
+        # Turn off yticks
+        ax.tick_params(axis="y", which="both", length=0)
+        
+        # Format spines
+        sns.despine(ax=ax, left=True)
+        ax.spines['bottom'].set_color('#aaaaaa')
 
-#     ax.set_xlabel(str(axis).capitalize(), weight="600")
-#     plt.tight_layout()
+        # Plot cell and gene loadings
+        for gs1_col, dim in zip(range(0, n_dims - 1), dims[1:]):
+            row_adjusted = (row + 1) * 3 - 2
+            ax = fig.add_subplot(gs1[row_adjusted, gs1_col])
 
-    load["td_cluster"] = cluster_labels
-    load_long = load.reset_index().melt(id_vars=['index', "td_cluster"])
-    load_long.columns = ["sample", "td_cluster", "factor", "loading"]
-    sns.factorplot(data=load_long, kind="bar", x="td_cluster", y="loading", hue="factor")
+            load = data.uns["tensor_loadings"][dim][factor]
+            load_df = _get_loading(data, load, dim, zscore)
+
+            if row == n_factors - 1:
+                cbar=True
+                cbar_ax=fig.add_subplot(gs1[row_adjusted+1, gs1_col])
+            else:
+                cbar=False
+                cbar_ax=None
+            
+            if zscore:
+                vmin=-3
+                vmax=3
+            else:
+                vmin=None
+                vmax=None
+            
+            sns.heatmap(
+                load_df[["load"]].T,
+                ax=ax,
+                xticklabels=False,
+                yticklabels=False,
+                cbar_kws=dict(orientation="horizontal"),
+                cmap="RdBu_r",
+                center=0,
+                vmin=vmin,
+                vmax=vmax,
+                cbar=cbar,
+                cbar_ax=cbar_ax
+            )
+            
+            ax.tick_params(axis="y", which="both", length=0)
+            ax.set(ylabel=None)
+            sns.despine(ax=ax, top=False, bottom=False, left=False, right=False)
+            
+            if row == 0:
+                ax = fig.add_subplot(gs1[row, gs1_col])
+                ax.set_title(str(dim).capitalize(), weight="600")
+                ax.axis("off")
+            
+            # sns.violinplot(
+            #     data=load_df,
+            #     x="group",
+            #     y="load",
+            #     # hue="group",
+            #     linewidth=1,
+            #     dodge=False,
+            #     color=violin_color,
+            #     # palette=palette,
+            #     ax=ax,
+            # )
+            # sns.stripplot(
+            #     data=load_df,
+            #     x="group",
+            #     y="load",
+            #     color="0.1",
+            #     # jitter=0.2,
+            #     alpha=0.5,
+            #     s=2,
+            #     linewidth=0,
+            #     ax=ax,
+            # )
+            # ax.get_legend().remove()
+
+    # axes = np.array(fig.get_axes()).reshape(n_factors, n_dims)
+    # for col, dim in enumerate(dims):
+    #     axes[0][col].set_title(str(dim).capitalize(), weight="600")

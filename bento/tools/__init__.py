@@ -9,7 +9,7 @@ from ._locfish_features import (
     nuclear_fraction,
     ripley_features,
 )
-from ._pattern_models import predict_patterns
+from ._pattern_models import predict_patterns, intracellular_patterns
 from ._sample_features import ShapeProximity, ShapeAsymmetry, Ripley, ShapeEnrichment, PointDispersion, ShapeDispersion
 from ._shapes import inner_edge, outer_edge
 from ._tensor_tools import to_tensor, decompose_tensor, select_tensor_rank, assign_factors

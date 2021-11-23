@@ -11,7 +11,6 @@ tf = None
 geopandas = None
 plot = None
 dsshow = None
-mplcyberpunk = None
 
 import geopandas
 import matplotlib as mpl
@@ -19,14 +18,17 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from upsetplot import UpSet, from_indicators
 from matplotlib.colors import ListedColormap
 import scanpy as sc
 
+from ._utils import savefig
 from .._utils import PATTERN_NAMES
 from ..preprocessing import get_points
 
 
-def qc_metrics(adata, fname=None, **kwargs):
+@savefig
+def qc_metrics(adata, fname=None):
     """
     Plot quality control metric distributions.
     """
@@ -86,77 +88,44 @@ def qc_metrics(adata, fname=None, **kwargs):
 
     plt.tight_layout()
 
-    if fname:
-        fig.savefig(fname, **kwargs)
 
+@savefig
+def pattern_plot(data, percentage=False, element_size=None, fname=None):
 
-def pattern_distribution(data, kde=False, relative=False):
-    """Visualize gene pattern distributions.
-
-    Each point is a gene, denoting the number of cells the gene is detected in (x-axis) vs pattern frequency (y-axis).
-
-    Parameters
-    ----------
-    data : spatial formatted AnnData
-    relative : bool
-        If True, plot fraction of detected cells, by default False. Otherwise plot absolute frequency.
-    """
-    pattern_stats = []
+    sample_labels = []
     for p in PATTERN_NAMES:
-        p_stats = data.var[[f"{p}_fraction", f"{p}_count", "fraction_detected"]]
-        p_stats = p_stats.rename(
-            {
-                f"{p}_fraction": "pattern_fraction",
-                f"{p}_count": "pattern_count",
-                "fraction_detected": "cell_fraction",
-            },
-            axis=1,
-        )
-        p_stats["pattern"] = p
-        pattern_stats.append(p_stats)
-    pattern_stats = pd.concat(pattern_stats).reset_index()
+        p_df = data.to_df(p).reset_index().melt(id_vars="cell").dropna()
+        p_df = p_df[p_df["value"] == 1]
+        p_df = p_df.set_index(["cell", "gene"])
+        sample_labels.append(p_df)
 
-    if relative:
-        y = "pattern_fraction"
-    else:
-        y = "pattern_count"
+    sample_labels = pd.concat(sample_labels, axis=1) == 1
+    sample_labels = sample_labels == 1
+    sample_labels.columns = PATTERN_NAMES
+    sample_labels = sample_labels.reset_index().sort_values(
+        PATTERN_NAMES, ascending=False
+    )
 
-    with sns.axes_style("white"):
-        if kde:
-            if pattern_stats.shape[0] > 1000:
-                stat_sample = pattern_stats.sample(1000).sort_values("pattern")
-            g = sns.FacetGrid(
-                data=stat_sample, col="pattern", hue="pattern", col_wrap=6, size=2, aspect=0.8, 
-            )
-            g.map(sns.kdeplot, "cell_fraction", y, shade=True, shade_lowest=False)
+    upset = UpSet(
+        from_indicators(PATTERN_NAMES, data=sample_labels),
+        element_size=element_size,
+        min_subset_size=sample_labels.shape[0] * 0.001,
+        facecolor="lightgray",
+        sort_by="degree",
+        show_counts=(not percentage),
+        show_percentages=percentage,
+    )
 
-        else:
-            g = sns.FacetGrid(
-                data=pattern_stats, col="pattern", hue="pattern", col_wrap=6, size=2, aspect=0.8
-            )
-            g.map_dataframe(
-                sns.scatterplot,
-                "cell_fraction",
-                y,
-                s=4,
-                linewidth=0,
-                alpha=0.1,
-            )
+    for p, color in zip(PATTERN_NAMES, sns.color_palette(n_colors=5)):
+        if sample_labels[p].sum() > 0:
+            upset.style_subsets(present=p, max_degree=1, facecolor=color)
 
-        g.set_titles(col_template="{col_name}")
-
-        for ax in g.axes:
-            ax.set_xlim(0, 1)
-            ax.axvline(0.5, lw=1, c="pink", ls="dotted")
-#             g.set_xlabel(f"cell_fraction ({data.n_obs} cells)")
-            sns.despine()
-
-    plt.tight_layout()
-
-    return g
+    upset.plot()
+    plt.suptitle(f"Localization Patterns\n{data.n_obs} cells, {data.n_vars} genes")
 
 
-def pattern_diff(data, phenotype):
+@savefig
+def pattern_diff(data, phenotype, fname=None):
     """Visualize gene pattern frequencies between groups of cells by plotting log2 fold change and -log10p."""
     diff_stats = data.uns[f"diff_{phenotype}"]
 
@@ -185,203 +154,6 @@ def pattern_diff(data, phenotype):
     return g
 
 
-def gene_patterns(data, gene=None, groups=None, ci=True, relative=True, stacked=False):
-    """Plot pattern frequency of genes.
-    Parameters
-    ----------
-    data : [type]
-        [description]
-    gene : str
-        Gene name to show frequencies.
-    groups : str, optional
-        Sample category to stratify frequencies, by default None.
-    relative : bool, optional
-        Whether to calculate relative fractions or absolute number of cells, by default True.
-    stacked : bool, optional
-        Whether to use a single plot or multiple plots for each category, by default False.
-    """
-
-    global mplcyberpunk
-    if mplcyberpunk is None:
-        import mplcyberpunk
-
-    # Calculate polar angles
-    angles = np.linspace(0, 2 * np.pi, len(PATTERN_NAMES), endpoint=False)
-    angles = np.concatenate((angles, [angles[0]]))
-
-    # Groups x patterns dataframe
-    all_pcounts = []
-    all_stats = []
-    for p in PATTERN_NAMES:
-        if groups:
-            pcounts = data.to_df(p)[gene].groupby(data.obs[groups]).agg("sum")
-
-            # Calculate mean and 95% confidence interval
-            pattern_freq = data.to_df(p).groupby(data.obs[groups]).agg("sum")
-            stats = pattern_freq.apply(
-                lambda pattern: pd.Series(
-                    [pattern.mean(), *np.percentile(pattern, [2.5, 97.5])],
-                    index=["mean", "p2.5", "p97.5"],
-                ),
-                axis=1,
-            ).T
-            stats["pattern"] = p
-
-        else:
-            pcounts = pd.Series([data.to_df(p)[gene].sum()], name=p).to_frame()
-            
-            stats = data.to_df(p).sum()
-            stats = pd.DataFrame(
-                [np.mean(stats), *np.percentile(stats, [2.5, 97.5])],
-                index=["mean", "p2.5", "p97.5"], columns=[gene]
-            )
-            stats["pattern"] = p
-
-        all_pcounts.append(pcounts)
-        all_stats.append(stats)
-
-    all_pcounts = pd.concat(all_pcounts, axis=1)
-    all_stats = pd.concat(all_stats, axis=0)
-    all_stats = all_stats.reset_index().set_index("pattern")
-    all_stats = all_stats.rename(columns={"index": "stat"})
-
-    # Normalize by number of cells
-    if relative:
-        all_pcounts /= data.n_obs
-        numeric_cols = all_stats.select_dtypes(include=np.number).columns
-        all_stats.loc[all_stats["stat"] == "p97.5", numeric_cols] += 1
-
-        all_stats[numeric_cols] = all_stats[numeric_cols] / data.n_obs
-
-    if all_pcounts.shape[0] == 1:
-        all_pcounts.index = [gene]
-
-    if stacked or all_pcounts.shape[0] == 1:
-        fig = plt.figure(figsize=(4, 4))
-        ax = fig.add_subplot(111, polar=True)
-        axs = [ax] * all_pcounts.shape[0]
-    else:
-        fig, axs = plt.subplots(
-            1,
-            all_pcounts.shape[0],
-            sharex=True,
-            subplot_kw=dict(polar=True),
-            figsize=(4 * all_pcounts.shape[0], 4),
-        )
-        fig.subplots_adjust(wspace=0.3)
-
-    colors = sns.color_palette("muted", n_colors=all_pcounts.shape[0])
-    with sns.axes_style("whitegrid"):
-        for i, rowname in enumerate(all_pcounts.index):
-            pcounts = all_pcounts.iloc[i].values.tolist()
-            pcounts = pcounts + [pcounts[0]]
-            current_ax = axs[i]
-
-            # Plot confidence interval
-            if ci:
-                lower_ci_values = all_stats.loc[
-                    all_stats["stat"] == "p2.5", rowname
-                ].values.tolist()
-                lower_ci_values = lower_ci_values + [lower_ci_values[0]]
-                upper_ci_values = all_stats.loc[
-                    all_stats["stat"] == "p97.5", rowname
-                ].values.tolist()
-                upper_ci_values = upper_ci_values + [upper_ci_values[0]]
-
-                current_ax.fill_between(
-                    angles, lower_ci_values, upper_ci_values, color=colors[i], alpha=0.3
-                )
-            
-            # Plot gene trace
-            current_ax.plot(angles, pcounts, color=colors[i], linewidth=0.8)
-            current_ax.scatter(angles, pcounts, color=colors[i], s=8)
-
-            # Set theta axis labels
-            current_ax.set_thetagrids(
-                angles * 180 / np.pi, PATTERN_NAMES + [PATTERN_NAMES[0]]
-            )
-            current_ax.tick_params(axis="x", labelsize="medium", pad=15)
-
-            # Format r ticks
-            current_ax.yaxis.set_major_locator(plt.MaxNLocator(4, prune="lower"))
-            current_ax.tick_params(axis="y", labelsize="medium", labelcolor="gray")
-
-            # Set grid style
-            current_ax.grid(
-                True, axis="x", linestyle="-", linewidth=0.5, color="gray", alpha=0.5
-            )
-            current_ax.grid(
-                True, axis="y", linestyle=":", linewidth=0.5, color="gray", alpha=0.5
-            )
-            current_ax.set_facecolor((0.98, 0.98, 0.98))
-            current_ax.spines["polar"].set_color("gray")
-            current_ax.spines["polar"].set_alpha(0.5)
-
-        handles = [
-            Line2D([], [], c=color, lw=1, marker="o", markersize=4, label=g)
-            for g, color in zip(all_pcounts.index, colors[: all_pcounts.shape[0]])
-        ]
-        plt.legend(
-            handles=handles,
-            loc=(0.9, 0.95),
-            labelspacing=0.1,
-            fontsize="medium",
-            frameon=False,
-        )
-
-        plt.tight_layout()
-
-    plt.close()
-    return fig
-
-
-def cell_patterns(data, fname=None, **kwargs):
-    """Plot pattern frequency across cells.
-
-    The mean and 95% confidence interval for all cells is denoted with black points and grey boxes.
-    The blue points denote the mean frequencies for the specified subset of cell(s).
-    Parameters
-    ----------
-    data : spatial formatted AnnData
-    cells : list of str, optional
-        A list of cell names, by default None. The mean frequencies are plotted as blue points.
-    relative : bool, optional
-        Whether to normalize pattern frequencies to total cells, by default True.
-    Returns
-    -------
-    Axes
-        Returns a matplotlib Axes containing plotted figure elements.
-    """
-    pattern_freq = data.obs[[f"{p}_count" for p in PATTERN_NAMES]]
-    pattern_freq = pattern_freq.sum()
-    n_samples = pattern_freq.sum()
-    fig, ax = plt.subplots(1, 1, figsize=(3, 2))
-
-    sns.barplot(x=pattern_freq, y=PATTERN_NAMES, palette="muted6", ax=ax)
-    sns.despine(bottom=True, left=True)
-    ax.grid(False)
-    plt.minorticks_off()
-    ax.set_xticks([])
-    ax.yaxis.set_tick_params(length=0)
-    ax.set_yticklabels(PATTERN_NAMES)
-
-    for i, label in enumerate(pattern_freq.index):
-        plt.text(
-            x=pattern_freq[label] + (n_samples * 0.01),
-            y=i,
-            s=f"{pattern_freq[label]/n_samples*100:.1f}%",
-            size=10,
-            va="center",
-        )
-
-    plt.tight_layout()
-
-    if fname:
-        fig.savefig(fname, **kwargs)
-    plt.close()
-    return fig
-
-
 def umap(data, **kwargs):
     f"""{sc.pl.umap.__doc__}"""
     adata = data.copy()
@@ -390,27 +162,23 @@ def umap(data, **kwargs):
     sc.pl.umap(adata, **kwargs)
 
 
+@savefig
 def plot_cells(
     data,
     kind="scatter",
     hue=None,
+    palette=None,
     tile=False,
-    cells=None,
-    genes=None,
-    pattern=None,
-    markersize=3,
-    lw=0.3,
-    alpha=1,
-    color="tab:blue",
-    cmap="blues",
-    ncols=4,
-    masks="all",
-    binwidth=3,
-    spread=False,
-    legend=False,
-    cbar=False,
+    lw=0.5,
+    col_wrap=4,
+    shape_names="all",
+    legend=True,
     frameon=True,
-    size=4,
+    axsize=4,
+    ax=None,
+    scatter_kws=dict(),
+    hist_kws=dict(),
+    fname=None,
 ):
     """
     Visualize distribution of variable in spatial coordinates.
@@ -423,163 +191,144 @@ def plot_cells(
         Select specified list of cells. Default value of None selects all cells.
     genes: None, list
         Select specified list of genes. Default value of None selects all genes.
-    draw_masks: str, list
-       masks to draw outlines for.
+    draw_shape_names: str, list
+       shape_names to draw outlines for.
     """
 
-    global ds, tf, dsshow
+    # Add all shape_names if 'all'
+    if shape_names == "all":
+        shape_names = data.obs.columns[data.obs.columns.str.endswith("shape")]
 
-    if ds is None:
-        import datashader as ds
-
-    if tf is None:
-        import datashader.transfer_functions as tf
-
-    if dsshow is None:
-        from datashader.mpl_ext import dsshow
-
-    # Format cells input
-    if cells is None:
-        cells = data.obs.index.unique().tolist()
-    else:
-        cells = list(cells)
-
-    if "-1" in cells:
-        warnings.warn(
-            "Detected points outside of cells. TODO write clean fx that drops these points"
-        )
-
-    # Format genes input
-    if genes is None:
-        genes = data.var_names
-    else:
-        # print('Subsetting genes...')
-        if type(genes) != list:
-            genes = [genes]
-
-        genes = list(set(genes))
-
-    # Add all masks if 'all'
-    if masks == "all":
-        masks = data.obs.columns[data.obs.columns.str.endswith("shape")]
-    else:
-        masks = [f"{m}_shape" for m in masks]
-
-    # Convert draw_masks to list
-    masks = [masks] if type(masks) is str else masks
+    # Convert draw_shape_names to list
+    shape_names = [shape_names] if type(shape_names) is str else shape_names
 
     # Subset adata info by genes and cells
-    data = data[cells, genes]
-    points = get_points(data, cells=cells, genes=genes)
-
-    if pattern:
-        points = points.loc[points["pattern"] == pattern]
+    points = get_points(data, cells=data.obs_names, genes=data.var_names)
 
     points = geopandas.GeoDataFrame(
         points, geometry=geopandas.points_from_xy(points["x"], points["y"])
     )
 
-    # Get masks and points
-    shapes = geopandas.GeoDataFrame(data.obs[masks], geometry="cell_shape")
-    masks = shapes.columns.tolist()
+    # Get shape_names and points
+    shapes_gdf = geopandas.GeoDataFrame(data.obs[shape_names], geometry="cell_shape")
+    shape_names = shapes_gdf.columns.tolist()
+    
+    # Plot in single figure
+    if not tile:
+        if ax is None:
+            ax = plt.gca()
+        # fig, ax = plt.subplots(1, 1, figsize=(axsize, axsize))
+        ax.set(xticks=[], yticks=[], adjustable="datalim")
+        ax.axis(frameon)
+
+        # Plot points
+        if kind == "scatter":
+            _spatial_scatter(points, hue, palette, ax, **scatter_kws)
+        elif kind == "hist":
+            _spatial_hist(points, hue, palette, ax, **hist_kws)
+
+        # Plot shapes
+        _spatial_line(shapes_gdf, shape_names, lw, ax)
 
     # Plot each cell in separate subplots
-    if tile:
-        ncols = min(ncols, len(shapes))
-        nrows = max(1, int(np.ceil(len(shapes) / ncols)))
-
+    else:
         # Determine fixed radius of each subplot
-        cell_bounds = shapes.bounds
+        cell_bounds = shapes_gdf.bounds
         cell_maxw = (cell_bounds["maxx"] - cell_bounds["minx"]).max()
         cell_maxh = (cell_bounds["maxy"] - cell_bounds["miny"]).max()
         ax_radius = 1.1 * (max(cell_maxw, cell_maxh) / 2)
 
-        # Create subplots
-        import proplot as plot
-        # TODO get rid of proplot, set aspect ratios with matplotlib
-
-        plot.rc["autoformat"] = False
-        plot.rc["grid"] = False
-        mpl.rcParams["figure.facecolor"] = (0, 0, 0, 0)
-
-        fig, axs = plot.subplots(
-            nrows=nrows, ncols=ncols, sharex=False, sharey=False, axwidth=size, space=0
+        # Initialize subplots
+        ncols = min(col_wrap, len(shapes_gdf))
+        nrows = max(1, int(np.ceil(len(shapes_gdf) / ncols)))
+        fig, axs = plt.subplots(
+            nrows,
+            ncols,
+            sharex=False,
+            sharey=False,
+            figsize=(axsize * ncols, axsize * nrows),
         )
-        axs.format(xticks=[], yticks=[])
-        axs.axis(frameon)
+        plt.subplots_adjust(wspace=0, hspace=0)
 
-        # Plot each cell separately
+        # Plot cells separately
         for i, ax in enumerate(axs):
             try:
-                s = shapes.iloc[[i]]
+                # Select subset data
+                s = shapes_gdf.iloc[[i]]
                 p = points.loc[points["cell"] == s.index[0]]
 
-                if i == 0:
-                    legend = legend
-                else:
-                    legend = False
-                _plot_cells(
-                    masks,
-                    s,
-                    ax,
-                    kind,
-                    p,
-                    markersize,
-                    lw,
-                    alpha,
-                    binwidth,
-                    spread,
-                    hue,
-                    color,
-                    cmap,
-                    size,
-                    legend,
-                    cbar,
-                )
+                # Plot points
+                if kind == "scatter":
+                    _spatial_scatter(p, hue, palette, ax, **scatter_kws)
+                elif kind == "hist":
+                    _spatial_hist(p, hue, palette, ax, **hist_kws)
 
+                # Plot shapes
+                _spatial_line(s, shape_names, lw, ax)
+
+                # Set axes boundaries to be square; make sure size of cells are relative to one another
                 s_bound = s.bounds
                 centerx = np.mean([s_bound["minx"], s_bound["maxx"]])
                 centery = np.mean([s_bound["miny"], s_bound["maxy"]])
                 ax.set_xlim(centerx - ax_radius, centerx + ax_radius)
                 ax.set_ylim(centery - ax_radius, centery + ax_radius)
 
+                ax.set(xticks=[], yticks=[], xlabel=None, ylabel=None)
+                ax.axis(frameon)
+
+                # Only make legend for last plot
+                n_genes = len(np.unique(p["gene"]))
+                if legend and i == len(shapes_gdf) - 1:
+                    ax.legend(
+                        loc="upper center", bbox_to_anchor=(0.5, 1.15), ncol=n_genes
+                    )
+                else:
+                    ax.legend().remove()
+
             except (IndexError, ValueError):
                 ax.remove()
 
-    else:
-        fig, ax = plt.subplots(1, 1, figsize=(size, size))
-        plt.setp(ax, xticks=[], yticks=[])
-        ax.axis(frameon)
 
-        _plot_cells(
-            masks,
-            shapes,
-            ax,
-            kind,
-            points,
-            markersize,
-            lw,
-            alpha,
-            binwidth,
-            spread,
-            hue,
-            color,
-            cmap,
-            size,
-            legend,
-            cbar,
+def _spatial_line(geo_df, shape_names, lw, ax):
+    for sname in shape_names:
+        geo_df.set_geometry(sname).plot(
+            color=(0, 0, 0, 0), edgecolor=(0, 0, 0, 0.8), lw=lw, ax=ax
         )
 
-    if pattern:
-        ax.set_title(pattern)
 
-#     plt.close(fig)
-#     return fig
+def _spatial_scatter(points_gdf, hue, palette, ax, **scatter_kws):
+    # Override scatterplot parameter defaults
+    scatter_defaults = dict(linewidth=0, s=10)
+    scatter_defaults.update(scatter_kws)
+    scatter_kws = scatter_defaults
+    
+    # Remove categories with no data; otherwise legend is very long
+    if hue:
+        points_gdf[hue].cat.remove_unused_categories(inplace=True)
+
+    sns.scatterplot(
+        data=points_gdf, x="x", y="y", hue=hue, palette=palette, ax=ax, **scatter_kws
+    )
+
+
+def _spatial_hist(points_gdf, hue, palette, ax, **hist_kws):
+    # Override scatterplot parameter defaults
+    hist_defaults = dict(binwidth=20)
+    hist_defaults.update(hist_kws)
+    hist_kws = hist_defaults
+    
+    # Remove categories with no data; otherwise legend is very long
+    if hue:
+        points_gdf[hue].cat.remove_unused_categories(inplace=True)
+        
+    sns.histplot(
+        data=points_gdf, x="x", y="y", hue=hue, palette=palette, ax=ax, **hist_kws
+    )
 
 
 def _plot_cells(
-    masks,
-    shapes,
+    shape_names,
+    shapes_gdf,
     ax,
     kind,
     points_c,
@@ -595,9 +344,9 @@ def _plot_cells(
     legend,
     cbar,
 ):
-    # Plot mask outlines
-    for mask in masks:
-        shapes.set_geometry(mask).plot(
+    # Plot sname outlines
+    for sname in shape_names:
+        shapes_gdf.set_geometry(sname).plot(
             color=(0, 0, 0, 0), edgecolor=(0, 0, 0, 0.8), lw=lw, ax=ax
         )
 
@@ -680,7 +429,7 @@ def _plot_cells(
             ax.figure.colorbar(artist, cax=cax, orientation="vertical")
         # plt.tight_layout()
 
-    bounds = shapes.total_bounds
+    bounds = shapes_gdf.total_bounds
     ax.set_xlim(bounds[0], bounds[2])
     ax.set_ylim(bounds[1], bounds[3])
 
