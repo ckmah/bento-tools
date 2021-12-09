@@ -23,7 +23,7 @@ from matplotlib.colors import ListedColormap
 import scanpy as sc
 
 from ._utils import savefig
-from .._utils import PATTERN_NAMES
+from .._utils import PATTERN_NAMES, PATTERN_COLORS
 from ..preprocessing import get_points
 
 
@@ -90,7 +90,7 @@ def qc_metrics(adata, fname=None):
 
 
 @savefig
-def pattern_plot(data, percentage=False, element_size=None, fname=None):
+def pattern_plot(data, percentage=False, scale=1, fname=None):
 
     sample_labels = []
     for p in PATTERN_NAMES:
@@ -108,7 +108,7 @@ def pattern_plot(data, percentage=False, element_size=None, fname=None):
 
     upset = UpSet(
         from_indicators(PATTERN_NAMES, data=sample_labels),
-        element_size=element_size,
+        element_size=scale * 40,
         min_subset_size=sample_labels.shape[0] * 0.001,
         facecolor="lightgray",
         sort_by="degree",
@@ -116,7 +116,7 @@ def pattern_plot(data, percentage=False, element_size=None, fname=None):
         show_percentages=percentage,
     )
 
-    for p, color in zip(PATTERN_NAMES, sns.color_palette(n_colors=5)):
+    for p, color in zip(PATTERN_NAMES, PATTERN_COLORS):
         if sample_labels[p].sum() > 0:
             upset.style_subsets(present=p, max_degree=1, facecolor=color)
 
@@ -212,7 +212,7 @@ def plot_cells(
     # Get shape_names and points
     shapes_gdf = geopandas.GeoDataFrame(data.obs[shape_names], geometry="cell_shape")
     shape_names = shapes_gdf.columns.tolist()
-    
+
     # Plot in single figure
     if not tile:
         if ax is None:
@@ -251,7 +251,7 @@ def plot_cells(
         plt.subplots_adjust(wspace=0, hspace=0)
 
         # Plot cells separately
-        for i, ax in enumerate(axs):
+        for i, ax in enumerate(axs.flatten()):
             try:
                 # Select subset data
                 s = shapes_gdf.iloc[[i]]
@@ -279,9 +279,7 @@ def plot_cells(
                 # Only make legend for last plot
                 n_genes = len(np.unique(p["gene"]))
                 if legend and i == len(shapes_gdf) - 1:
-                    ax.legend(
-                        loc="upper center", bbox_to_anchor=(0.5, 1.15), ncol=n_genes
-                    )
+                    ax.legend(loc="upper center", bbox_to_anchor=(0, 0), ncol=n_genes)
                 else:
                     ax.legend().remove()
 
@@ -301,7 +299,7 @@ def _spatial_scatter(points_gdf, hue, palette, ax, **scatter_kws):
     scatter_defaults = dict(linewidth=0, s=10)
     scatter_defaults.update(scatter_kws)
     scatter_kws = scatter_defaults
-    
+
     # Remove categories with no data; otherwise legend is very long
     if hue:
         points_gdf[hue].cat.remove_unused_categories(inplace=True)
@@ -316,11 +314,11 @@ def _spatial_hist(points_gdf, hue, palette, ax, **hist_kws):
     hist_defaults = dict(binwidth=20)
     hist_defaults.update(hist_kws)
     hist_kws = hist_defaults
-    
+
     # Remove categories with no data; otherwise legend is very long
     if hue:
         points_gdf[hue].cat.remove_unused_categories(inplace=True)
-        
+
     sns.histplot(
         data=points_gdf, x="x", y="y", hue=hue, palette=palette, ax=ax, **hist_kws
     )
