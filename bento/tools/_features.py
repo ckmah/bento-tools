@@ -145,7 +145,7 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
         distances, point_index = nn.radius_neighbors(xy, return_distance=True)
 
         # Enumerate point-wise gene labels
-        gene_index = p["gene"].reset_index(drop=True)
+        gene_index = p["gene"].reset_index(drop=True).cat.remove_unused_categories()
 
         # Convert to adjacency list of points, no double counting
         neighbor_pairs = []
