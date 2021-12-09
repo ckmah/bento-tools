@@ -121,7 +121,6 @@ def decompose_tensor(data, rank, device="auto", random_state=888, copy=False):
 def assign_factors(data, n_clusters=None, copy=False):
     adata = data.copy() if copy else data
 
-    feature_load = adata.uns["tensor_loadings"]["Features"]
     cell_load = adata.uns["tensor_loadings"]["Cells"]
     gene_load = adata.uns["tensor_loadings"]["Genes"]
 
@@ -179,7 +178,7 @@ def init_tensor(data, device="auto"):
     tensor_c2c = c2c.tensor.PreBuiltTensor(
         data.uns["tensor"],
         order_names=data.uns["tensor_labels"].values(),
-        order_labels=["Features", "Cells", "Genes"],
+        order_labels=["Patterns", "Cells", "Genes"],
         device=device,
     )
 
