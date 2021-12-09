@@ -5,13 +5,13 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 
-from .._utils import pheno_to_color, DIM_COLORS
+from .._utils import pheno_to_color, DIM_COLORS, PATTERN_COLORS
 from ._utils import savefig
 
 
 def _get_loading(data, load, dim, zscore):
 
-    if dim == "Features":
+    if dim == "Patterns":
         cluster_labels = np.zeros(len(load))
         unit_order = load.index
 
@@ -29,13 +29,13 @@ def _get_loading(data, load, dim, zscore):
             cluster_labels,
             load.index.tolist(),
         ],
-        index=["index", "load", "group", "cell"],
+        index=["index", "load", "group", "sample"],
     ).T
-    load_df = load_df.astype({"index": int, "load": float, "group": str, "cell": str})
-    
+    load_df = load_df.astype({"index": int, "load": float, "group": str, "sample": str})
+
     if zscore:
         load_df["load"] = StandardScaler().fit_transform(load_df[["load"]])
-        
+
     load_df["group"] = (
         load_df["group"].str.replace("Factor", "Group").astype("category")
     )
@@ -44,38 +44,48 @@ def _get_loading(data, load, dim, zscore):
 
 @savefig
 def factors(data, zscore=False, fname=None):
-    dims = list(data.uns["tensor_loadings"].keys())
+    dims = ["Patterns", "Cells", "Genes"]
     factors = list(data.uns["tensor_loadings"][dims[0]].columns)
     n_factors = len(factors)
     n_dims = len(dims)
 
-    fig = plt.figure(figsize=(3*n_dims,2*n_factors))
-    gs = fig.add_gridspec(1, 2, width_ratios=[3, 10])
-    gs0 = gs[0].subgridspec(n_factors, 1)
-    gs1 = gs[1].subgridspec(n_factors * 3, n_dims - 1, height_ratios=[1,3,1] * n_factors)
-    # Plot feature loadings
-    for row, factor in enumerate(factors):
+    fig = plt.figure(figsize=(3 * n_dims, n_factors))
 
-        if row == 0:
-            ax = fig.add_subplot(gs0[row, 0])
+    # Create grid such that there is space between each row (factor), an extra row above and below everything, and an extra column for legends
+    gs = fig.add_gridspec(
+        n_factors,
+        n_dims + 1,
+        width_ratios=[0.5, 1, 1, 0.1],
+        hspace=0.2,
+        wspace=0.2
+    )
+
+    PATTERN_COL = 0
+    LEGEND_COL = n_dims
+    FACTOR_ROWS = [i for i in range(n_factors)]
+
+    # Plot pattern loadings as barplot
+    for factor, row in zip(factors, FACTOR_ROWS):
+        if row == FACTOR_ROWS[0]:
+            ax = fig.add_subplot(gs[row, PATTERN_COL])
         else:
-            ax = fig.add_subplot(gs0[row, 0], sharex=fig.axes[0])
+            ax = fig.add_subplot(gs[row, PATTERN_COL], sharex=fig.axes[0])
 
-        load = data.uns["tensor_loadings"]["Features"][factor]
-        load_df = _get_loading(data, load, "Features", zscore=False)
+        load = data.uns["tensor_loadings"]["Patterns"][factor]
+        load_df = _get_loading(data, load, "Patterns", zscore=False)
 
         # Feature barplots
-        sns.barplot(
-            y=load.index.fillna("na").tolist(),
-            x=load_df["load"],
-            color=DIM_COLORS[0],
+        ax.bar(
+            x=load.index.fillna("na").tolist(),
+            height=load_df["load"],
+            color=PATTERN_COLORS,
             # alpha=0.5,
-            ax=ax,
+            # ax=ax,
         )
 
-        if row == 0:
-            ax.set_title("Features", weight="600")
-        
+        if row == FACTOR_ROWS[0]:
+            ax.set_title("Patterns", weight="600")
+
         # Set row labels
         ax.set_ylabel(factor, labelpad=30, rotation=0, weight="600")
 
@@ -86,81 +96,59 @@ def factors(data, zscore=False, fname=None):
             ax.set(xlabel="loading")
 
         # Turn off yticks
-        ax.tick_params(axis="y", which="both", length=0)
-        
+        ax.set(xticklabels=[])
+        ax.tick_params(axis="x", which="both", length=3)
+
         # Format spines
         sns.despine(ax=ax, left=True)
-        ax.spines['bottom'].set_color('#aaaaaa')
+        ax.spines["bottom"].set_color("#aaaaaa")
 
-        # Plot cell and gene loadings
-        for gs1_col, dim in zip(range(0, n_dims - 1), dims[1:]):
-            row_adjusted = (row + 1) * 3 - 2
-            ax = fig.add_subplot(gs1[row_adjusted, gs1_col])
+    # Plot cell and gene loadings as heatmaps
+    for factor, row in zip(factors, FACTOR_ROWS):
+        # Populate index 1 and 2 columns
+        for col, dim in zip(range(1, n_dims), ["Cells", "Genes"]):
 
+            ax = fig.add_subplot(gs[row, col])
             load = data.uns["tensor_loadings"][dim][factor]
             load_df = _get_loading(data, load, dim, zscore)
 
-            if row == n_factors - 1:
-                cbar=True
-                cbar_ax=fig.add_subplot(gs1[row_adjusted+1, gs1_col])
+            # Plot column title if first row
+            if row == FACTOR_ROWS[0]:
+                ax0 = fig.add_subplot(gs[0, col])
+                ax0.set_title(f"{str(dim).capitalize()} ({len(load)})", weight="600")
+                ax0.axis("off")
+
+            # Plot colorbar for first heatmap
+            if row == FACTOR_ROWS[0] and col == 1:
+                cbar = True
+                cbar_ax = fig.add_subplot(gs[FACTOR_ROWS[0], n_dims])
             else:
-                cbar=False
-                cbar_ax=None
-            
+                cbar = False
+                cbar_ax = None
+
+            # Colormap limits for zscoring
             if zscore:
-                vmin=-3
-                vmax=3
+                vmin = -3
+                vmax = 3
             else:
-                vmin=None
-                vmax=None
-            
+                vmin = None
+                vmax = None
+
+            # Plot (z-scored) loadings as heatmap
             sns.heatmap(
                 load_df[["load"]].T,
                 ax=ax,
                 xticklabels=False,
                 yticklabels=False,
-                cbar_kws=dict(orientation="horizontal"),
                 cmap="RdBu_r",
                 center=0,
                 vmin=vmin,
                 vmax=vmax,
                 cbar=cbar,
-                cbar_ax=cbar_ax
+                cbar_ax=cbar_ax,
             )
-            
+
+            # Format heatmap
             ax.tick_params(axis="y", which="both", length=0)
             ax.set(ylabel=None)
             sns.despine(ax=ax, top=False, bottom=False, left=False, right=False)
-            
-            if row == 0:
-                ax = fig.add_subplot(gs1[row, gs1_col])
-                ax.set_title(str(dim).capitalize(), weight="600")
-                ax.axis("off")
-            
-            # sns.violinplot(
-            #     data=load_df,
-            #     x="group",
-            #     y="load",
-            #     # hue="group",
-            #     linewidth=1,
-            #     dodge=False,
-            #     color=violin_color,
-            #     # palette=palette,
-            #     ax=ax,
-            # )
-            # sns.stripplot(
-            #     data=load_df,
-            #     x="group",
-            #     y="load",
-            #     color="0.1",
-            #     # jitter=0.2,
-            #     alpha=0.5,
-            #     s=2,
-            #     linewidth=0,
-            #     ax=ax,
-            # )
-            # ax.get_legend().remove()
-
-    # axes = np.array(fig.get_axes()).reshape(n_factors, n_dims)
-    # for col, dim in enumerate(dims):
-    #     axes[0][col].set_title(str(dim).capitalize(), weight="600")
