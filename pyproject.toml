@@ -1,8 +1,7 @@
 [tool.poetry]
 name = "bento-tools"
-packages = [
-  {include = "bento"},
-]
+packages = [{ include = "bento" }]
+include = ["bento/datasets/datasets.csv", "bento/models/**/*"]
 version = "0.1.1"
 description = "A toolkit for subcellular analysis of RNA organization"
 authors = ["Clarence Mah <ckmah@ucsd.edu>"]
@@ -16,14 +15,13 @@ astropy = "^4.3.post1"
 geopandas = "^0.9.0"
 ipywidgets = "^7.6.3"
 leidenalg = "^0.8.7"
-matplotlib = "^3.4.2"
-numpy = "^1.21.1"
-pandas = "^1.3.1"
+matplotlib = "^3.2"
+numpy = "^1.19.0"
+pandas = "<=1.2.5"
 proplot = "^0.7.0"
 pygeos = "^0.10.1"
 rasterio = "^1.2.6"
-seaborn = "^0.11.1"
-scanpy = "^1.8.1"
+seaborn = "^0.11.0"
 scipy = "^1.7.0"
 Shapely = "^1.7.1"
 skorch = "^0.10.0"
@@ -31,10 +29,16 @@ torchvision = "^0.10.0"
 tqdm = "^4.61.2"
 umap-learn = "^0.5.1"
 datashader = "^0.13.0"
+statsmodels = "0.12.2"
+dask-geopandas = "^0.1.0-alpha.4"
+mplcyberpunk = "^0.3.0"
+scanpy = "^1.8.1"
+UpSetPlot = "^0.6.0"
+cell2cell = {git = "https://github.com/ckmah/cell2cell.git", rev = "plot-deps"}
 
 [tool.poetry.dev-dependencies]
 Sphinx = "^4.1.2"
-pydata-sphinx-theme = "^0.6.3"
+sphinxawesome-theme = "^2.0.2"
 
 [build-system]
 requires = ["poetry-core>=1.0.0", 'setuptools']

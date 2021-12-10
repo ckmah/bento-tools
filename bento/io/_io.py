@@ -1,12 +1,10 @@
 import warnings
 warnings.filterwarnings("ignore")
 
-import anndata
+anndata = None
 import geopandas
 import numpy as np
 import pandas as pd
-import scanpy as sc
-from anndata import AnnData
 from shapely import geometry, wkt
 
 
@@ -26,8 +24,14 @@ def read_h5ad(filename, backed=None):
     AnnData
         AnnData data object.
     """
+    global anndata
+    if anndata is None:
+        import anndata
+
     adata = anndata.read_h5ad(filename, backed=backed)
 
+    
+    
     # Load obs columns that are shapely geometries
     adata.obs = adata.obs.apply(
         lambda col: geopandas.GeoSeries(
@@ -36,6 +40,9 @@ def read_h5ad(filename, backed=None):
         if col.astype(str).str.startswith("POLYGON").any()
         else geopandas.GeoSeries(col)
     )
+    
+    adata.obs.index.name = 'cell'
+    adata.var.index.name = 'gene'
 
     return adata
 
@@ -60,6 +67,8 @@ def write_h5ad(data, filename):
         if col.astype(str).str.startswith("POLYGON").any()
         else col
     )
+    
+    adata.uns['points'] = adata.uns['points'].drop('geometry', axis=1, errors='ignore')
 
     # Write to h5ad
     adata.write(filename)
@@ -116,7 +125,6 @@ def read_geodata(points, cell, other={}):
             uns_points[["cell", "gene"]]
             .groupby(["cell", "gene"])
             .apply(lambda x: x.shape[0])
-            .to_frame()
             .reset_index()
         )
     else:
@@ -144,7 +152,7 @@ def read_geodata(points, cell, other={}):
     print("Processing point coordinates...")
 
     # Create scanpy anndata object
-    adata = AnnData(X=cellxgene)
+    adata = anndata.AnnData(X=cellxgene)
     mask_geoms = mask_geoms.reindex(adata.obs.index)
     adata.obs = pd.concat([adata.obs, mask_geoms], axis=1)
     adata.obs.index = adata.obs.index.astype(str)
@@ -349,7 +357,7 @@ def to_scanpy(data):
     expression.columns = expression.columns.droplevel(0)
     expression.columns = expression.columns.str.upper()
 
-    # Create scanpy anndata object to use scoring function
-    sc_data = sc.AnnData(expression)
+    # Create anndata object
+    sc_data = anndata.AnnData(expression)
 
     return sc_data

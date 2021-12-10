@@ -4,26 +4,38 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 import os
 
-import dask.dataframe as dd
+dd = None
+ig = None
+la = None
+rasterio = None
+torch = None
+torchvision = None
+zscore = None
+UMAP = None
+NearestNeighbors = None
+import dask_geopandas
 import geopandas
-import igraph as ig
-import leidenalg as la
 import numpy as np
 import pandas as pd
-import rasterio
-import torch
-import torchvision
+from dask.diagnostics import ProgressBar
 from joblib import Parallel, delayed
-from rasterio import features
-from scipy.stats import zscore
-from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
-from umap import UMAP
 
 from ..preprocessing import get_points
 
 
 def gene_leiden(data, copy=False):
+
+    global zscore, UMAP, NearestNeighbors
+    if zscore is None:
+        from scipy.stats import zscore
+
+    if UMAP is None:
+        from umap import UMAP
+
+    if NearestNeighbors is None:
+        from sklearn.neighbors import NearestNeighbors
+
     adata = data.copy() if copy else data
 
     coloc_sim = (
@@ -49,6 +61,20 @@ def gene_leiden(data, copy=False):
 
 
 def coloc_cluster_genes(data, resolution=1, copy=False):
+
+    global ig, la, z_score, NearestNeighbors
+    if ig is None:
+        import igraph as ig
+
+    if la is None:
+        import leidenalg as la
+
+    if zscore is None:
+        from scipy.stats import zscore
+
+    if NearestNeighbors is None:
+        from sklearn.neighbors import NearestNeighbors
+
     adata = data.copy() if copy else data
 
     coloc_sim = (
@@ -97,6 +123,14 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
     adata : AnnData
         .uns['coloc_sim']: Pairwise gene colocalization similarity within each cell formatted as a long dataframe.
     """
+
+    global dd, NearestNeighbors
+    if dd is None:
+        import dask.dataframe as dd
+
+    if NearestNeighbors is None:
+        from sklearn.neighbors import NearestNeighbors
+
     adata = data.copy() if copy else data
 
     # Filter points and counts by min_count
@@ -113,7 +147,7 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
         distances, point_index = nn.radius_neighbors(xy, return_distance=True)
 
         # Enumerate point-wise gene labels
-        gene_index = p["gene"].reset_index(drop=True)
+        gene_index = p["gene"].reset_index(drop=True).cat.remove_unused_categories()
 
         # Convert to adjacency list of points, no double counting
         neighbor_pairs = []
@@ -195,7 +229,6 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
 
     return adata if copy else None
 
-
 def get_gene_coloc(data, gene):
     """
     For a given gene, return its colocalization with all other genes.
@@ -243,9 +276,7 @@ def rasterize_cells(
     label_layer=None,
     scale_factor=15,
     out_dim=64,
-    n_cores=1,
     overwrite=True,
-    copy=False,
 ):
     """Rasterize points and cell masks to grayscale image. Writes directly to file.
 
@@ -256,107 +287,162 @@ def rasterize_cells(
     imgdir : str
         Directory where images will be stored.
     """
-    adata = data.copy() if copy else data
 
+    global rasterio, torch, torchvision, dd
+    if rasterio is None:
+        import rasterio
+
+    from rasterio import features
+
+    if torch is None:
+        import torch
+
+    if torchvision is None:
+        import torchvision
+
+    if dd is None:
+        import dask.dataframe as dd
+
+    imgdir = os.path.expanduser(imgdir)
     os.makedirs(f"{imgdir}", exist_ok=True)
 
-    def write_img(s, n, p, cell_name):
+    points = data.uns["points"][["cell", "gene", "x", "y"]]
 
-        # Get bounds and size of cell in raw coordinate space
-        bounds = s.bounds
-        width = bounds[2] - bounds[0]
-        height = bounds[3] - bounds[1]
+    # Cast categorical type to save memory
+    cat_vars = ["cell", "gene"]
+    points[cat_vars] = points[cat_vars].astype("category")
 
-        # Define top left corner for centering/scaling transform
-        west = bounds[0] + width / 2 - (out_dim / 2 * scale_factor)
-        north = bounds[3] - height / 2 + (out_dim / 2 * scale_factor)
-
-        # Define transform
-        tf_origin = rasterio.transform.from_origin(
-            west, north, scale_factor, scale_factor
-        )
-
-        # Rasterize cell
-        base_raster = features.rasterize(
-            [s],
-            fill=0,
-            default_value=20,
-            out_shape=(out_dim, out_dim),
-            transform=tf_origin,
-        )
-
-        # Rasterize nucleus
-        if n is not None:
-            features.rasterize(
-                [n], default_value=40, transform=tf_origin, out=base_raster
-            )
-
-        warnings.filterwarnings(
-            action="ignore", category=rasterio.errors.NotGeoreferencedWarning
-        )
-
-        # Rasterize and write points
-        genes = p["gene"].unique().tolist()
-
-        if label_layer:
-            labels = dict(
-                zip(genes, list(adata[cell_name, genes].layers[label_layer].flatten()))
-            )
-        else:
-            labels = dict(zip(genes, ["foo"] * len(genes)))
-
-        p = geopandas.GeoDataFrame(p, geometry=geopandas.points_from_xy(p["x"], p["y"]))
-
-        for gene_name in genes:
-            label = labels[gene_name]
-
-            os.makedirs(f"{imgdir}/{label}", exist_ok=True)
-
-            # TODO implement overwrite param
-            if not overwrite and os.path.exists(
-                f"{imgdir}/{label}/{cell_name}_{gene_name}.tif"
-            ):
-                return
-
-            cg_points = p.loc[p["gene"] == gene_name]
-
-            gene_raster = base_raster.copy()
-
-            # Set base as 40
-            gene_raster = features.rasterize(
-                shapes=cg_points.geometry,
-                default_value=40,
-                transform=tf_origin,
-                out=gene_raster,
-            )
-
-            # Plus 20 per point
-            features.rasterize(
-                shapes=cg_points.geometry,
-                default_value=20,
-                transform=tf_origin,
-                merge_alg=rasterio.enums.MergeAlg("ADD"),
-                out=gene_raster,
-            )
-
-            # Convert to tensor
-            gene_raster = torch.from_numpy(gene_raster.astype(np.float32) / 255)
-
-            torchvision.utils.save_image(
-                gene_raster, f"{imgdir}/{label}/{cell_name}_{gene_name}.tif"
-            )
-
-    # Parallelize points
-    Parallel(n_jobs=n_cores)(
-        delayed(write_img)(
-            adata.obs.loc[cell_name, "cell_shape"],
-            adata.obs.loc[cell_name, "nucleus_shape"],
-            get_points(adata, cells=cell_name),
-            cell_name,
-        )
-        for cell_name in tqdm(adata.obs_names.tolist())
+    points = (
+        points.set_index("cell")
+        .join(data.obs[["cell_shape", "nucleus_shape"]])
+        .reset_index()
     )
 
-    # TODO write filepaths to adata
+    if label_layer:
+        label_df = (
+            data.to_df(label_layer)
+            .reset_index()
+            .melt(id_vars="cell")
+            .set_index(["cell", "gene"])
+        )
+        label_df.columns = ["pattern"]
+        
+        points = label_df.join(points.set_index(['cell', 'gene'])).reset_index()
 
-    return adata if copy else None
+    points = geopandas.GeoDataFrame(
+        points, geometry=geopandas.points_from_xy(points["x"], points["y"])
+    ).sort_values(["cell", "gene"])
+    
+    points['cell'] = points['cell'].astype('category').cat.as_ordered()
+    points = points.set_index('cell')
+
+    npartitions = min(500, points.groupby('cell').ngroups)
+    out = (
+        dask_geopandas.from_geopandas(points, npartitions=npartitions)
+        .groupby("cell")
+        .apply(
+            lambda sample_df: _rasterize(
+                sample_df,
+                imgdir,
+                sample_df.name,
+                label_layer,
+                scale_factor,
+                out_dim,
+                overwrite,
+            ),
+            meta=("float"),
+        )
+    )
+
+    # Parallelize points
+    with ProgressBar():
+        out.compute()
+
+
+def _rasterize(
+    sample_df, imgdir, cell_name, label_layer, scale_factor, out_dim, overwrite
+):
+    s = sample_df["cell_shape"].values[0]
+    n = sample_df["nucleus_shape"].values[0]
+    # Get bounds and size of cell in raw coordinate space
+    bounds = s.bounds
+    width = bounds[2] - bounds[0]
+    height = bounds[3] - bounds[1]
+
+    # Define top left corner for centering/scaling transform
+    west = bounds[0] + width / 2 - (out_dim / 2 * scale_factor)
+    north = bounds[3] - height / 2 + (out_dim / 2 * scale_factor)
+
+    # Define transform
+    tf_origin = rasterio.transform.from_origin(west, north, scale_factor, scale_factor)
+
+    # Rasterize cell
+    base_raster = rasterio.features.rasterize(
+        [s],
+        fill=0,
+        default_value=20,
+        out_shape=(out_dim, out_dim),
+        transform=tf_origin,
+    )
+
+    # Rasterize nucleus
+    if n is not None:
+        rasterio.features.rasterize(
+            [n], default_value=40, transform=tf_origin, out=base_raster
+        )
+
+    warnings.filterwarnings(
+        action="ignore", category=rasterio.errors.NotGeoreferencedWarning
+    )
+
+    # Rasterize and write points
+    genes = sample_df["gene"].unique().tolist()
+
+    # TODO does not work for binary indicator labels
+    if label_layer:
+        labels = dict(
+            zip(genes, sample_df.set_index("gene").loc[genes, "pattern"].tolist())
+        )
+    else:
+        labels = dict(zip(genes, ["foo"] * len(genes)))
+
+    p = geopandas.GeoDataFrame(sample_df, geometry="geometry")
+
+    for gene_name in genes:
+        label = labels[gene_name]
+
+        os.makedirs(f"{imgdir}/{label}", exist_ok=True)
+
+        # TODO implement overwrite param
+        if not overwrite and os.path.exists(
+            f"{imgdir}/{label}/{cell_name}_{gene_name}.tif"
+        ):
+            return
+
+        cg_points = p.loc[p["gene"] == gene_name]
+
+        gene_raster = base_raster.copy()
+
+        # Set base as 40
+        gene_raster = rasterio.features.rasterize(
+            shapes=cg_points.geometry,
+            default_value=40,
+            transform=tf_origin,
+            out=gene_raster,
+        )
+
+        # Plus 20 per point
+        rasterio.features.rasterize(
+            shapes=cg_points.geometry,
+            default_value=20,
+            transform=tf_origin,
+            merge_alg=rasterio.enums.MergeAlg("ADD"),
+            out=gene_raster,
+        )
+
+        # Convert to tensor
+        gene_raster = torch.from_numpy(gene_raster.astype(np.float32) / 255)
+
+        torchvision.utils.save_image(
+            gene_raster, f"{imgdir}/{label}/{cell_name}_{gene_name}.tif"
+        )

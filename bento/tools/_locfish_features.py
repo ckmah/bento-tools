@@ -5,19 +5,21 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 import os
 
-import dask.dataframe as dd
+
+RipleysKEstimator = None
+spearmanr = None
+mean_squared_error = None
+
 import geopandas as gpd
 import matplotlib.path as mplPath
 import numpy as np
 import pandas as pd
-from astropy.stats import RipleysKEstimator
 from joblib import Parallel, delayed
 from scipy.spatial import distance, distance_matrix
-from scipy.stats import spearmanr
-from sklearn.metrics import mean_squared_error
 from tqdm.auto import tqdm
 
 from ..preprocessing import get_points
+
 
 def ripley_features(data, n_cores=1, copy=False):
     """
@@ -35,6 +37,14 @@ def ripley_features(data, n_cores=1, copy=False):
         l_4 : float
     """
 
+    global RipleysKEstimator
+    if RipleysKEstimator is None:
+        from astropy.stats import RipleysKEstimator
+
+    global spearmanr
+    if spearmanr is None:
+        from scipy.stats import spearmanr
+
     adata = data.copy() if copy else data
 
     def ripley_per_cell(c, p, cell_name):
@@ -44,6 +54,15 @@ def ripley_features(data, n_cores=1, copy=False):
 
         features = []
         for gene, gene_pts in p.groupby("gene"):
+
+            gene_features = [cell_name, gene]
+
+            # Skip if no points
+            if len(gene_pts) == 0:
+                gene_features.extend([np.nan] * 5)
+                features.append(gene_features)
+                continue
+
             estimator = RipleysKEstimator(
                 area=c.area,
                 x_min=float(gene_pts["x"].min()),
@@ -77,9 +96,8 @@ def ripley_features(data, n_cores=1, copy=False):
                 data=gene_pts[["x", "y"]].values, radii=[l_4_dist], mode="none"
             )[0]
 
-            features.append(
-                [cell_name, gene, max_l, max_gradient, min_gradient, l_corr, l_4]
-            )
+            gene_features.extend(np.array([max_l, max_gradient, min_gradient, l_corr, l_4]).astype(float))
+            features.append(np.array(gene_features))
 
         return features
 
@@ -93,6 +111,9 @@ def ripley_features(data, n_cores=1, copy=False):
         for cell_name in tqdm(adata.obs_names.tolist())
     )
 
+    for a in cell_features:
+        if len(a) == 100:
+            print(np.array(a))
     cell_features = np.array(cell_features).reshape(-1, 7)
 
     colnames = [
@@ -136,6 +157,14 @@ def distance_features(data, n_cores=1, copy=False):
 
         features = []
         for gene, gene_pts in p.groupby("gene"):
+            gene_features = [cell_name, gene]
+
+            # Skip if no points
+            if len(gene_pts) == 0:
+                gene_features.extend([np.nan] * 16)
+                features.append(gene_features)
+                continue
+
             # Calculate normalized distances from points to centroids
             xy = gene_pts[["x", "y"]].values
             cell_centroid_dist = norm_dist_to_centroid(xy, c)
@@ -153,13 +182,12 @@ def distance_features(data, n_cores=1, copy=False):
             ]
 
             # Get quantiles of each distance distribution
-            stats = [cell_name, gene]
             for f in features_raw:
                 quantiles = [5, 10, 20, 50]
-                stats.extend(np.percentile(f, quantiles))
+                gene_features.extend(np.percentile(f, quantiles))
 
             # There should be 16 features (18 with cell/gene names)
-            features.append(np.array(stats))
+            features.append(gene_features)
 
         return features
 
@@ -260,16 +288,23 @@ def morph_enrichment(data, n_cores=1, copy=False):
 
         for gene, gene_pts in p.groupby("gene"):
 
+            gene_features = [cell_name, gene]
+
+            # Skip if no points
+            if len(gene_pts) == 0:
+                gene_features.extend([np.nan] * len(proportions))
+                features.append(gene_features)
+                continue
+
             # Create GeoDataFrame from points
             pts = gpd.GeoDataFrame(geometry=gpd.points_from_xy(gene_pts.x, gene_pts.y))
 
             # Count fraction of points in mask
-            enrichment = [cell_name, gene]
             for prop in proportions:
                 n_points = len(gpd.clip(pts, morph_masks[prop]))
-                enrichment.append(np.float(n_points) / len(pts))
+                gene_features.append(np.float(n_points) / len(pts))
 
-            features.append(np.array(enrichment))
+            features.append(gene_features)
         return features
 
     # Parallelize points
@@ -316,6 +351,10 @@ def nuclear_fraction(data, n_cores=1, copy=False):
 
 def moment_stats(data, n_cores=1, copy=False):
     """Calculate polarization index, dispersion index, and peripheral index. Requires both cell and nucleus."""
+    global mean_squared_error
+    if mean_squared_error is None:
+        from sklearn.metrics import mean_squared_error
+
     adata = data.copy() if copy else data
 
     def moments_per_cell(c, n, p, cell_name):
@@ -333,6 +372,14 @@ def moment_stats(data, n_cores=1, copy=False):
         features = []
 
         for gene, gene_pts in p.groupby("gene"):
+
+            gene_features = [cell_name, gene]
+
+            # Skip if no points
+            if len(gene_pts) == 0:
+                gene_features.extend([np.nan] * 3)
+                features.append(gene_features)
+                continue
 
             # Calculate distance between point and cell centroids
             pts = gene_pts[["x", "y"]].values
@@ -352,17 +399,11 @@ def moment_stats(data, n_cores=1, copy=False):
                 _second_moment(nucleus_centroid, pts) / nuclear_moment
             )
 
-            features.append(
-                np.array(
-                    [
-                        cell_name,
-                        gene,
-                        polarization_index,
-                        dispersion_index,
-                        peripheral_distribution_index,
-                    ]
-                )
+            gene_features.extend(
+                [polarization_index, dispersion_index, peripheral_distribution_index]
             )
+
+            features.append(gene_features)
 
         return features
 
@@ -443,6 +484,10 @@ def _ripley(points, mask, radii=None):
         ripley l function
     radii
     """
+    global RipleysKEstimator
+    if RipleysKEstimator is None:
+        from astropy.stats import RipleysKEstimator
+
     estimator = RipleysKEstimator(
         area=mask.area,
         x_min=float(points[:, 0].min()),
