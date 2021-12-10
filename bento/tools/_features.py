@@ -1,15 +1,5 @@
 import warnings
 
-warnings.simplefilter(action="ignore", category=FutureWarning)
-
-import os
-
-dd = None
-ig = None
-la = None
-UMAP = None
-NearestNeighbors = None
-
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
@@ -17,6 +7,14 @@ from scipy.stats import zscore
 from tqdm.auto import tqdm
 
 from ..preprocessing import get_points
+
+warnings.simplefilter(action="ignore", category=FutureWarning)
+
+dd = None
+ig = None
+la = None
+UMAP = None
+NearestNeighbors = None
 
 
 def gene_leiden(data, copy=False):
