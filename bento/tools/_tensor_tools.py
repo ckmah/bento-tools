@@ -2,10 +2,7 @@ import cell2cell as c2c
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import torch
 import seaborn as sns
-from scipy.stats import zscore
-from sklearn.cluster import AgglomerativeClustering
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 from .._utils import track
@@ -171,8 +168,12 @@ def assign_factors(data, n_clusters=None, copy=False):
 
 def init_tensor(data, device="auto"):
 
-    if device == "auto":
+    try:
+        import torch
         device = "cuda" if torch.cuda.is_available() else "cpu"
+    except ImportError:
+        device = None
+        
     print(f"Device: {device}")
 
     tensor_c2c = c2c.tensor.PreBuiltTensor(
