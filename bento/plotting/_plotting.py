@@ -91,7 +91,19 @@ def qc_metrics(adata, fname=None):
 
 @savefig
 def pattern_plot(data, percentage=False, scale=1, fname=None):
+    """Plot pattern combination frequencies as an UpSet plot.
 
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    percentage : bool, optional
+        If True, label each bar as a percentage else label as a count, by default False
+    scale : int, optional
+        scale > 1 scales the plot larger, scale < 1 scales. the plot smaller, by default 1
+    fname : str, optional
+        Save the figure to specified filename, by default None
+    """
     sample_labels = []
     for p in PATTERN_NAMES:
         p_df = data.to_df(p).reset_index().melt(id_vars="cell").dropna()

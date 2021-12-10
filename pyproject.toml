@@ -29,8 +29,10 @@ dask-geopandas = "^0.1.0-alpha.4"
 scanpy = "^1.8.1"
 UpSetPlot = "^0.6.0"
 cell2cell = {git = "https://github.com/ckmah/cell2cell.git", rev = "plot-deps"}
+xgboost = ">=1.4.0,<1.5"
 
 torch = { version = "^1.9.0", optional = true }
+
 
 [tool.poetry.dev-dependencies]
 Sphinx = "^4.1.2"

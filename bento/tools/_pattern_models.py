@@ -1,18 +1,48 @@
 import pickle
 
-OneHotEncoder = None
-LabelBinarizer = None
 import bento
 import pandas as pd
+import xgboost
 from tqdm.auto import tqdm
+from xgboost import XGBRFClassifier
+
 from .._utils import PATTERN_NAMES, PATTERN_PROBS, track
 from ._pattern_stats import pattern_stats
+
+OneHotEncoder = None
+LabelBinarizer = None
+
+def pattern_features(data):
+    models = [
+        bento.tl.ShapeProximity("cell_shape"),
+        bento.tl.ShapeProximity("nucleus_shape"),
+        bento.tl.ShapeAsymmetry("cell_shape"),
+        bento.tl.ShapeAsymmetry("nucleus_shape"),
+        bento.tl.Ripley(),
+        bento.tl.PointDispersion(),
+        bento.tl.ShapeDispersion("nucleus_shape"),
+    ]
+    for model in models:
+        model.transform(data)
 
 
 @track
 def intracellular_patterns(data, min_count=5, copy=False):
     """Predict transcript subcellular localization patterns.
     Patterns include: cell edge, cytoplasmic, nuclear edge, nuclear, none
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object
+    min_count : int
+        Minimum expression count per sample; otherwise ignore sample
+    copy : bool
+        Return a copy instead of writing to data
+
+    Returns
+    -------
+    Depending on `copy`, returns or updates `adata` with the following fields.
     """
     adata = data.copy() if copy else data
 
@@ -31,6 +61,10 @@ def intracellular_patterns(data, min_count=5, copy=False):
         "point_dispersion",
         "nucleus_dispersion",
     ]
+
+    # Compute features if missing TODO currently recomputes everything 
+    if not all(f in data.layers.keys() for f in features):
+        pattern_features(data)
 
     X_df = get_features(adata, features, min_count)
 
@@ -71,7 +105,22 @@ def intracellular_patterns(data, min_count=5, copy=False):
 
 
 def get_features(data, features, min_count):
+    """Get features for all samples by melting features from data.layers.
 
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object
+    features : list of str
+        all values must to be keys in data.layers
+    min_count : int
+        Minimum expression count per sample; otherwise ignore sample
+
+    Returns
+    -------
+    DataFrame
+        rows are samples indexed as (cell, gene) and columns are features
+    """
     sample_index = (
         data.to_df()
         .reset_index()
