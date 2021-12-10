@@ -237,3 +237,22 @@ def get_gene_coloc(data, gene):
     """
     sim = data.uns['coloc_sim_agg']
     return sim.loc[sim['g1'].str.match(gene)]
+
+
+def get_gene_set_coloc(data, genes):
+    """
+    For a list of genes, return their pairwise colocalization with each other.
+    
+    Parameters
+    ----------
+    data : AnnData
+        AnnData formatted spatial data.
+    gene : list of str
+        The names of genes, must be present in data.var.
+        
+    Returns
+    -------
+    pd.DataFrame
+    """
+    sim = data.uns['coloc_sim_agg']
+    return sim.loc[sim['g1'].isin(genes) & sim['g2'].isin(genes)]
