@@ -24,7 +24,7 @@ from ._locfish_features import (
     nuclear_fraction,
     ripley_features,
 )
-from ._pattern_models import intracellular_patterns
+from ._pattern_models import intracellular_patterns, PATTERN_MODEL_FEATURE_NAMES
 from ._pattern_stats import pattern_diff, pattern_stats
 from ._sample_features import (
     PointDispersion,
@@ -36,8 +36,7 @@ from ._sample_features import (
 )
 from ._shapes import inner_edge, outer_edge
 from ._tensor_tools import (
-    assign_factors,
     decompose_tensor,
     select_tensor_rank,
-    to_tensor,
+    TENSOR_DIM_NAMES
 )
