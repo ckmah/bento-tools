@@ -5,13 +5,14 @@ import pandas as pd
 import seaborn as sns
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from .._utils import track
+from .._utils import track, PATTERN_NAMES
+
+
+TENSOR_DIM_NAMES = ["layers", "cells", "genes"]
 
 
 @track
-def to_tensor(
-    data, layers, use_highly_variable_genes=False, scale=None, mask=False, copy=False
-):
+def to_tensor(data, layers, mask=False, copy=False):
     """
     Generate tensor from data where dimensions are (layers, cells, genes).
 
@@ -19,71 +20,59 @@ def to_tensor(
     ----------
     layers : list of str
         keys in data.layers
-    use_highly_variable_genes : bool
         whether to only use highly variably expressed genes as defined by scanpy, default False
-        looks in data.var['highly_variable']
-    scale : str
-        valid values include z_score or unit, default None
     mask : bool
         whether to place nans with 0, default False
     copy : bool
 
+    Attributes
+    ----------
+    AnnData, None
+        Returns copy of AnnData if copy=True, otherwise modifies data in place and returns None
 
+        `data.uns['tensor']` : np.ndarray
+            3D numpy array of shape (len(layers), adata.n_obs, adata.n_vars)
+
+        `data.uns['tensor_labels'] : dict
+            Element labels across each dimension. Keys are dimension names (layers, cells, genes), values are lists of str
 
     """
     adata = data.copy() if copy else data
 
-    n_features = len(layers)
     cells = data.obs_names.tolist()
-    n_cells = len(cells)
+    genes = adata.var_names.tolist()
+
+    # Build tensor from specified layers
     tensor = []
-
-    # TODO calculating highly variable genes not integrated, relies on scanpy
-
     for l in layers:
-        if use_highly_variable_genes:
-            n_genes = adata.var["highly_variable"].sum()
-            genes = adata.var_names[adata.var["highly_variable"]].tolist()
-            tensor.append(adata.to_df(l).loc[:, adata.var["highly_variable"]].values)
-        else:
-            n_genes = adata.n_vars
-            genes = adata.var_names.tolist()
-            tensor.append(adata.to_df(l).values)
+        tensor.append(adata.to_df(l).values)
     tensor = np.array(tensor)
 
-    if scale == "z_score":
-        tensor = (
-            StandardScaler()
-            .fit_transform(tensor.reshape(n_features, -1).T)
-            .reshape(n_features, n_cells, n_genes)
-        )
-    elif scale == "unit":
-        tensor = (
-            MinMaxScaler()
-            .fit_transform(tensor.reshape(n_features, -1).T)
-            .reshape(n_features, n_cells, n_genes)
-        )
-
+    # Replace nans with 0 if mask == True
     if mask:
         tensor_mask = ~np.isnan(tensor)
         tensor[~tensor_mask] = 0
 
+    # Save tensor values
     adata.uns["tensor"] = tensor
-    adata.uns["tensor_labels"] = dict(layers=layers, cells=cells, genes=genes)
+
+    # Save tensor dimension indexes
+    adata.uns["tensor_labels"] = dict(zip(TENSOR_DIM_NAMES, [layers, cells, genes]))
 
     return adata
 
 
 def select_tensor_rank(data, upper_rank=10, runs=5, device="auto", random_state=888):
-    '''
+    """
     Parameters
     ----------
     upper_rank : int
         Maximum rank to perform decomposition.
     runs : int
         Number of times to run decomposition for calculating the confidence interval.
-    '''
-    tensor_c2c, meta_tf = init_tensor(data, device=device)
+    """
+    to_tensor(data, layers=PATTERN_NAMES, mask=True)
+    tensor_c2c = init_c2c_tensor(data, device=device)
 
     fig, error = tensor_c2c.elbow_rank_selection(
         upper_rank=upper_rank,
@@ -101,7 +90,8 @@ def select_tensor_rank(data, upper_rank=10, runs=5, device="auto", random_state=
 def decompose_tensor(data, rank, device="auto", random_state=888, copy=False):
     adata = data.copy() if copy else data
 
-    tensor_c2c, meta_tf = init_tensor(data, device=device)
+    to_tensor(data, layers=PATTERN_NAMES, mask=True)
+    tensor_c2c = init_c2c_tensor(data, device=device)
 
     tensor_c2c.compute_tensor_factorization(
         rank=rank,
@@ -111,15 +101,23 @@ def decompose_tensor(data, rank, device="auto", random_state=888, copy=False):
 
     adata.uns["tensor_loadings"] = tensor_c2c.factors
 
+    _assign_factors(data)
+
     return adata
 
 
-@track
-def assign_factors(data, n_clusters=None, copy=False):
+def _assign_factors(data, n_clusters=None, copy=False):
     adata = data.copy() if copy else data
 
-    cell_load = adata.uns["tensor_loadings"]["Cells"]
-    gene_load = adata.uns["tensor_loadings"]["Genes"]
+    # Get tensor dimension names
+    dim_names = list(adata.uns["tensor_labels"].keys())
+    cell_load = adata.uns["tensor_loadings"][dim_names[1]]
+    gene_load = adata.uns["tensor_loadings"][dim_names[2]]
+
+    # If 1 component decomposition, don't cluster later
+    cluster_factors = True
+    if cell_load.shape[1] == 1:
+        cluster_factors = False
 
     # Zscale for clustering
     cell_load = pd.DataFrame(
@@ -134,27 +132,27 @@ def assign_factors(data, n_clusters=None, copy=False):
     )
 
     # Get sorted cell order from clustermap
+
     iorder = sns.clustermap(
-        cell_load.T, cmap="RdBu_r", center=0
+        cell_load.T, row_cluster=cluster_factors, cmap="RdBu_r", center=0
     ).dendrogram_col.reordered_ind
     plt.close()
-    
+
     # Reorder cell names
     iorder = pd.Series(
         range(len(cell_load)), index=cell_load.index[iorder], name="td_cluster"
     )
     cell_to_factor = cell_load.join(iorder)["td_cluster"].tolist()
 
-
     # Save associated tensor decomposition factor to adata.obs
     adata.obs["td_cluster"] = cell_to_factor
 
     # Get sorted cell order from clustermap
     iorder = sns.clustermap(
-        gene_load.T, cmap="RdBu_r", center=0
+        gene_load.T, row_cluster=cluster_factors, cmap="RdBu_r", center=0
     ).dendrogram_col.reordered_ind
     plt.close()
-    
+
     # Reorder cell names
     iorder = pd.Series(
         range(len(gene_load)), index=gene_load.index[iorder], name="td_cluster"
@@ -166,27 +164,25 @@ def assign_factors(data, n_clusters=None, copy=False):
     return adata
 
 
-def init_tensor(data, device="auto"):
+def init_c2c_tensor(data, device="auto"):
 
     try:
         import torch
+
         device = "cuda" if torch.cuda.is_available() else "cpu"
     except ImportError:
         device = None
-        
+
     print(f"Device: {device}")
+
+    order_labels = list(data.uns["tensor_labels"].keys())
+    order_names = list(data.uns["tensor_labels"].values())
 
     tensor_c2c = c2c.tensor.PreBuiltTensor(
         data.uns["tensor"],
-        order_names=data.uns["tensor_labels"].values(),
-        order_labels=["Patterns", "Cells", "Genes"],
+        order_names=order_names,
+        order_labels=order_labels,
         device=device,
     )
 
-    meta_tf = c2c.tensor.generate_tensor_metadata(
-        interaction_tensor=tensor_c2c,
-        metadata_dicts=[None, None, None],
-        fill_with_order_elements=True,
-    )
-
-    return tensor_c2c, meta_tf
+    return tensor_c2c
