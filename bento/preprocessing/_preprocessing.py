@@ -31,6 +31,11 @@ def get_points(data, cells=None, genes=None):
     # Subset for genes
     points = points.loc[points["gene"].isin(genes)]
 
+    # Remove unused categories for categorical columns
+    for col in points.columns:
+        if points[col].dtype == 'category':
+            points[col].cat.remove_unused_categories(inplace=True)
+
     # Cast to GeoDataFrame
     points = gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points.x, points.y))
 
