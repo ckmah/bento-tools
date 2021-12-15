@@ -199,60 +199,137 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
     cell_metrics.columns = cell_metrics.columns.get_level_values(0)
 
     # Make symmetric (Lij = Lji)
-    cell_metrics['pair'] = cell_metrics.apply(lambda row: '-'.join(sorted([row['g1'], row['g2']])), axis=1)
-    cell_symmetric = cell_metrics.groupby(['cell', 'pair']).mean()
+    cell_metrics["pair"] = cell_metrics.apply(
+        lambda row: "-".join(sorted([row["g1"], row["g2"]])), axis=1
+    )
+    cell_symmetric = cell_metrics.groupby(["cell", "pair"]).mean()
 
     # Retain gene pair names
-    cell_symmetric = cell_metrics.set_index(['cell', 'pair']).drop('sim', axis=1).join(cell_symmetric).reset_index()
-    
+    cell_symmetric = (
+        cell_metrics.set_index(["cell", "pair"])
+        .drop("sim", axis=1)
+        .join(cell_symmetric)
+        .reset_index()
+    )
+
     # Aggregate across cells
-    coloc_agg = cell_symmetric.groupby(['pair'])['sim'].mean().to_frame()
-    coloc_agg = coloc_agg.join(cell_symmetric.set_index('pair').drop(['sim', 'cell'], axis=1)).reset_index().drop_duplicates()
-    
+    coloc_agg = cell_symmetric.groupby(["pair"])["sim"].mean().to_frame()
+    coloc_agg = (
+        coloc_agg.join(cell_symmetric.set_index("pair").drop(["sim", "cell"], axis=1))
+        .reset_index()
+        .drop_duplicates()
+    )
+
     # Save coloc similarity
-    cell_metrics[['cell', 'g1', 'g2', 'pair']].astype('category', copy=False)
-    coloc_agg[['g1', 'g2', 'pair']].astype('category', copy=False)
-    adata.uns["coloc_sim"] = cell_metrics
+    cell_metrics[["cell", "g1", "g2", "pair"]].astype("category", copy=False)
+    coloc_agg[["g1", "g2", "pair"]].astype("category", copy=False)
+    adata.uns["coloc_sim"] = cell_symmetric
     adata.uns["coloc_sim_agg"] = coloc_agg
 
     return adata if copy else None
 
-def get_gene_coloc(data, gene):
-    """
-    For a given gene, return its colocalization with all other genes.
-    
-    Assumes colocalization is precomputed with bento.tl.coloc_sim.
-    
-    Parameters
-    ----------
-    data : AnnData
-        AnnData formatted spatial data.
-    gene : str
-        The name of a gene, must be present in data.var.
-        
-    Returns
-    -------
-    pd.DataFrame
-        Subset of data.uns['coloc_sim_agg'].
-    """
-    sim = data.uns['coloc_sim_agg']
-    return sim.loc[sim['g1'].str.match(gene)]
 
-
-def get_gene_set_coloc(data, genes):
+def get_gene_set_coloc_agg(data, genes):
     """
     For a list of genes, return their pairwise colocalization with each other.
-    
+
     Parameters
     ----------
     data : AnnData
         AnnData formatted spatial data.
     gene : list of str
         The names of genes, must be present in data.var.
-        
+
     Returns
     -------
     pd.DataFrame
     """
-    sim = data.uns['coloc_sim_agg']
-    return sim.loc[sim['g1'].isin(genes) & sim['g2'].isin(genes)]
+    sim = data.uns["coloc_sim_agg"]
+    return sim.loc[sim["g1"].isin(genes) & sim["g2"].isin(genes)]
+
+
+def get_cell_coloc(data, cell):
+    """Get pair-wise gene colocalization for a given cell.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    cell : str
+        Name of cell present in data.obs_names.
+
+    Returns
+    -------
+    DataFrame
+    """
+    cell_coloc_sim = data.uns["coloc_sim"][data.uns["coloc_sim"]["cell"] == cell]
+    cell_coloc_sim = cell_coloc_sim.sort_values(by=["sim"], ascending=False)
+
+    return cell_coloc_sim
+
+
+def get_gene_coloc(data, cell, gene):
+    """Get colocalization of a single gene with all other genes, for a particular cell.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    cell : str
+        Name of cell present in data.obs_names.
+    gene : str
+        Name of a gene present in data.var_names.
+
+    Returns
+    -------
+    DataFrame
+    """
+
+    cell_coloc_sim = data.uns["coloc_sim"][data.uns["coloc_sim"]["cell"] == cell]
+    gene_coloc_sim = cell_coloc_sim[cell_coloc_sim["g1"] == gene]
+    gene_coloc_sim = gene_coloc_sim.sort_values(by=["sim"], ascending=False)
+
+    return gene_coloc_sim
+
+
+def get_cell_coloc_agg(data):
+    """Get aggregated pairwise colocalization similarity across all cells.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+
+    Returns
+    -------
+    DataFrame
+    """
+    coloc_sim_agg = data.uns["coloc_sim_agg"]
+    coloc_sim_agg = coloc_sim_agg.sort_values(by=["sim"], ascending=False)
+
+    return coloc_sim_agg
+
+
+def get_gene_coloc_agg(data, gene):
+    """
+    For a given gene, return its colocalization with all other genes sorted by highest similarity first.
+
+    Assumes colocalization is precomputed with bento.tl.coloc_sim.
+
+    Parameters
+    ----------
+    data : AnnData
+        AnnData formatted spatial data.
+    gene : str
+        The name of a gene, must be present in data.var.
+
+    Returns
+    -------
+    pd.DataFrame
+        Sorted subset of data.uns['coloc_sim_agg'].
+    """
+    coloc_sim_agg = data.uns["coloc_sim_agg"]
+    gene_coloc_agg = coloc_sim_agg[coloc_sim_agg["g1"] == gene]
+    gene_coloc_agg = gene_coloc_agg.sort_values(by=["sim"], ascending=False)
+
+    return gene_coloc_agg
