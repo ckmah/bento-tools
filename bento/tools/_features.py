@@ -204,15 +204,15 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
 
     # Retain gene pair names
     cell_symmetric = cell_metrics.set_index(['cell', 'pair']).drop('sim', axis=1).join(cell_symmetric).reset_index()
-    
+
     # Aggregate across cells
     coloc_agg = cell_symmetric.groupby(['pair'])['sim'].mean().to_frame()
     coloc_agg = coloc_agg.join(cell_symmetric.set_index('pair').drop(['sim', 'cell'], axis=1)).reset_index().drop_duplicates()
-    
+
     # Save coloc similarity
     cell_metrics[['cell', 'g1', 'g2', 'pair']].astype('category', copy=False)
     coloc_agg[['g1', 'g2', 'pair']].astype('category', copy=False)
-    adata.uns["coloc_sim"] = cell_metrics
+    adata.uns["coloc_sim"] = cell_symmetric
     adata.uns["coloc_sim_agg"] = coloc_agg
 
     return adata if copy else None
@@ -220,16 +220,16 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
 def get_gene_coloc(data, gene):
     """
     For a given gene, return its colocalization with all other genes.
-    
+
     Assumes colocalization is precomputed with bento.tl.coloc_sim.
-    
+
     Parameters
     ----------
     data : AnnData
         AnnData formatted spatial data.
     gene : str
         The name of a gene, must be present in data.var.
-        
+
     Returns
     -------
     pd.DataFrame
@@ -242,17 +242,47 @@ def get_gene_coloc(data, gene):
 def get_gene_set_coloc(data, genes):
     """
     For a list of genes, return their pairwise colocalization with each other.
-    
+
     Parameters
     ----------
     data : AnnData
         AnnData formatted spatial data.
     gene : list of str
         The names of genes, must be present in data.var.
-        
+
     Returns
     -------
     pd.DataFrame
     """
     sim = data.uns['coloc_sim_agg']
     return sim.loc[sim['g1'].isin(genes) & sim['g2'].isin(genes)]
+
+# Function to find the top colocalized genes given a cell
+def cell_top_coloc(cell):
+    cell_coloc_sim = adata.uns['coloc_sim'][adata.uns['coloc_sim']['cell'] == cell]
+    cell_coloc_sim = cell_coloc_sim.sort_values(by=['sim'], ascending=False)
+    cell_coloc_sim = cell_coloc_sim.iloc[len(cell_coloc_sim['g1'].unique()): , :]
+    return cell_coloc_sim
+
+# Function to find the top colocalized genes given a cell and a gene
+def gene_top_coloc(cell, gene):
+    cell_coloc_sim = adata.uns['coloc_sim'][adata.uns['coloc_sim']['cell'] == cell]
+    gene_coloc_sim = cell_coloc_sim[cell_coloc_sim['g1'] == gene]
+    gene_coloc_sim = gene_coloc_sim.sort_values(by=['sim'], ascending=False)
+    gene_coloc_sim = gene_coloc_sim.iloc[1: , :]
+    return gene_coloc_sim
+
+# Returns the top colocalized genes across all cells
+def top_coloc_agg():
+    coloc_sim_agg = adata.uns['coloc_sim_agg']
+    coloc_sim_agg = coloc_sim_agg.sort_values(by=['sim'], ascending=False)
+    coloc_sim_agg = coloc_sim_agg.iloc[len(coloc_sim_agg['g1'].unique()): , :]
+    return coloc_sim_agg
+
+# Returns the top colocalized genes across all cells to a specified gene
+def gene_top_coloc_agg(gene):
+    coloc_sim_agg = adata.uns['coloc_sim_agg']
+    gene_coloc_agg = coloc_sim_agg[coloc_sim_agg['g1'] == gene]
+    gene_coloc_agg = gene_coloc_agg.sort_values(by=['sim'], ascending=False)
+    gene_coloc_agg = gene_coloc_agg.iloc[1: , :]
+    return gene_coloc_agg
