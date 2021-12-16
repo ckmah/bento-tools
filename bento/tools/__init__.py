@@ -14,8 +14,11 @@ from ._features import (
     coloc_cluster_genes,
     coloc_sim,
     gene_leiden,
+    get_gene_set_coloc_agg,
+    get_cell_coloc,
     get_gene_coloc,
-    get_gene_set_coloc,
+    get_cell_coloc_agg,
+    get_gene_coloc_agg,
 )
 from ._locfish_features import (
     distance_features,
