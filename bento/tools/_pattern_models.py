@@ -12,6 +12,22 @@ from ._pattern_stats import pattern_stats
 OneHotEncoder = None
 LabelBinarizer = None
 
+PATTERN_MODEL_FEATURE_NAMES = [
+        "cell_inner_proximity",
+        "nucleus_inner_proximity",
+        "nucleus_outer_proximity",
+        "cell_inner_asymmetry",
+        "nucleus_inner_asymmetry",
+        "nucleus_outer_asymmetry",
+        "l_max",
+        "l_max_gradient",
+        "l_min_gradient",
+        "l_monotony",
+        "l_half_radius",
+        "point_dispersion",
+        "nucleus_dispersion",
+    ]
+
 def pattern_features(data):
     models = [
         bento.tl.ShapeProximity("cell_shape"),
@@ -46,27 +62,11 @@ def intracellular_patterns(data, min_count=5, copy=False):
     """
     adata = data.copy() if copy else data
 
-    features = [
-        "cell_inner_proximity",
-        "nucleus_inner_proximity",
-        "nucleus_outer_proximity",
-        "cell_inner_asymmetry",
-        "nucleus_inner_asymmetry",
-        "nucleus_outer_asymmetry",
-        "l_max",
-        "l_max_gradient",
-        "l_min_gradient",
-        "l_monotony",
-        "l_half_radius",
-        "point_dispersion",
-        "nucleus_dispersion",
-    ]
-
     # Compute features if missing TODO currently recomputes everything 
-    if not all(f in data.layers.keys() for f in features):
+    if not all(f in data.layers.keys() for f in PATTERN_MODEL_FEATURE_NAMES):
         pattern_features(data)
 
-    X_df = get_features(adata, features, min_count)
+    X_df = get_features(adata, PATTERN_MODEL_FEATURE_NAMES, min_count)
 
     model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"
     model = pickle.load(open(f"{model_dir}/rf_model_20211102.pkl", "rb"))
@@ -104,14 +104,14 @@ def intracellular_patterns(data, min_count=5, copy=False):
     return adata if copy else None
 
 
-def get_features(data, features, min_count):
+def get_features(data, feature_names, min_count):
     """Get features for all samples by melting features from data.layers.
 
     Parameters
     ----------
     data : AnnData
         Spatial formatted AnnData object
-    features : list of str
+    feature_names : list of str
         all values must to be keys in data.layers
     min_count : int
         Minimum expression count per sample; otherwise ignore sample
@@ -133,11 +133,11 @@ def get_features(data, features, min_count):
         "value", axis=1
     )
 
-    for f in features:
+    for f in feature_names:
         values = (
             data.to_df(f).reset_index().melt(id_vars="cell").set_index(["cell", "gene"])
         )
         values.columns = [f]
         sample_index = sample_index.join(values)
 
-    return sample_index[features]
+    return sample_index[feature_names]
