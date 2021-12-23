@@ -5,10 +5,7 @@ import pandas as pd
 import seaborn as sns
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
-from .._utils import track, PATTERN_NAMES
-
-
-TENSOR_DIM_NAMES = ["layers", "cells", "genes"]
+from .._utils import track, PATTERN_NAMES, TENSOR_DIM_NAMES
 
 
 @track

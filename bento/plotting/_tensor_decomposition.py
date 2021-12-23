@@ -5,20 +5,20 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 
-from .._utils import pheno_to_color, DIM_COLORS, PATTERN_COLORS
+from .._utils import pheno_to_color, TENSOR_DIM_NAMES, DIM_COLORS, PATTERN_COLORS
 from ._utils import savefig
 
 
 def _get_loading(data, load, dim, zscore):
 
-    if dim == "Patterns":
+    if dim == TENSOR_DIM_NAMES[0]:
         cluster_labels = np.zeros(len(load))
         unit_order = load.index
 
-    elif dim == "Cells":
+    elif dim == TENSOR_DIM_NAMES[1]:
         cluster_labels = data.obs["td_cluster"].sort_values().dropna()
         unit_order = cluster_labels.index.tolist()
-    elif dim == "Genes":
+    elif dim == TENSOR_DIM_NAMES[2]:
         cluster_labels = data.var["td_cluster"].sort_values().dropna()
         unit_order = cluster_labels.index.tolist()
 
@@ -44,10 +44,9 @@ def _get_loading(data, load, dim, zscore):
 
 @savefig
 def factors(data, zscore=False, fname=None):
-    dims = ["Patterns", "Cells", "Genes"]
-    factors = list(data.uns["tensor_loadings"][dims[0]].columns)
+    factors = list(data.uns["tensor_loadings"][TENSOR_DIM_NAMES[0]].columns)
     n_factors = len(factors)
-    n_dims = len(dims)
+    n_dims = len(TENSOR_DIM_NAMES)
 
     fig = plt.figure(figsize=(3 * n_dims, n_factors))
 
@@ -71,8 +70,9 @@ def factors(data, zscore=False, fname=None):
         else:
             ax = fig.add_subplot(gs[row, PATTERN_COL], sharex=fig.axes[0])
 
-        load = data.uns["tensor_loadings"]["Patterns"][factor]
-        load_df = _get_loading(data, load, "Patterns", zscore=False)
+        pattern_dim = TENSOR_DIM_NAMES[0]
+        load = data.uns["tensor_loadings"][pattern_dim][factor]
+        load_df = _get_loading(data, load, pattern_dim, zscore=False)
 
         # Feature barplots
         ax.bar(
@@ -84,7 +84,7 @@ def factors(data, zscore=False, fname=None):
         )
 
         if row == FACTOR_ROWS[0]:
-            ax.set_title("Patterns", weight="600")
+            ax.set_title(str(pattern_dim).capitalize(), weight="600")
 
         # Set row labels
         ax.set_ylabel(factor, labelpad=30, rotation=0, weight="600")
@@ -106,7 +106,7 @@ def factors(data, zscore=False, fname=None):
     # Plot cell and gene loadings as heatmaps
     for factor, row in zip(factors, FACTOR_ROWS):
         # Populate index 1 and 2 columns
-        for col, dim in zip(range(1, n_dims), ["Cells", "Genes"]):
+        for col, dim in zip(range(1, n_dims), TENSOR_DIM_NAMES[1:]):
 
             ax = fig.add_subplot(gs[row, col])
             load = data.uns["tensor_loadings"][dim][factor]
