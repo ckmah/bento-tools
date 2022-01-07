@@ -10,6 +10,7 @@ from ._cell_features import (
     nucleus_aspect_ratio,
     nucleus_offset,
 )
+from ._colocation import coloc_quotient
 from ._features import (
     coloc_cluster_genes,
     coloc_sim,

@@ -25,3 +25,6 @@ class TestTensorTools(unittest.TestCase):
 
             n_factors = len(data.uns['tensor_loadings'][name].keys())
             self.assertTrue(n_factors == N_FACTORS)
+
+        # Make sure plotting tensor decomposition factors runs with no errors
+        bento.pl.factors(data, zscore=True)
