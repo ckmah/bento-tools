@@ -180,6 +180,7 @@ def plot_cells(
     kind="scatter",
     hue=None,
     palette=None,
+    style=None,
     tile=False,
     lw=0.5,
     col_wrap=4,
@@ -235,7 +236,7 @@ def plot_cells(
 
         # Plot points
         if kind == "scatter":
-            _spatial_scatter(points, hue, palette, ax, **scatter_kws)
+            _spatial_scatter(points, hue, palette, style, ax, **scatter_kws)
         elif kind == "hist":
             _spatial_hist(points, hue, palette, ax, **hist_kws)
 
@@ -271,7 +272,7 @@ def plot_cells(
 
                 # Plot points
                 if kind == "scatter":
-                    _spatial_scatter(p, hue, palette, ax, **scatter_kws)
+                    _spatial_scatter(p, hue, palette, style, ax, **scatter_kws)
                 elif kind == "hist":
                     _spatial_hist(p, hue, palette, ax, **hist_kws)
 
@@ -306,18 +307,19 @@ def _spatial_line(geo_df, shape_names, lw, ax):
         )
 
 
-def _spatial_scatter(points_gdf, hue, palette, ax, **scatter_kws):
+def _spatial_scatter(points_gdf, hue, palette, style, ax, **scatter_kws):
     # Override scatterplot parameter defaults
     scatter_defaults = dict(linewidth=0, s=10)
     scatter_defaults.update(scatter_kws)
     scatter_kws = scatter_defaults
 
     # Remove categories with no data; otherwise legend is very long
-    if hue:
-        points_gdf[hue].cat.remove_unused_categories(inplace=True)
+    for cat in [hue, style]:
+        if cat:
+            points_gdf[cat].cat.remove_unused_categories(inplace=True)
 
     sns.scatterplot(
-        data=points_gdf, x="x", y="y", hue=hue, palette=palette, ax=ax, **scatter_kws
+        data=points_gdf, x="x", y="y", hue=hue, palette=palette, style=style, ax=ax, **scatter_kws
     )
 
 
@@ -335,112 +337,3 @@ def _spatial_hist(points_gdf, hue, palette, ax, **hist_kws):
         data=points_gdf, x="x", y="y", hue=hue, palette=palette, ax=ax, **hist_kws
     )
 
-
-def _plot_cells(
-    shape_names,
-    shapes_gdf,
-    ax,
-    kind,
-    points_c,
-    markersize,
-    lw,
-    alpha,
-    binwidth,
-    spread,
-    hue,
-    color,
-    cmap,
-    size,
-    legend,
-    cbar,
-):
-    # Plot sname outlines
-    for sname in shape_names:
-        shapes_gdf.set_geometry(sname).plot(
-            color=(0, 0, 0, 0), edgecolor=(0, 0, 0, 0.8), lw=lw, ax=ax
-        )
-
-    if points_c.shape[0] == 0:
-        return ax
-
-    if hue == "pattern" and "none" in points_c[hue].cat.categories:
-        points_c[hue].cat.remove_categories("none", inplace=True)
-        cmap = dict(
-            zip(
-                [
-                    "cell_edge",
-                    "foci",
-                    "nuclear_edge",
-                    "perinuclear",
-                    "protrusions",
-                    "random",
-                ],
-                sns.color_palette("muted6", n_colors=6).as_hex(),
-            )
-        )
-
-    # Plot points
-    if kind == "scatter":
-        if hue is None:
-            points_c.plot(
-                column=hue,
-                markersize=markersize,
-                color=color,
-                alpha=alpha,
-                ax=ax,
-            )
-        else:
-            points_c.plot(
-                column=hue,
-                markersize=markersize,
-                cmap=color,
-                alpha=alpha,
-                ax=ax,
-            )
-
-    # Plot density
-    elif kind == "hist":
-
-        if hue:
-            aggregator = ds.count_cat(hue)
-        else:
-            aggregator = ds.count()
-
-        if spread:
-            spread = partial(tf.dynspread, threshold=0.5)
-        else:
-            spread = None
-
-        # Percent of window size
-        scaled_binwidth = size * binwidth * 0.5
-
-        artist = dsshow(
-            points_c,
-            ds.Point("x", "y"),
-            aggregator,
-            norm="linear",
-            cmap=cmap,
-            color_key=cmap,
-            width_scale=1 / scaled_binwidth,
-            height_scale=1 / scaled_binwidth,
-            vmin=0,
-            shade_hook=spread,
-            ax=ax,
-        )
-
-        if legend:
-            plt.legend(handles=artist.get_legend_elements())
-
-        from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-        if cbar:
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes("right", size="4%", pad=0.05)
-            ax.figure.colorbar(artist, cax=cax, orientation="vertical")
-        # plt.tight_layout()
-
-    bounds = shapes_gdf.total_bounds
-    ax.set_xlim(bounds[0], bounds[2])
-    ax.set_ylim(bounds[1], bounds[3])
-
-    return ax
