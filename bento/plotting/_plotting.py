@@ -180,10 +180,11 @@ def plot_cells(
     kind="scatter",
     hue=None,
     palette=None,
-    style=None,
     tile=False,
     lw=0.5,
     col_wrap=4,
+    binwidth=20,
+    style=None,
     shape_names="all",
     legend=True,
     frameon=True,
@@ -238,7 +239,7 @@ def plot_cells(
         if kind == "scatter":
             _spatial_scatter(points, hue, palette, style, ax, **scatter_kws)
         elif kind == "hist":
-            _spatial_hist(points, hue, palette, ax, **hist_kws)
+            _spatial_hist(points, hue, palette, binwidth, ax, **hist_kws)
 
         # Plot shapes
         _spatial_line(shapes_gdf, shape_names, lw, ax)
@@ -274,7 +275,7 @@ def plot_cells(
                 if kind == "scatter":
                     _spatial_scatter(p, hue, palette, style, ax, **scatter_kws)
                 elif kind == "hist":
-                    _spatial_hist(p, hue, palette, ax, **hist_kws)
+                    _spatial_hist(p, hue, palette, binwidth, ax, **hist_kws)
 
                 # Plot shapes
                 _spatial_line(s, shape_names, lw, ax)
@@ -323,9 +324,9 @@ def _spatial_scatter(points_gdf, hue, palette, style, ax, **scatter_kws):
     )
 
 
-def _spatial_hist(points_gdf, hue, palette, ax, **hist_kws):
+def _spatial_hist(points_gdf, hue, palette, binwidth, ax, **hist_kws):
     # Override scatterplot parameter defaults
-    hist_defaults = dict(binwidth=20)
+    hist_defaults = dict()
     hist_defaults.update(hist_kws)
     hist_kws = hist_defaults
 
@@ -334,6 +335,6 @@ def _spatial_hist(points_gdf, hue, palette, ax, **hist_kws):
         points_gdf[hue].cat.remove_unused_categories(inplace=True)
 
     sns.histplot(
-        data=points_gdf, x="x", y="y", hue=hue, palette=palette, ax=ax, **hist_kws
+        data=points_gdf, x="x", y="y", hue=hue, palette=palette, binwidth=binwidth, ax=ax, **hist_kws
     )
 
