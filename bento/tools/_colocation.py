@@ -1,19 +1,24 @@
 import numpy as np
 import pandas as pd
+from numpy.random import default_rng
 from dask import dataframe as dd
 from dask.diagnostics import ProgressBar
 from sklearn.neighbors import NearestNeighbors
 
 
-def coloc_quotient(data, radius=2, min_count=5, permutations=10, copy=False):
-    """Calculate pairwise gene colocalization quotient in each cell.
+def coloc_quotient(
+    data, n_neighbors=25, radius=None, min_count=5, permutations=10, copy=False
+):
+    """Calculate pairwise gene colocalization quotient in each cell. Specify either n_neighbors or radius, for knn neighbors or radius neighbors.
 
     Parameters
     ----------
     adata : AnnData
         Anndata formatted spatial data.
+    n_neighbors : int
+        Number of nearest neighbors to consider, default 25
     radius : int
-        Max radius to search for neighboring points, default 2
+        Max radius to search for neighboring points, default None
     min_count : int
         Minimum points needed to be eligible for analysis. default 5
     permutations : int
@@ -35,45 +40,44 @@ def coloc_quotient(data, radius=2, min_count=5, permutations=10, copy=False):
     if ngroups > 0:
         npartitions = min(100, ngroups)
 
-        if permutations > 0:
-            meta = {
-                "neighbor_count": int,
-                "neighbor_fraction": float,
-                "quotient": float,
-                "pvalue": float,
-                "gene": str,
-            }
-        else:
-            meta = {
-                "neighbor_count": int,
-                "neighbor_fraction": float,
-                "quotient": float,
-                "gene": str,
-            }
+        meta = {
+            "neighbor": str,
+            "neighbor_count": int,
+            "neighbor_fraction": float,
+            "quotient": float,
+            "pvalue": float,
+            "gene": str,
+        }
+
         with ProgressBar():
             cell_metrics = (
                 dd.from_pandas(points.set_index("cell"), npartitions=npartitions)
                 .groupby(["cell"])
-                .apply(lambda df: cell_clq(df, min_count, radius, permutations), meta=meta)
+                .apply(
+                    lambda df: cell_clq(
+                        df, n_neighbors, radius, min_count, permutations
+                    ),
+                    meta=meta,
+                )
                 .reset_index()
                 .compute()
             )
 
-    # cell_metrics = pd.concat(cell_metrics).reset_index()
-    cell_metrics = cell_metrics.rename(columns={"level_1": "neighbor"})
-
+    cell_metrics = cell_metrics.drop('level_1', axis=1).astype(meta)
     adata.uns["coloc_quotient"] = cell_metrics
 
     return adata if copy else None
 
-def cell_clq(cell_points, min_count, radius, permutations):
+
+def cell_clq(cell_points, n_neighbors, radius, min_count, permutations):
 
     # Count number of points for each gene
     counts = cell_points["gene"].value_counts()
 
     # Only keep genes >= min_count
     counts = counts[counts >= min_count]
-    valid_genes = counts.index.tolist()
+    valid_genes = counts.sort_index().index.tolist()
+    counts = counts[valid_genes]
 
     # Get points
     valid_points = cell_points[cell_points["gene"].isin(valid_genes)]
@@ -83,10 +87,14 @@ def cell_clq(cell_points, min_count, radius, permutations):
     valid_points["gene"] = valid_points["gene"].cat.remove_unused_categories()
 
     # Get neighbors within fixed outer_radius for every point
-    nn = NearestNeighbors(radius=radius).fit(valid_points[["x", "y"]])
-    point_index = nn.radius_neighbors(
-        valid_points[["x", "y"]], return_distance=False
-    )
+    if n_neighbors:
+        nn = NearestNeighbors(n_neighbors=n_neighbors).fit(valid_points[["x", "y"]])
+        point_index = nn.kneighbors(valid_points[["x", "y"]], return_distance=False)
+    elif radius:
+        nn = NearestNeighbors(radius=radius).fit(valid_points[["x", "y"]])
+        point_index = nn.radius_neighbors(
+            valid_points[["x", "y"]], return_distance=False
+        )
 
     # Flatten adjacency list to pairs
     source_index = []
@@ -115,74 +123,98 @@ def cell_clq(cell_points, min_count, radius, permutations):
     source_genes = np.array([index2gene[i] for i in source_index])
     neighbor_genes = np.array([index2gene[i] for i in neighbor_index])
 
-    # Remove intra-gene neighbors
-    is_intragene = source_genes == neighbor_genes
-    source_index = source_index[~is_intragene]
-    neighbor_index = neighbor_index[~is_intragene]
-    source_genes = source_genes[~is_intragene]
-    neighbor_genes = neighbor_genes[~is_intragene]
+    # Preshuffle neighbors for permutations
+    perm_neighbors = []
+    if permutations > 0:
+        # Permute neighbors
+        rng = default_rng()
+        for i in range(permutations):
+            perm_neighbors.append(rng.permutation(neighbor_genes))
+
+    neighbor_space = {g: 0 for g in valid_genes}
 
     # Iterate across genes
     stats_list = []
-    for cur_gene in valid_genes:
+
+    for cur_gene, cur_total in zip(valid_genes, counts[valid_genes]):
 
         # Select pairs where source = gene of interest
-        cur_select = source_genes == cur_gene
-        cur_neighbor_genes = neighbor_genes[cur_select]
+        cur_neighbor_genes = neighbor_genes[source_genes == cur_gene]
 
-        # Colocation statistics
-        uniq_neighbors, obs_count = np.unique(
-            cur_neighbor_genes, return_counts=True
-        )
-        obs_total = counts[uniq_neighbors].values
-        obs_fraction = obs_count / obs_total
-        obs_quotient = (obs_count / counts[cur_gene]) / (obs_total / (n_points - 1))
+        # Count neighbors
+        obs_genes, obs_count = np.unique(cur_neighbor_genes, return_counts=True)
+
+        # Save counts and order with dict
+        obs_space = neighbor_space.copy()
+        obs_space.update(zip(obs_genes, obs_count))
+        obs_count = np.array(list(obs_space.values()))
+
+        # Calculate colocation quotient for all neighboring genes
+        # print(obs_count, counts)
+        obs_quotient = (obs_count / cur_total) / ((counts - 1) / (n_points - 1))
+        obs_quotient = np.expand_dims(obs_quotient, 0)
+
+        obs_fraction = (obs_count / counts)
 
         # Perform permutations for significance
-        perm_counts = []
         if permutations > 0:
+            perm_counts = []
             for i in range(permutations):
-                # Draw from empirical frequencies without replacement
-                rand_neighbor_genes = np.random.choice(
-                    neighbor_genes, size=len(cur_neighbor_genes), replace=False
-                )
+                # Count neighbors
                 perm_genes, perm_count = np.unique(
-                    rand_neighbor_genes, return_counts=True
+                    perm_neighbors[i], return_counts=True
                 )
-                perm_count = pd.Series(perm_count, index=perm_genes)
-                perm_counts.append(perm_count)
 
-            # Permutation statistics
-            perm_counts = pd.concat(perm_counts, axis=1).T
+                # Save counts
+                perm_space = neighbor_space.copy()
+                perm_space.update(dict(zip(perm_genes, perm_count)))
+                perm_counts.append(np.array(list(perm_space.values())))
 
-            perm_quotients = (perm_counts / counts[cur_gene]) / (
-                counts.loc[perm_counts.columns] / (n_points - 1)
+            # (permutations, len(valid_genes)) array
+            perm_counts = np.array(perm_counts)
+
+            # Calculate colocation quotient
+            perm_quotients = (perm_counts / cur_total) / (
+                (counts.values - 1) / (n_points - 1)
             )
-            perm_quotients = perm_quotients.T.reindex(uniq_neighbors, fill_value=0)
 
             # Fraction of times statistic is greater than permutations
-            pvalue = (np.expand_dims(obs_quotient, 1) > perm_quotients).sum(
-                axis=1
-            ) / permutations
+            pvalue = (
+                2
+                * np.array(
+                    [
+                        np.greater_equal(obs_quotient, perm_quotients).sum(axis=0),
+                        np.less_equal(obs_quotient, perm_quotients).sum(axis=0),
+                    ]
+                ).min(axis=0)
+                / permutations
+            )
+            
+            stats_list.append(
+                np.array([
+                    obs_fraction.index,
+                    obs_count,
+                    obs_fraction.values,
+                    obs_quotient[0],
+                    pvalue,
+                    [cur_gene] * len(obs_count),
+                ])
+            )
 
-            # Format statistics as dataframe
-            stat_df = pd.DataFrame(
-                [obs_count, obs_fraction, obs_quotient, pvalue],
-                index=["neighbor_count", "neighbor_fraction", "quotient", "pvalue"],
-                columns=uniq_neighbors,
-            ).T
-            stat_df["gene"] = cur_gene
-            stats_list.append(stat_df)
         else:
-            # Format statistics as dataframe
-            stat_df = pd.DataFrame(
-                [obs_count, obs_fraction, obs_quotient],
-                index=["neighbor_count", "neighbor_fraction", "quotient"],
-                columns=uniq_neighbors,
-            ).T
-            stat_df["gene"] = cur_gene
-            stats_list.append(stat_df)
-
-    stats_df = pd.concat(stats_list)
-    # stats_df["cell"] = cell
+            stats_list.append(
+                np.array([
+                    obs_fraction.index,
+                    obs_count,
+                    obs_fraction.values,
+                    obs_quotient[0],
+                    [1] * len(obs_count),
+                    [cur_gene] * len(obs_count),
+                ])
+            )
+           
+    stats_df = pd.DataFrame(
+        np.concatenate(stats_list, axis=1),
+        index=["neighbor", "neighbor_count", "neighbor_fraction", "quotient", "pvalue", "gene"],
+    ).T
     return stats_df
