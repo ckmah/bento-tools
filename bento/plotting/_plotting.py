@@ -181,7 +181,7 @@ def plot_cells(
     hue=None,
     palette=None,
     tile=False,
-    lw=0.5,
+    lw=1,
     col_wrap=4,
     binwidth=20,
     style=None,
@@ -232,8 +232,12 @@ def plot_cells(
         if ax is None:
             ax = plt.gca()
         # fig, ax = plt.subplots(1, 1, figsize=(axsize, axsize))
-        ax.set(xticks=[], yticks=[], adjustable="datalim")
+        ax.set(xticks=[], yticks=[], facecolor='black', adjustable="datalim")
         ax.axis(frameon)
+        
+        # Set frame to white
+        for spine in ax.spines.values():
+            spine.set_edgecolor('white')
 
         # Plot points
         if kind == "scatter":
@@ -260,6 +264,7 @@ def plot_cells(
             ncols,
             sharex=False,
             sharey=False,
+            subplot_kw=dict(facecolor='black'),
             figsize=(axsize * ncols, axsize * nrows),
         )
         plt.subplots_adjust(wspace=0, hspace=0)
@@ -289,11 +294,15 @@ def plot_cells(
 
                 ax.set(xticks=[], yticks=[], xlabel=None, ylabel=None)
                 ax.axis(frameon)
+                
+                # Set frame to white
+                for spine in ax.spines.values():
+                    spine.set_edgecolor('white')
 
                 # Only make legend for last plot
                 n_genes = len(np.unique(p["gene"]))
-                if legend and i == len(shapes_gdf) - 1:
-                    ax.legend(loc="upper center", bbox_to_anchor=(0, 0), ncol=n_genes)
+                if legend and i == len(shapes_gdf)-1:
+                    ax.legend(loc="upper left", bbox_to_anchor=(1, 1), ncol=1)
                 else:
                     ax.legend().remove()
 
@@ -304,7 +313,7 @@ def plot_cells(
 def _spatial_line(geo_df, shape_names, lw, ax):
     for sname in shape_names:
         geo_df.set_geometry(sname).plot(
-            color=(0, 0, 0, 0), edgecolor=(0, 0, 0, 0.8), lw=lw, ax=ax
+            color=(0, 0, 0, 0), edgecolor=(1,1,1, 0.8), lw=lw, ax=ax
         )
 
 
