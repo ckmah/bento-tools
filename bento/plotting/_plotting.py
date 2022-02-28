@@ -247,6 +247,10 @@ def plot_cells(
 
         # Plot shapes
         _spatial_line(shapes_gdf, shape_names, lw, ax)
+        
+        if not legend:
+            ax.legend().remove()
+
 
     # Plot each cell in separate subplots
     else:
@@ -325,7 +329,7 @@ def _spatial_scatter(points_gdf, hue, palette, style, ax, **scatter_kws):
 
     # Remove categories with no data; otherwise legend is very long
     for cat in [hue, style]:
-        if cat:
+        if cat in points_gdf.columns and points_gdf[cat].dtype == 'category':
             points_gdf[cat].cat.remove_unused_categories(inplace=True)
 
     sns.scatterplot(
@@ -340,7 +344,8 @@ def _spatial_hist(points_gdf, hue, palette, binwidth, ax, **hist_kws):
     hist_kws = hist_defaults
 
     # Remove categories with no data; otherwise legend is very long
-    if hue:
+
+    if hue in points_gdf.columns and points_gdf[hue].dtype == 'category':
         points_gdf[hue].cat.remove_unused_categories(inplace=True)
 
     sns.histplot(
