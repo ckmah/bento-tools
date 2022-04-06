@@ -180,33 +180,27 @@ def plot_cells(
     kind="scatter",
     hue=None,
     palette=None,
+    cmap='Blues_r',
     tile=False,
     lw=1,
     col_wrap=4,
     binwidth=20,
     style=None,
-    shape_names="all",
+    shape_names=['cell_shape', 'nucleus_shape'],
     legend=True,
     frameon=True,
     axsize=4,
     ax=None,
-    scatter_kws=dict(),
-    hist_kws=dict(),
     fname=None,
+    **kwargs
 ):
     """
     Visualize distribution of variable in spatial coordinates.
     Parameters
     ----------
     data : dict
-    type : str
-        Options include 'points' and 'heatmap'
-    cells: None, list
-        Select specified list of cells. Default value of None selects all cells.
-    genes: None, list
-        Select specified list of genes. Default value of None selects all genes.
-    draw_shape_names: str, list
-       shape_names to draw outlines for.
+    kind : {'scatter', 'hist', 'kde'}
+        Selects the underlying seaborn plot function.
     """
 
     # Add all shape_names if 'all'
@@ -241,10 +235,12 @@ def plot_cells(
 
         # Plot points
         if kind == "scatter":
-            _spatial_scatter(points, hue, palette, style, ax, **scatter_kws)
+            _spatial_scatter(points, hue, palette, style, ax, **kwargs)
         elif kind == "hist":
-            _spatial_hist(points, hue, palette, binwidth, ax, **hist_kws)
-
+            _spatial_hist(points, hue, cmap, binwidth, ax, **kwargs)
+        elif kind == "kde":
+            _spatial_kde(points, hue, cmap, ax, **kwargs)
+            
         # Plot shapes
         _spatial_line(shapes_gdf, shape_names, lw, ax)
         
@@ -274,7 +270,7 @@ def plot_cells(
         plt.subplots_adjust(wspace=0, hspace=0)
 
         # Plot cells separately
-        for i, ax in enumerate(axs.flatten()):
+        for i, ax in enumerate(np.array(axs).flatten()):
             try:
                 # Select subset data
                 s = shapes_gdf.iloc[[i]]
@@ -282,9 +278,11 @@ def plot_cells(
 
                 # Plot points
                 if kind == "scatter":
-                    _spatial_scatter(p, hue, palette, style, ax, **scatter_kws)
+                    _spatial_scatter(p, hue, palette, style, ax, **kwargs)
                 elif kind == "hist":
-                    _spatial_hist(p, hue, palette, binwidth, ax, **hist_kws)
+                    _spatial_hist(p, hue, cmap, binwidth, ax, **kwargs)
+                elif kind == "kde":
+                    _spatial_kde(p, hue, cmap, ax, **kwargs)
 
                 # Plot shapes
                 _spatial_line(s, shape_names, lw, ax)
@@ -321,11 +319,10 @@ def _spatial_line(geo_df, shape_names, lw, ax):
         )
 
 
-def _spatial_scatter(points_gdf, hue, palette, style, ax, **scatter_kws):
+def _spatial_scatter(points_gdf, hue, palette, style, ax, **kwargs):
     # Override scatterplot parameter defaults
-    scatter_defaults = dict(linewidth=0, s=10)
-    scatter_defaults.update(scatter_kws)
-    scatter_kws = scatter_defaults
+    scatter_kws = dict(linewidth=0, s=10)
+    scatter_kws.update(**kwargs)
 
     # Remove categories with no data; otherwise legend is very long
     for cat in [hue, style]:
@@ -337,11 +334,10 @@ def _spatial_scatter(points_gdf, hue, palette, style, ax, **scatter_kws):
     )
 
 
-def _spatial_hist(points_gdf, hue, palette, binwidth, ax, **hist_kws):
+def _spatial_hist(points_gdf, hue, cmap, binwidth, ax, **kwargs):
     # Override scatterplot parameter defaults
-    hist_defaults = dict()
-    hist_defaults.update(hist_kws)
-    hist_kws = hist_defaults
+    hist_kws = dict()
+    hist_kws.update(**kwargs)
 
     # Remove categories with no data; otherwise legend is very long
 
@@ -349,6 +345,18 @@ def _spatial_hist(points_gdf, hue, palette, binwidth, ax, **hist_kws):
         points_gdf[hue].cat.remove_unused_categories(inplace=True)
 
     sns.histplot(
-        data=points_gdf, x="x", y="y", hue=hue, palette=palette, binwidth=binwidth, ax=ax, **hist_kws
+        data=points_gdf, x="x", y="y", hue=hue, cmap=cmap, binwidth=binwidth, ax=ax, **hist_kws
     )
 
+
+def _spatial_kde(points_gdf, hue, cmap, ax, **kwargs): 
+    kde_kws = dict()
+    kde_kws.update(**kwargs)
+    
+    sampled_df=points_gdf.sample(frac=0.2)
+    
+    # Remove categories with no data; otherwise legend is very long
+    if hue in sampled_df.columns and sampled_df[hue].dtype == 'category':
+        sampled_df[hue].cat.remove_unused_categories(inplace=True)
+        
+    sns.kdeplot(data=sampled_df, x="x", y="y", hue=hue, cmap=cmap, ax=ax, **kde_kws)
