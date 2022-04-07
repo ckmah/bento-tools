@@ -1,14 +1,18 @@
 from ._cell_features import (
     cell_area,
     cell_aspect_ratio,
+    cell_bounds,
+    cell_moments,
     cell_morph_open,
     cell_perimeter,
     cell_radius,
+    cell_span,
     is_nuclear,
     nucleus_area,
     nucleus_area_ratio,
     nucleus_aspect_ratio,
     nucleus_offset,
+    raster_cell
 )
 from ._colocation import coloc_quotient
 from ._features import (
@@ -31,8 +35,9 @@ from ._locfish_features import (
 from ._pattern_models import intracellular_patterns, PATTERN_MODEL_FEATURE_NAMES
 from ._pattern_stats import pattern_diff, pattern_stats
 from ._sample_features import (
+    analyze,
     PointDispersion,
-    Ripley,
+    RipleyStats,
     ShapeAsymmetry,
     ShapeDispersion,
     ShapeEnrichment,

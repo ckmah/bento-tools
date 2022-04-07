@@ -34,12 +34,12 @@ def pattern_features(data):
         bento.tl.ShapeProximity("nucleus_shape"),
         bento.tl.ShapeAsymmetry("cell_shape"),
         bento.tl.ShapeAsymmetry("nucleus_shape"),
-        bento.tl.Ripley(),
+        bento.tl.RipleyStats(),
         bento.tl.PointDispersion(),
         bento.tl.ShapeDispersion("nucleus_shape"),
     ]
-    for model in models:
-        model.transform(data)
+    bento.tl.analyze(data, models, chunksize=100)
+
 
 
 @track

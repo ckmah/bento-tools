@@ -1,9 +1,94 @@
 import geopandas as gpd
+import matplotlib.path as mplPath
 import numpy as np
-from scipy.spatial import distance
+from scipy.spatial import distance, distance_matrix
 from shapely.geometry import Point
 
 from .._utils import track
+
+
+@track
+def cell_span(data, copy=False):
+    adata = data.copy() if copy else data
+
+    def get_span(poly):
+        shape_coo = np.array(poly.coords.xy).T
+        return int(distance_matrix(shape_coo, shape_coo).max())
+
+    span = gpd.GeoSeries(data=adata.obs['cell_shape']).exterior.apply(get_span)
+    
+    adata.obs["cell_span"] = span
+
+    return adata if copy else None
+
+@track
+def cell_bounds(data, copy=False):
+    adata = data.copy() if copy else data
+
+    bounds = gpd.GeoSeries(data=adata.obs['cell_shape']).bounds
+    adata.obs["cell_minx"] = bounds['minx']
+    adata.obs["cell_miny"] = bounds['miny']
+    adata.obs["cell_maxx"] = bounds['maxx']
+    adata.obs["cell_maxy"] = bounds['maxy']
+
+    return adata if copy else None
+
+@track
+def cell_moments(data, copy=False):
+    adata = data.copy() if copy else data
+
+    if 'cell_raster' not in adata.obs:
+        raster_cell(adata)
+
+    cell_rasters = adata.obs['cell_raster']
+    shape_centroids = adata.obs['cell_shape'].centroid
+    cell_moments = [_second_moment(np.array(centroid.xy).reshape(1, 2), cell_raster)
+            for centroid, cell_raster in zip(shape_centroids, cell_rasters)]
+
+    adata.obs['cell_moment'] = cell_moments
+
+    return adata if copy else None
+
+
+def _second_moment(centroid, pts):
+    """
+    Calculate second moment of points with centroid as reference.
+    Parameters
+    ----------
+    centroid : [1 x 2] float
+    pts : [n x 2] float
+    """
+    centroid = np.array(centroid).reshape(1, 2)
+    radii = distance.cdist(centroid, pts)
+    second_moment = np.sum(radii * radii / len(pts))
+    return second_moment
+
+
+def _raster_polygon(poly):
+    """
+    Rasterize polygon and return list of coordinates in body of polygon.
+    """
+    minx, miny, maxx, maxy = poly.bounds
+    x, y = np.meshgrid(
+        np.arange(minx, maxx, step=float(1)),
+        np.arange(miny, maxy, step=float(1)),
+    )
+    x = x.flatten()
+    y = y.flatten()
+    xy = np.array([x, y]).T
+    poly_path = mplPath.Path(np.array(poly.exterior.xy).T)
+    poly_cell_mask = poly_path.contains_points(xy)
+    xy = xy[poly_cell_mask]
+    return xy
+
+@track
+def raster_cell(data, copy=False):
+    adata = data.copy() if copy else data
+
+    raster = adata.obs['cell_shape'].apply(_raster_polygon)
+    adata.obs["cell_raster"] = raster
+
+    return adata if copy else None
 
 
 def _aspect_ratio(poly):
@@ -130,6 +215,7 @@ def cell_radius(data, overwrite=False, copy=False):
 def is_nuclear(data, shape_name, overwrite=False, copy=False):
     """
     Check if shape_name is contained within the nucleus.
+    TODO speed up with sjoin
     """
     adata = data.copy() if copy else data
 
