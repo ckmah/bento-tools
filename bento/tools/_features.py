@@ -186,6 +186,7 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
     gene_densities /= adata.obs["cell_area"]
     gene_densities = gene_densities.values
 
+    # TODO dask
     cell_metrics = Parallel(n_jobs=n_cores)(
         delayed(cell_coloc_sim)(
             get_points(adata, cells=g_density.name, genes=g_density.index.tolist()),
@@ -223,7 +224,7 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
     # Save coloc similarity
     cell_metrics[["cell", "g1", "g2", "pair"]].astype("category", copy=False)
     coloc_agg[["g1", "g2", "pair"]].astype("category", copy=False)
-    adata.uns["coloc_sim"] = cell_symmetric
+    adata.uns["coloc_sim"] = cell_metrics
     adata.uns["coloc_sim_agg"] = coloc_agg
 
     return adata if copy else None
