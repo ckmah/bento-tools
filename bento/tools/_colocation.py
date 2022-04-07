@@ -40,15 +40,6 @@ def coloc_quotient(
     if ngroups > 0:
         npartitions = min(100, ngroups)
 
-        meta = {
-            "neighbor": str,
-            "neighbor_count": int,
-            "neighbor_fraction": float,
-            "quotient": float,
-            "pvalue": float,
-            "gene": str,
-        }
-
         with ProgressBar():
             cell_metrics = (
                 dd.from_pandas(points.set_index("cell"), npartitions=npartitions)
@@ -57,13 +48,30 @@ def coloc_quotient(
                     lambda df: cell_clq(
                         df, n_neighbors, radius, min_count, permutations
                     ),
-                    meta=meta,
+                    meta=object,
                 )
-                .reset_index()
                 .compute()
             )
 
-    cell_metrics = cell_metrics.drop('level_1', axis=1).astype(meta)
+    colnames = {
+        "neighbor": str,
+        "neighbor_count": int,
+        "neighbor_fraction": float,
+        "quotient": float,
+        "pvalue": float,
+        "gene": str,
+    }
+    # cell_metrics = cell_metrics.drop('level_1', axis=1).astype(meta)
+    cell_labels = [
+        [cell] * len(v) for cell, v in zip(cell_metrics.index, cell_metrics.values)
+    ]
+    cell_labels = np.concatenate(cell_labels)
+
+    cell_metrics = pd.DataFrame(np.concatenate(cell_metrics.values), columns=list(colnames.keys()))
+    cell_metrics = cell_metrics.astype(colnames)
+    cell_metrics["cell"] = cell_labels
+    
+
     adata.uns["coloc_quotient"] = cell_metrics
 
     return adata if copy else None
@@ -154,7 +162,7 @@ def cell_clq(cell_points, n_neighbors, radius, min_count, permutations):
         obs_quotient = (obs_count / cur_total) / ((counts - 1) / (n_points - 1))
         obs_quotient = np.expand_dims(obs_quotient, 0)
 
-        obs_fraction = (obs_count / counts)
+        obs_fraction = obs_count / counts
 
         # Perform permutations for significance
         if permutations > 0:
@@ -189,32 +197,36 @@ def cell_clq(cell_points, n_neighbors, radius, min_count, permutations):
                 ).min(axis=0)
                 / permutations
             )
-            
+
             stats_list.append(
-                np.array([
-                    obs_fraction.index,
-                    obs_count,
-                    obs_fraction.values,
-                    obs_quotient[0],
-                    pvalue,
-                    [cur_gene] * len(obs_count),
-                ])
+                np.array(
+                    [
+                        obs_fraction.index,
+                        obs_count,
+                        obs_fraction.values,
+                        obs_quotient[0],
+                        pvalue,
+                        [cur_gene] * len(obs_count),
+                    ]
+                )
             )
 
         else:
             stats_list.append(
-                np.array([
-                    obs_fraction.index,
-                    obs_count,
-                    obs_fraction.values,
-                    obs_quotient[0],
-                    [1] * len(obs_count),
-                    [cur_gene] * len(obs_count),
-                ])
+                np.array(
+                    [
+                        obs_fraction.index,
+                        obs_count,
+                        obs_fraction.values,
+                        obs_quotient[0],
+                        [1] * len(obs_count),
+                        [cur_gene] * len(obs_count),
+                    ]
+                )
             )
-           
-    stats_df = pd.DataFrame(
-        np.concatenate(stats_list, axis=1),
-        index=["neighbor", "neighbor_count", "neighbor_fraction", "quotient", "pvalue", "gene"],
-    ).T
-    return stats_df
+
+    #     stats_df = pd.DataFrame(
+    #         np.concatenate(stats_list, axis=1).T,
+    #         index=["neighbor", "neighbor_count", "neighbor_fraction", "quotient", "pvalue", "gene"],
+    #     ).T
+    return np.concatenate(stats_list, axis=1).T
