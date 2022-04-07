@@ -5,7 +5,7 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 
-from .._utils import pheno_to_color, TENSOR_DIM_NAMES, DIM_COLORS, PATTERN_COLORS
+from .._utils import TENSOR_DIM_NAMES, PATTERN_COLORS
 from ._utils import savefig
 
 
@@ -118,35 +118,59 @@ def factors(data, zscore=False, fname=None):
                 ax0.set_title(f"{str(dim).capitalize()} ({len(load)})", weight="600")
                 ax0.axis("off")
 
-            # Plot colorbar for first heatmap
+            # Plot colorbar for cell column
             if row == FACTOR_ROWS[0] and col == 1:
                 cbar = True
                 cbar_ax = fig.add_subplot(gs[FACTOR_ROWS[0], n_dims])
+                cmap = 'Purples'
+            # Plot colorbar for gene column
+            elif row == FACTOR_ROWS[0] and col == 2 and not zscore:
+                cbar = True
+                cbar_ax = fig.add_subplot(gs[FACTOR_ROWS[1], n_dims])
             else:
                 cbar = False
-                cbar_ax = None
+
+            # Set colormap for cell loadings
+            if col == 1:
+                cmap = 'Purples'
+            # Set colormap for gene loadings
+            elif col == 2:
+                cmap = 'Reds'
 
             # Colormap limits for zscoring
             if zscore:
                 vmin = -3
                 vmax = 3
-            else:
-                vmin = None
-                vmax = None
 
-            # Plot (z-scored) loadings as heatmap
-            sns.heatmap(
-                load_df[["load"]].T,
-                ax=ax,
-                xticklabels=False,
-                yticklabels=False,
-                cmap="RdBu_r",
-                center=0,
-                vmin=vmin,
-                vmax=vmax,
-                cbar=cbar,
-                cbar_ax=cbar_ax,
-            )
+                # Plot (z-scored) loadings as heatmap
+                sns.heatmap(
+                    load_df[["load"]].T,
+                    ax=ax,
+                    xticklabels=False,
+                    yticklabels=False,
+                    cmap="RdBu_r",
+                    center=0,
+                    vmin=vmin,
+                    vmax=vmax,
+                    cbar=cbar,
+                    cbar_ax=cbar_ax,
+                )
+            else:
+                vmin = data.uns['tensor_loadings'][dim].min().min()
+                vmax = data.uns['tensor_loadings'][dim].max().max()
+
+                # Plot (z-scored) loadings as heatmap
+                sns.heatmap(
+                    load_df[["load"]].T,
+                    ax=ax,
+                    xticklabels=False,
+                    yticklabels=False,
+                    cmap=cmap,
+                    vmin=vmin,
+                    vmax=vmax,
+                    cbar=cbar,
+                    cbar_ax=cbar_ax,
+                )
 
             # Format heatmap
             ax.tick_params(axis="y", which="both", length=0)
