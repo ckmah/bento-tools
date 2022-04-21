@@ -96,8 +96,13 @@ def decompose_tensor(data, rank, device="auto", random_state=888, copy=False):
         random_state=random_state,
     )
 
-    adata.uns["tensor_loadings"] = tensor_c2c.factors
+    tensor_loadings = {}
+    for layer,df in tensor_c2c.factors.items():
+        df.columns = df.columns.str.replace('Factor', 'Signature')
+        tensor_loadings[layer] = df
 
+    adata.uns["tensor_loadings"] = tensor_loadings
+    
     _assign_factors(data)
 
     return adata
