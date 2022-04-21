@@ -19,8 +19,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from upsetplot import UpSet, from_indicators
-from matplotlib.colors import ListedColormap
-import scanpy as sc
 
 from ._utils import savefig
 from .._utils import PATTERN_NAMES, PATTERN_COLORS
@@ -165,14 +163,6 @@ def pattern_diff(data, phenotype, fname=None):
         sns.despine()
 
     return g
-
-
-def umap(data, **kwargs):
-    f"""{sc.pl.umap.__doc__}"""
-    adata = data.copy()
-
-    adata.obs = adata.obs.loc[:, adata.obs.dtypes != "geometry"]
-    sc.pl.umap(adata, **kwargs)
 
 
 @savefig

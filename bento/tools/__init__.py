@@ -15,23 +15,6 @@ from ._cell_features import (
     raster_cell
 )
 from ._colocation import coloc_quotient
-from ._features import (
-    coloc_cluster_genes,
-    coloc_sim,
-    gene_leiden,
-    get_gene_set_coloc_agg,
-    get_cell_coloc,
-    get_gene_coloc,
-    get_cell_coloc_agg,
-    get_gene_coloc_agg,
-)
-from ._locfish_features import (
-    distance_features,
-    moment_stats,
-    morph_enrichment,
-    nuclear_fraction,
-    ripley_features,
-)
 from ._pattern_models import intracellular_patterns, PATTERN_MODEL_FEATURE_NAMES
 from ._pattern_stats import pattern_diff, pattern_stats
 from ._sample_features import (
