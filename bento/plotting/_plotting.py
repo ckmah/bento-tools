@@ -106,7 +106,7 @@ def pattern_plot(data, percentage=False, scale=1, fname=None):
     """
     sample_labels = []
     for p in PATTERN_NAMES:
-        p_df = data.to_df(p).reset_index().melt(id_vars="cell").dropna()
+        p_df = data.to_df(p).reset_index().melt(id_vars="cell")
         p_df = p_df[p_df["value"] == 1]
         p_df = p_df.set_index(["cell", "gene"])
         sample_labels.append(p_df)
@@ -114,16 +114,17 @@ def pattern_plot(data, percentage=False, scale=1, fname=None):
     sample_labels = pd.concat(sample_labels, axis=1) == 1
     sample_labels = sample_labels == 1
     sample_labels.columns = PATTERN_NAMES
-    sample_labels = sample_labels.reset_index().sort_values(
-        PATTERN_NAMES, ascending=False
-    )
 
+    # Sort by degree, then pattern name 
+    sample_labels['degree'] = -sample_labels[PATTERN_NAMES].sum(axis=1)
+    sample_labels = sample_labels.reset_index().sort_values(['degree'] + PATTERN_NAMES, ascending=False).drop('degree', axis=1)
+    
     upset = UpSet(
         from_indicators(PATTERN_NAMES, data=sample_labels),
         element_size=scale * 40,
         min_subset_size=sample_labels.shape[0] * 0.001,
         facecolor="lightgray",
-        sort_by="degree",
+        sort_by=None,
         show_counts=(not percentage),
         show_percentages=percentage,
     )
