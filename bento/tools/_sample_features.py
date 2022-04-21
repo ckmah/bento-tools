@@ -73,7 +73,7 @@ def analyze(data, features, chunks=None, chunksize=None, copy=False):
         points_df.reset_index().set_index(["cell", "gene"]).head(1), features
     )
     meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
-    print(meta)
+
     # Cast to dask dataframe
     ddf = dask_geopandas.from_geopandas(
         points_df, npartitions=chunks, chunksize=chunksize
