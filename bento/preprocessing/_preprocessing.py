@@ -1,7 +1,5 @@
 from .._utils import track
 
-import pandas as pd
-import numpy as np
 import geopandas as gpd
 import dask_geopandas
 import dask.dataframe as dd
@@ -9,7 +7,6 @@ from dask.diagnostics import ProgressBar
 
 from tqdm.auto import tqdm
 
-from sklearn.preprocessing import LabelEncoder
 
 def get_points(data, cells=None, genes=None):
 
@@ -33,7 +30,7 @@ def get_points(data, cells=None, genes=None):
 
     # Remove unused categories for categorical columns
     for col in points.columns:
-        if points[col].dtype == 'category':
+        if points[col].dtype == "category":
             points[col].cat.remove_unused_categories(inplace=True)
 
     # Cast to GeoDataFrame
@@ -96,9 +93,9 @@ def remove_extracellular(data, copy=False):
     adata = data.copy() if copy else data
     points = get_points(adata)
 
-    points = points.set_index('cell').join(data.obs["cell_shape"]).reset_index()
-    points['cell'] = points['cell'].astype('category').cat.as_ordered()
-    
+    points = points.set_index("cell").join(data.obs["cell_shape"]).reset_index()
+    points["cell"] = points["cell"].astype("category").cat.as_ordered()
+
     def _filter_points(pts):
         pts = gpd.GeoDataFrame(pts, geometry=gpd.points_from_xy(pts.x, pts.y))
 
@@ -108,8 +105,8 @@ def remove_extracellular(data, copy=False):
 
         return pts
 
-    ngroups = points.groupby('cell').ngroups
-    
+    ngroups = points.groupby("cell").ngroups
+
     if ngroups > 100:
         npartitions = min(1000, ngroups)
 
@@ -127,8 +124,12 @@ def remove_extracellular(data, copy=False):
     else:
         tqdm.pandas()
         points.groupby("cell").progress_apply(_filter_points)
-    
-    points = points.drop("cell_shape", axis=1).drop("geometry", axis=1).reset_index(drop=True)
+
+    points = (
+        points.drop("cell_shape", axis=1)
+        .drop("geometry", axis=1)
+        .reset_index(drop=True)
+    )
 
     cat_vars = ["cell", "gene", "nucleus"]
     points[cat_vars] = points[cat_vars].astype("category")
@@ -168,3 +169,42 @@ def subsample(data, frac=0.2, copy=True):
     adata.X = X
 
     return adata if copy else None
+
+
+def get_features(data, feature_names, min_count=None):
+    """Get features for all samples by melting features from data.layers.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object
+    feature_names : list of str
+        all values must to be keys in data.layers
+    min_count : int, default None
+        minimum number of molecules (count) in sample, otherwise ignored
+    Returns
+    -------
+    DataFrame
+        rows are samples indexed as (cell, gene) and columns are features
+    """
+    sample_index = (
+        data.to_df()
+        .reset_index()
+        .melt(id_vars="cell")
+        .dropna()
+        .set_index(["cell", "gene"])
+    )
+
+    if min_count:
+        sample_index = sample_index[sample_index["value"] >= min_count].drop(
+            "value", axis=1
+        )
+
+    for f in feature_names:
+        values = (
+            data.to_df(f).reset_index().melt(id_vars="cell").set_index(["cell", "gene"])
+        )
+        values.columns = [f]
+        sample_index = sample_index.join(values)
+
+    return sample_index[feature_names]

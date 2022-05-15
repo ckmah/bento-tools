@@ -6,7 +6,7 @@ from anndata import AnnData
 import seaborn as sns
 
 PATTERN_NAMES = ["cell_edge", "cytoplasmic", "none", "nuclear", "nuclear_edge"]
-PATTERN_PROBS = [f"{p}_prob" for p in PATTERN_NAMES]
+PATTERN_PROBS = [f"{p}_p" for p in PATTERN_NAMES]
 TENSOR_DIM_NAMES = ["layers", "cells", "genes"]
 
 # Colors correspond to order of PATTERN_NAMES: cyan, blue, gray, orange, red

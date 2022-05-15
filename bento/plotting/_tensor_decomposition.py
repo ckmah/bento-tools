@@ -1,4 +1,4 @@
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -9,7 +9,7 @@ from .._utils import TENSOR_DIM_NAMES, PATTERN_COLORS
 from ._utils import savefig
 
 
-def _get_loading(data, load, dim, zscore):
+def _get_loading(data, load, dim, scale):
 
     if dim == TENSOR_DIM_NAMES[0]:
         cluster_labels = np.zeros(len(load))
@@ -33,8 +33,8 @@ def _get_loading(data, load, dim, zscore):
     ).T
     load_df = load_df.astype({"index": int, "load": float, "group": str, "sample": str})
 
-    if zscore:
-        load_df["load"] = StandardScaler().fit_transform(load_df[["load"]])
+    if scale:
+        load_df["load"] = MinMaxScaler().fit_transform(load_df[["load"]])
 
     load_df["group"] = (
         load_df["group"].str.replace("Factor", "Group").astype("category")
@@ -43,7 +43,7 @@ def _get_loading(data, load, dim, zscore):
 
 
 @savefig
-def factors(data, zscore=False, fname=None):
+def lp_signatures(data, scale=False, fname=None):
     factors = list(data.uns["tensor_loadings"][TENSOR_DIM_NAMES[0]].columns)
     n_factors = len(factors)
     n_dims = len(TENSOR_DIM_NAMES)
@@ -72,7 +72,7 @@ def factors(data, zscore=False, fname=None):
 
         pattern_dim = TENSOR_DIM_NAMES[0]
         load = data.uns["tensor_loadings"][pattern_dim][factor]
-        load_df = _get_loading(data, load, pattern_dim, zscore=False)
+        load_df = _get_loading(data, load, pattern_dim, scale=False)
 
         # Feature barplots
         ax.bar(
@@ -110,7 +110,7 @@ def factors(data, zscore=False, fname=None):
 
             ax = fig.add_subplot(gs[row, col])
             load = data.uns["tensor_loadings"][dim][factor]
-            load_df = _get_loading(data, load, dim, zscore)
+            load_df = _get_loading(data, load, dim, scale)
 
             # Plot column title if first row
             if row == FACTOR_ROWS[0]:
@@ -124,7 +124,7 @@ def factors(data, zscore=False, fname=None):
                 cbar_ax = fig.add_subplot(gs[FACTOR_ROWS[0], n_dims])
                 cmap = 'Purples'
             # Plot colorbar for gene column
-            elif row == FACTOR_ROWS[0] and col == 2 and not zscore:
+            elif row == FACTOR_ROWS[0] and col == 2 and not scale:
                 cbar = True
                 cbar_ax = fig.add_subplot(gs[FACTOR_ROWS[1], n_dims])
             else:
@@ -138,9 +138,9 @@ def factors(data, zscore=False, fname=None):
                 cmap = 'Reds'
 
             # Colormap limits for zscoring
-            if zscore:
-                vmin = -3
-                vmax = 3
+            if scale:
+                vmin = 0
+                vmax = 1
 
                 # Plot (z-scored) loadings as heatmap
                 sns.heatmap(

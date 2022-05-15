@@ -1,8 +1,3 @@
-from ._plotting import (
-    pattern_diff,
-    pattern_plot,
-    plot_cells,
-    qc_metrics,
-    umap,
-)
-from ._tensor_decomposition import factors
+from ._plotting import (lp_dist, lp_gene_dist, lp_genes, pattern_diff,  # umap,
+                        plot_cells, qc_metrics)
+from ._tensor_decomposition import lp_signatures

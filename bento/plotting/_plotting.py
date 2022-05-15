@@ -6,24 +6,19 @@ warnings.filterwarnings("ignore")
 
 from functools import partial
 
-ds = None
-tf = None
-geopandas = None
-plot = None
-dsshow = None
-
 import geopandas
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from pandas.plotting import radviz
 import seaborn as sns
 from upsetplot import UpSet, from_indicators
 
 from ._utils import savefig
 from .._utils import PATTERN_NAMES, PATTERN_COLORS
-from ..preprocessing import get_points
-
+from ..preprocessing import get_points, get_features
+from ..tools._lp import lp_stats
 
 @savefig
 def qc_metrics(adata, fname=None):
@@ -88,7 +83,7 @@ def qc_metrics(adata, fname=None):
 
 
 @savefig
-def pattern_plot(data, percentage=False, scale=1, fname=None):
+def lp_dist(data, percentage=False, scale=1, fname=None):
     """Plot pattern combination frequencies as an UpSet plot.
 
     Parameters
@@ -105,13 +100,16 @@ def pattern_plot(data, percentage=False, scale=1, fname=None):
     sample_labels = []
     for p in PATTERN_NAMES:
         p_df = data.to_df(p).reset_index().melt(id_vars="cell")
-        p_df = p_df[p_df["value"] == 1]
+        p_df = p_df[~p_df["value"].isna()]
         p_df = p_df.set_index(["cell", "gene"])
         sample_labels.append(p_df)
 
     sample_labels = pd.concat(sample_labels, axis=1) == 1
     sample_labels = sample_labels == 1
     sample_labels.columns = PATTERN_NAMES
+    
+    # Drop unlabeled samples
+    # sample_labels = sample_labels[sample_labels.sum(axis=1) > 0]
 
     # Sort by degree, then pattern name 
     sample_labels['degree'] = -sample_labels[PATTERN_NAMES].sum(axis=1)
@@ -135,6 +133,119 @@ def pattern_plot(data, percentage=False, scale=1, fname=None):
     plt.suptitle(f"Localization Patterns\n{data.n_obs} cells, {data.n_vars} genes")
 
 
+@savefig
+def lp_gene_dist(data, fname=None):
+    lp_stats(data)
+
+    col_names = [f"{p}_fraction" for p in PATTERN_NAMES]
+    gene_frac = data.var[col_names]
+    gene_frac.columns = PATTERN_NAMES
+    # Plot frequency distributions
+    sns.displot(
+        data=gene_frac,
+        kind="kde",
+        multiple="layer",
+        height=3,
+        palette=PATTERN_COLORS,
+    )
+    plt.xlim(0, 1)
+    sns.despine()
+    
+    
+@savefig
+def lp_genes(data, kind="scatter", hue="Pattern", sizes=(2, 100), gridsize=20, random_state=4, fname=None, **kwargs):
+    """
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    kind : str
+        'Scatter' for scatterplot, 'hex' for hex plot
+    sizes : tuple
+        Minimum and maximum point size range
+    gridsize : int
+        Number of bins along each axis
+    **kwargs
+        Options to pass to matplotlib plotting method.
+    """
+    lp_stats(data)
+
+    palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
+
+    # RADVIZ plot
+    if kind == "hex":
+        figsize = (6, 6)
+    else:
+        figsize = (6, 6)
+    fig = plt.figure(figsize=figsize)
+
+    # Use Plot the "circular" axis and labels, hide points
+    col_names = [f"{p}_fraction" for p in PATTERN_NAMES]
+    gene_frac = data.var[col_names]
+    gene_frac.columns = PATTERN_NAMES
+    gene_frac["Pattern"] = gene_frac.idxmax(axis=1)
+    gene_frac_copy = gene_frac.copy()
+    gene_frac_copy["Pattern"] = ''
+    ax = radviz(gene_frac_copy, "Pattern", s=0)
+    del gene_frac_copy
+    ax.get_legend().remove()
+    circle = plt.Circle((0, 0), radius=1, color="black", fill=False)
+    ax.add_patch(circle)
+
+    # Hide 2D axes
+    ax.axis(False)
+
+    # Get points
+    pts = []
+    for c in ax.collections:
+        pts.extend(c.get_offsets().data)
+
+    pts = np.array(pts).reshape(-1, 2)
+    xy = pd.DataFrame(pts, index=gene_frac.index)
+    xy["Pattern"] = gene_frac["Pattern"]
+
+    # Plot points as scatter or hex
+    if kind == "scatter":
+
+        del ax.collections[0]
+
+        # Scale point size by max
+        xy["Fraction of cells"] = gene_frac.iloc[:, :5].max(axis=1)
+
+        # Plot points
+        sns.scatterplot(
+            data=xy.sample(frac=1, random_state=random_state),
+            x=0,
+            y=1,
+            size="Fraction of cells",
+            hue="Pattern",
+            sizes=sizes,
+            linewidth=0,
+            palette=palette,
+            ax=ax,
+            **kwargs
+        )
+        plt.legend(bbox_to_anchor=(1.05, 0.5), loc="center left", frameon=False)
+
+    elif kind == "hex":
+        # Hexbin
+        xy.plot.hexbin(
+            x=0,
+            y=1,
+            gridsize=gridsize,
+            extent=(-1, 1, -1, 1),
+            cmap=sns.light_palette("lightseagreen", as_cmap=True),
+            mincnt=1,
+            colorbar=False,
+            ax=ax,
+            **kwargs
+        )
+        # [left, bottom, width, height]
+        plt.colorbar(
+            ax.collections[-1], cax=fig.add_axes([1, 0.4, 0.05, 0.3]), label="genes"
+        )
+
+    
 @savefig
 def pattern_diff(data, phenotype, fname=None):
     """Visualize gene pattern frequencies between groups of cells by plotting log2 fold change and -log10p."""

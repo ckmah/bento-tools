@@ -15,8 +15,7 @@ from ._cell_features import (
     raster_cell
 )
 from ._colocation import coloc_quotient
-from ._pattern_models import intracellular_patterns, PATTERN_MODEL_FEATURE_NAMES
-from ._pattern_stats import pattern_diff, pattern_stats
+from ._lp import lp, get_features, pattern_diff, lp_stats, PATTERN_MODEL_FEATURE_NAMES
 from ._sample_features import (
     analyze,
     PointDispersion,
@@ -32,3 +31,4 @@ from ._tensor_tools import (
     select_tensor_rank,
     TENSOR_DIM_NAMES
 )
+

@@ -6,7 +6,7 @@ data = bento.datasets.sample_data()
 
 class TestTensorTools(unittest.TestCase):
     def test_decompose_tensor(self):
-        bento.tl.intracellular_patterns(data)
+        bento.tl.lp(data)
         N_FACTORS = 1
         bento.tl.decompose_tensor(data, N_FACTORS)
 
@@ -27,4 +27,4 @@ class TestTensorTools(unittest.TestCase):
             self.assertTrue(n_factors == N_FACTORS)
 
         # Make sure plotting tensor decomposition factors runs with no errors
-        bento.pl.factors(data, zscore=True)
+        bento.pl.lp_signatures(data, scale=True)
