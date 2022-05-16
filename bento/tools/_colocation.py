@@ -45,7 +45,7 @@ def coloc_quotient(
                 dd.from_pandas(points.set_index("cell"), npartitions=npartitions)
                 .groupby(["cell"])
                 .apply(
-                    lambda df: cell_clq(
+                    lambda df: _cell_clq(
                         df, n_neighbors, radius, min_count, permutations
                     ),
                     meta=object,
@@ -77,7 +77,7 @@ def coloc_quotient(
     return adata if copy else None
 
 
-def cell_clq(cell_points, n_neighbors, radius, min_count, permutations):
+def _cell_clq(cell_points, n_neighbors, radius, min_count, permutations):
 
     # Count number of points for each gene
     counts = cell_points["gene"].value_counts()

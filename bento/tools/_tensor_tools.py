@@ -59,7 +59,7 @@ def to_tensor(data, layers, mask=False, copy=False):
     return adata
 
 
-def select_tensor_rank(data, upper_rank=10, runs=5, device="auto", random_state=888):
+def select_tensor_rank(data, layers, upper_rank=10, runs=5, device="auto", random_state=888):
     """
     Parameters
     ----------
@@ -68,7 +68,7 @@ def select_tensor_rank(data, upper_rank=10, runs=5, device="auto", random_state=
     runs : int
         Number of times to run decomposition for calculating the confidence interval.
     """
-    to_tensor(data, layers=PATTERN_NAMES, mask=True)
+    to_tensor(data, layers=layers, mask=True)
     tensor_c2c = init_c2c_tensor(data, device=device)
 
     fig, error = tensor_c2c.elbow_rank_selection(
@@ -83,11 +83,15 @@ def select_tensor_rank(data, upper_rank=10, runs=5, device="auto", random_state=
     return fig, error
 
 
+def loc_signatures(data, rank, device="auto", random_state=888, copy=False):
+    return decompose_tensor(data, PATTERN_NAMES, rank, device=device, random_state=random_state, copy=copy)
+
+
 @track
-def decompose_tensor(data, rank, device="auto", random_state=888, copy=False):
+def decompose_tensor(data, layers, rank, device="auto", random_state=888, copy=False):
     adata = data.copy() if copy else data
 
-    to_tensor(data, layers=PATTERN_NAMES, mask=True)
+    to_tensor(data, layers=layers, mask=True)
     tensor_c2c = init_c2c_tensor(data, device=device)
 
     tensor_c2c.compute_tensor_factorization(

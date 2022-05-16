@@ -247,7 +247,7 @@ def lp_genes(data, kind="scatter", hue="Pattern", sizes=(2, 100), gridsize=20, r
 
     
 @savefig
-def pattern_diff(data, phenotype, fname=None):
+def lp_diff(data, phenotype, fname=None):
     """Visualize gene pattern frequencies between groups of cells by plotting log2 fold change and -log10p."""
     diff_stats = data.uns[f"diff_{phenotype}"]
 

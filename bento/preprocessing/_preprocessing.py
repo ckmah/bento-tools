@@ -1,11 +1,10 @@
-from .._utils import track
-
-import geopandas as gpd
-import dask_geopandas
 import dask.dataframe as dd
+import dask_geopandas
+import geopandas as gpd
 from dask.diagnostics import ProgressBar
-
 from tqdm.auto import tqdm
+
+from .._utils import track
 
 
 def get_points(data, cells=None, genes=None):

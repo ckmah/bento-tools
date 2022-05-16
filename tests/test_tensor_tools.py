@@ -8,7 +8,7 @@ class TestTensorTools(unittest.TestCase):
     def test_decompose_tensor(self):
         bento.tl.lp(data)
         N_FACTORS = 1
-        bento.tl.decompose_tensor(data, N_FACTORS)
+        bento.tl.decompose_tensor(data, bento.PATTERN_NAMES, N_FACTORS)
 
         dim_names = list(data.uns['tensor_labels'].keys())
         self.assertTrue(set(dim_names) == set(bento.tl.TENSOR_DIM_NAMES))

@@ -35,6 +35,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
+    "myst_parser"
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -81,3 +82,9 @@ napoleon_use_rtype = False
 
 html_title = "bento-tools"
 html_logo = "_static/bento-logo.png"
+
+# -- Options for sphinxawesome_theme theme/extension options -------------------------------------------------
+
+# This option is `False` by default
+html_collapsible_definitions = True
+

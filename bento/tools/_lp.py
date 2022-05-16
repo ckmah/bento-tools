@@ -129,7 +129,7 @@ def lp_stats(data, copy=False):
     return adata if copy else None
 
 
-def _pattern_log2fc(data, phenotype=None):
+def _lp_logfc(data, phenotype=None):
     """Compute pairwise log2 fold change of patterns between groups in phenotype.
 
     Parameters
@@ -196,7 +196,7 @@ def _pattern_log2fc(data, phenotype=None):
     return gene_fc_stats
 
 
-def _pattern_diff_gene(cell_by_pattern, phenotype, phenotype_vector):
+def _lp_diff_gene(cell_by_pattern, phenotype, phenotype_vector):
     """Perform pairwise comparison between groupby and every class.
     Parameters
     ----------
@@ -254,7 +254,7 @@ def _pattern_diff_gene(cell_by_pattern, phenotype, phenotype_vector):
 
 
 @track
-def pattern_diff(data, phenotype=None, continuous=False, min_cells=10, copy=False):
+def lp_diff(data, phenotype=None, continuous=False, min_cells=10, copy=False):
     """Gene-wise test for differential localization across phenotype of interest.
     Parameters
     ----------
@@ -318,7 +318,7 @@ def pattern_diff(data, phenotype=None, continuous=False, min_cells=10, copy=Fals
         }
 
     #     diff_output = pattern_df.groupby("gene").progress_apply(
-    #         lambda gp: _pattern_diff_gene(gp, phenotype, phenotype_vector)
+    #         lambda gp: _lp_diff_gene(gp, phenotype, phenotype_vector)
     #     )
 
         with ProgressBar():
@@ -326,7 +326,7 @@ def pattern_diff(data, phenotype=None, continuous=False, min_cells=10, copy=Fals
                 dd.from_pandas(pattern_df, chunksize=100)
                 .groupby("gene")
                 .apply(
-                    lambda gp: _pattern_diff_gene(gp, phenotype, phenotype_vector), meta=meta
+                    lambda gp: _lp_diff_gene(gp, phenotype, phenotype_vector), meta=meta
                 )
                 .reset_index()
                 .compute()
@@ -349,7 +349,7 @@ def pattern_diff(data, phenotype=None, continuous=False, min_cells=10, copy=Fals
     results.loc[results["-log10padj"] > 12, "-log10padj"] = 12
 
     # Group-wise log2 fold change values
-    log2fc_stats = _pattern_log2fc(adata, phenotype)
+    log2fc_stats = _lp_logfc(adata, phenotype)
 
     # Join log2fc results to p value df
     results = (
