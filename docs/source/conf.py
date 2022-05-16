@@ -62,11 +62,11 @@ html_theme_options = {
       "show_nav": True,
       "show_breadcrumbs": True,
       "breadcrumbs_separator": "/",
-      "show_prev_next": False,
+      "show_prev_next": True,
       "show_scrolltop": True
 }
 
-pygments_style = 'sphinx'
+# pygments_style = 'sphinx'
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

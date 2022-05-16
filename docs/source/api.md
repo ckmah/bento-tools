@@ -1,5 +1,13 @@
+```{eval-rst}
+.. module:: bento
+```
 
-# API Reference
+```{eval-rst}
+.. automodule:: bento
+   :noindex:
+```
+
+# API
  
 Import Bento with:
 
@@ -7,14 +15,15 @@ Import Bento with:
 import bento
 ```
 
-## Subcellular Localization
+## Localization Patterns
 
 ```{eval-rst}
 .. module:: bento.tl
 .. currentmodule:: bento
 
 .. autosummary::
-    :toctree: api
+    :toctree: api/
+    :template: custom-module-template.rst
     
     tl.lp
     tl.lp_stats
@@ -28,8 +37,9 @@ import bento
 
 ```{eval-rst}
 .. autosummary::
-    :toctree: api
-    
+    :toctree: api/
+     :template: custom-module-template.rst
+   
     tl.coloc_quotient
 ```
 
@@ -37,7 +47,8 @@ import bento
 
 ```{eval-rst}
 .. autosummary::
-    :toctree: api
+    :toctree: api/
+    :template: custom-module-template.rst
 
     tl.analyze
     tl.PointDispersion
@@ -55,7 +66,8 @@ import bento
 .. currentmodule:: bento
 
 .. autosummary::
-    :toctree: api
+    :toctree: api/
+    :template: custom-module-template.rst
 
     pl.lp_dist
     pl.lp_genes
@@ -75,8 +87,9 @@ import bento
 .. currentmodule:: bento
 
 .. autosummary::
-    :toctree: api
-    
+    :toctree: api/
+     :template: custom-module-template.rst
+   
     io.read_h5ad
     io.write_h5ad
     io.concatenate
