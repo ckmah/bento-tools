@@ -198,6 +198,7 @@ def _lp_logfc(data, phenotype=None):
 
 def _lp_diff_gene(cell_by_pattern, phenotype, phenotype_vector):
     """Perform pairwise comparison between groupby and every class.
+
     Parameters
     ----------
     Returns
@@ -256,6 +257,7 @@ def _lp_diff_gene(cell_by_pattern, phenotype, phenotype_vector):
 @track
 def lp_diff(data, phenotype=None, continuous=False, min_cells=10, copy=False):
     """Gene-wise test for differential localization across phenotype of interest.
+    
     Parameters
     ----------
     data : AnnData

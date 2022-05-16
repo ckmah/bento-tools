@@ -20,6 +20,7 @@ from .._utils import PATTERN_NAMES, PATTERN_COLORS
 from ..preprocessing import get_points, get_features
 from ..tools._lp import lp_stats
 
+
 @savefig
 def qc_metrics(adata, fname=None):
     """
@@ -107,14 +108,18 @@ def lp_dist(data, percentage=False, scale=1, fname=None):
     sample_labels = pd.concat(sample_labels, axis=1) == 1
     sample_labels = sample_labels == 1
     sample_labels.columns = PATTERN_NAMES
-    
+
     # Drop unlabeled samples
     # sample_labels = sample_labels[sample_labels.sum(axis=1) > 0]
 
-    # Sort by degree, then pattern name 
-    sample_labels['degree'] = -sample_labels[PATTERN_NAMES].sum(axis=1)
-    sample_labels = sample_labels.reset_index().sort_values(['degree'] + PATTERN_NAMES, ascending=False).drop('degree', axis=1)
-    
+    # Sort by degree, then pattern name
+    sample_labels["degree"] = -sample_labels[PATTERN_NAMES].sum(axis=1)
+    sample_labels = (
+        sample_labels.reset_index()
+        .sort_values(["degree"] + PATTERN_NAMES, ascending=False)
+        .drop("degree", axis=1)
+    )
+
     upset = UpSet(
         from_indicators(PATTERN_NAMES, data=sample_labels),
         element_size=scale * 40,
@@ -150,10 +155,19 @@ def lp_gene_dist(data, fname=None):
     )
     plt.xlim(0, 1)
     sns.despine()
-    
-    
+
+
 @savefig
-def lp_genes(data, kind="scatter", hue="Pattern", sizes=(2, 100), gridsize=20, random_state=4, fname=None, **kwargs):
+def lp_genes(
+    data,
+    kind="scatter",
+    hue="Pattern",
+    sizes=(2, 100),
+    gridsize=20,
+    random_state=4,
+    fname=None,
+    **kwargs,
+):
     """
     Parameters
     ----------
@@ -185,7 +199,7 @@ def lp_genes(data, kind="scatter", hue="Pattern", sizes=(2, 100), gridsize=20, r
     gene_frac.columns = PATTERN_NAMES
     gene_frac["Pattern"] = gene_frac.idxmax(axis=1)
     gene_frac_copy = gene_frac.copy()
-    gene_frac_copy["Pattern"] = ''
+    gene_frac_copy["Pattern"] = ""
     ax = radviz(gene_frac_copy, "Pattern", s=0)
     del gene_frac_copy
     ax.get_legend().remove()
@@ -223,7 +237,7 @@ def lp_genes(data, kind="scatter", hue="Pattern", sizes=(2, 100), gridsize=20, r
             linewidth=0,
             palette=palette,
             ax=ax,
-            **kwargs
+            **kwargs,
         )
         plt.legend(bbox_to_anchor=(1.05, 0.5), loc="center left", frameon=False)
 
@@ -238,14 +252,14 @@ def lp_genes(data, kind="scatter", hue="Pattern", sizes=(2, 100), gridsize=20, r
             mincnt=1,
             colorbar=False,
             ax=ax,
-            **kwargs
+            **kwargs,
         )
         # [left, bottom, width, height]
         plt.colorbar(
             ax.collections[-1], cax=fig.add_axes([1, 0.4, 0.05, 0.3]), label="genes"
         )
 
-    
+
 @savefig
 def lp_diff(data, phenotype, fname=None):
     """Visualize gene pattern frequencies between groups of cells by plotting log2 fold change and -log10p."""
@@ -282,22 +296,23 @@ def plot_cells(
     kind="scatter",
     hue=None,
     palette=None,
-    cmap='Blues_r',
+    cmap="Blues_r",
     tile=False,
     lw=1,
     col_wrap=4,
     binwidth=20,
     style=None,
-    shape_names=['cell_shape', 'nucleus_shape'],
+    shape_names=["cell_shape", "nucleus_shape"],
     legend=True,
     frameon=True,
     axsize=4,
     ax=None,
     fname=None,
-    **kwargs
+    **kwargs,
 ):
     """
     Visualize distribution of variable in spatial coordinates.
+
     Parameters
     ----------
     data : dict
@@ -328,12 +343,12 @@ def plot_cells(
         if ax is None:
             ax = plt.gca()
         # fig, ax = plt.subplots(1, 1, figsize=(axsize, axsize))
-        ax.set(xticks=[], yticks=[], facecolor='black', adjustable="datalim")
+        ax.set(xticks=[], yticks=[], facecolor="black", adjustable="datalim")
         ax.axis(frameon)
-        
+
         # Set frame to white
         for spine in ax.spines.values():
-            spine.set_edgecolor('white')
+            spine.set_edgecolor("white")
 
         # Plot points
         if kind == "scatter":
@@ -342,13 +357,12 @@ def plot_cells(
             _spatial_hist(points, hue, cmap, binwidth, ax, **kwargs)
         elif kind == "kde":
             _spatial_kde(points, hue, cmap, ax, **kwargs)
-            
+
         # Plot shapes
         _spatial_line(shapes_gdf, shape_names, lw, ax)
-        
+
         if not legend:
             ax.legend().remove()
-
 
     # Plot each cell in separate subplots
     else:
@@ -366,7 +380,7 @@ def plot_cells(
             ncols,
             sharex=False,
             sharey=False,
-            subplot_kw=dict(facecolor='black'),
+            subplot_kw=dict(facecolor="black"),
             figsize=(axsize * ncols, axsize * nrows),
         )
         plt.subplots_adjust(wspace=0, hspace=0)
@@ -398,14 +412,14 @@ def plot_cells(
 
                 ax.set(xticks=[], yticks=[], xlabel=None, ylabel=None)
                 ax.axis(frameon)
-                
+
                 # Set frame to white
                 for spine in ax.spines.values():
-                    spine.set_edgecolor('white')
+                    spine.set_edgecolor("white")
 
                 # Only make legend for last plot
                 n_genes = len(np.unique(p["gene"]))
-                if legend and i == len(shapes_gdf)-1:
+                if legend and i == len(shapes_gdf) - 1:
                     ax.legend(loc="upper left", bbox_to_anchor=(1, 1), ncol=1)
                 else:
                     ax.legend().remove()
@@ -417,7 +431,7 @@ def plot_cells(
 def _spatial_line(geo_df, shape_names, lw, ax):
     for sname in shape_names:
         geo_df.set_geometry(sname).plot(
-            color=(0, 0, 0, 0), edgecolor=(1,1,1, 0.8), lw=lw, ax=ax
+            color=(0, 0, 0, 0), edgecolor=(1, 1, 1, 0.8), lw=lw, ax=ax
         )
 
 
@@ -428,11 +442,18 @@ def _spatial_scatter(points_gdf, hue, palette, style, ax, **kwargs):
 
     # Remove categories with no data; otherwise legend is very long
     for cat in [hue, style]:
-        if cat in points_gdf.columns and points_gdf[cat].dtype == 'category':
+        if cat in points_gdf.columns and points_gdf[cat].dtype == "category":
             points_gdf[cat].cat.remove_unused_categories(inplace=True)
 
     sns.scatterplot(
-        data=points_gdf, x="x", y="y", hue=hue, palette=palette, style=style, ax=ax, **scatter_kws
+        data=points_gdf,
+        x="x",
+        y="y",
+        hue=hue,
+        palette=palette,
+        style=style,
+        ax=ax,
+        **scatter_kws,
     )
 
 
@@ -443,22 +464,29 @@ def _spatial_hist(points_gdf, hue, cmap, binwidth, ax, **kwargs):
 
     # Remove categories with no data; otherwise legend is very long
 
-    if hue in points_gdf.columns and points_gdf[hue].dtype == 'category':
+    if hue in points_gdf.columns and points_gdf[hue].dtype == "category":
         points_gdf[hue].cat.remove_unused_categories(inplace=True)
 
     sns.histplot(
-        data=points_gdf, x="x", y="y", hue=hue, cmap=cmap, binwidth=binwidth, ax=ax, **hist_kws
+        data=points_gdf,
+        x="x",
+        y="y",
+        hue=hue,
+        cmap=cmap,
+        binwidth=binwidth,
+        ax=ax,
+        **hist_kws,
     )
 
 
-def _spatial_kde(points_gdf, hue, cmap, ax, **kwargs): 
+def _spatial_kde(points_gdf, hue, cmap, ax, **kwargs):
     kde_kws = dict()
     kde_kws.update(**kwargs)
-    
-    sampled_df=points_gdf.sample(frac=0.2)
-    
+
+    sampled_df = points_gdf.sample(frac=0.2)
+
     # Remove categories with no data; otherwise legend is very long
-    if hue in sampled_df.columns and sampled_df[hue].dtype == 'category':
+    if hue in sampled_df.columns and sampled_df[hue].dtype == "category":
         sampled_df[hue].cat.remove_unused_categories(inplace=True)
-        
+
     sns.kdeplot(data=sampled_df, x="x", y="y", hue=hue, cmap=cmap, ax=ax, **kde_kws)
