@@ -1,29 +1,26 @@
-```{eval-rst}
-.. module:: bento
-```
 
-```{eval-rst}
+.. module:: bento
+
 .. automodule:: bento
    :noindex:
-```
 
-# API
- 
+API
+===
+
 Import Bento with:
 
-```python
-import bento
-```
+.. code:: python
 
-## Localization Patterns
+    import bento
 
-```{eval-rst}
+Localization Patterns
+---------------------
+
 .. module:: bento.tl
 .. currentmodule:: bento
 
 .. autosummary::
     :toctree: api/
-    :template: custom-module-template.rst
     
     tl.lp
     tl.lp_stats
@@ -31,24 +28,20 @@ import bento
     tl.loc_signatures
     tl.decompose_tensor
     tl.select_tensor_rank   
-```
 
-## Colocalization
+Colocalization
+--------------
 
-```{eval-rst}
 .. autosummary::
     :toctree: api/
-     :template: custom-module-template.rst
-   
+    
     tl.coloc_quotient
-```
 
-## Sample features
+Sample Features
+----------------
 
-```{eval-rst}
 .. autosummary::
     :toctree: api/
-    :template: custom-module-template.rst
 
     tl.analyze
     tl.PointDispersion
@@ -57,17 +50,14 @@ import bento
     tl.ShapeDispersion
     tl.ShapeEnrichment
     tl.ShapeProximity    
-```
 
-## Plotting
-
-```{eval-rst}
+Plotting
+---------
 .. module:: bento.pl
 .. currentmodule:: bento
 
 .. autosummary::
     :toctree: api/
-    :template: custom-module-template.rst
 
     pl.lp_dist
     pl.lp_genes
@@ -77,20 +67,17 @@ import bento
     pl.qc_metrics
     pl.lp_signatures
 
-```
 
 
-## Read/Write
+Read/Write
+-----------
 
-```{eval-rst}
 .. module:: bento.io
 .. currentmodule:: bento
 
 .. autosummary::
     :toctree: api/
-     :template: custom-module-template.rst
    
     io.read_h5ad
     io.write_h5ad
     io.concatenate
-```

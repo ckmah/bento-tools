@@ -38,9 +38,12 @@ optional = true
 
 [tool.poetry.group.docs.dependencies]
 Sphinx = "^4.1.2"
-sphinxawesome-theme = "^2.0.2"
 sphinx-autobuild = "^2021.3.14"
 myst-parser = "^0.17.2"
+pypandoc = "^1.8.1"
+sphinx-gallery = "^0.10.1"
+sphinx-book-theme = "^0.3.2"
+nbsphinx = "^0.8.8"
 
 [tool.poetry.extras]
 torch = ["torch"]

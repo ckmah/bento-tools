@@ -17,6 +17,29 @@ from ..preprocessing import get_points
 
 
 def analyze(data, features, chunks=None, chunksize=None, copy=False):
+    """Calculate the set of specified `features` for every sample, defined as the set of 
+    molecules corresponding to every cell-gene pair.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatially formatted AnnData
+    features : list of :class:`SampleFeature`
+        List of :class:`SampleFeature` to compute.
+    chunks : int, optional
+        Number of partitions to use, passed to `dask`, by default None.
+    chunksize : int, optional
+        Size of partitions, passed to `dask`, by default None.
+    copy : bool
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
+        `.layers[`keys`]`
+            See the output of each :class:`SampleFeature` in `features` for keys added.
+    """
     adata = data.copy() if copy else data
 
     # Cast features to type list
@@ -26,8 +49,8 @@ def analyze(data, features, chunks=None, chunksize=None, copy=False):
     cell_features = set()  # Cell-level fns to run
     cell_attributes = set()  # Cell-level attributes needed to compute sample features
     for f in features:
-        cell_features.update(f._cell_features)
-        cell_attributes.update(f._cell_attributes)
+        cell_features.update(f.cell_features)
+        cell_attributes.update(f.cell_attributes)
 
     cell_features = list(cell_features)
     cell_attributes = list(cell_attributes)
@@ -101,39 +124,77 @@ def analyze(data, features, chunks=None, chunksize=None, copy=False):
 
 
 class SampleFeature(metaclass=ABCMeta):
+    """Abstract class for calculating sample features. A sample is defined as the set of 
+    molecules corresponding to a single cell-gene pair.
+
+    Parameters
+    ----------
+    metaclass : _type_, optional
+        _description_, by default ABCMeta
+
+    Attributes
+    ----------
+    cell_features : int
+        Set of cell-level features needed for computing sample-level features.
+    cell_attributes : int
+        Names (keys) used to store computed cell-level features.
+    """
     @abstractmethod
     def __init__(self):
-        self._cell_features = set()
-        self._cell_attributes = set()
+        self.cell_features = set()
+        self.cell_attributes = set()
 
     @abstractmethod
     def extract(self, df):
-        """
-        Main calculation
+        """Calculates this feature for a given sample.
+
+        Parameters
+        ----------
+        df : DataFrame
+            Assumes each row is a molecule and that columns `x`, `y`, `cell`, and `gene` are present.
         """
 
         return df
 
 
 class ShapeProximity(SampleFeature):
+    """For a set of points, computes the proximity of points within `shape_name` 
+    as well as the proximity of points outside `shape_name`. Proximity is defined as 
+    the average absolute distance to the specified `shape_name` normalized by cell 
+    radius. Values closer to 0 denote farther from the `shape_name`, values closer 
+    to 1 denote closer to the `shape_name`.
+
+    Attributes
+    ----------
+    cell_features : int
+        Set of cell-level features needed for computing sample-level features
+    cell_attributes : int
+        Names (keys) used to store computed cell-level features
+
+    Returns
+    -------
+    dict
+        `"{shape_prefix}_inner_proximity"`: proximity of points inside `shape_name`
+        `"{shape_prefix}_outer_proximity"`: proximity of points outside `shape_name`
+    """
     def __init__(self, shape_name):
         super().__init__()
-        self._cell_features.add(tl.cell_radius)
+        self.cell_features.add(tl.cell_radius)
 
         attrs = [shape_name, "cell_radius"]
-        self._cell_attributes.update(attrs)
+        self.cell_attributes.update(attrs)
 
-        self._shape_name = shape_name
+        self.shape_name = shape_name
 
     def extract(self, df):
         df = super().extract(df)
 
-        shape_prefix = self._shape_name.split("_shape")[0]
+        shape_prefix = self.shape_name.split("_shape")[0]
 
         # Get shape polygon
-        shape = df[self._shape_name].values[0]
+        shape = df[self.shape_name].values[0]
 
-        # Get points outside shape
+        # Get points
         points_geo = df["geometry"].values
 
         # Check for points within shape, assume all are intracellular
@@ -170,24 +231,45 @@ class ShapeProximity(SampleFeature):
 
 
 class ShapeAsymmetry(SampleFeature):
+    """For a set of points, computes the asymmetry of points within `shape_name`
+    as well as the asymmetry of points outside `shape_name`. Asymmetry is defined as 
+    the offset between the centroid of points to the centroid of the specified 
+    `shape_name`, normalized by cell radius. Values closer to 0 denote symmetry, 
+    values closer to 1 denote asymmetry.
+
+    Attributes
+    ----------
+    cell_features : int
+        Set of cell-level features needed for computing sample-level features
+    cell_attributes : int
+        Names (keys) used to store computed cell-level features
+    shape_name : str
+        Name of shape to use, must be column name in input DataFrame
+
+    Returns
+    -------
+    dict
+        `"{shape_prefix}_inner_asymmetry"`: asymmetry of points inside `shape_name`
+        `"{shape_prefix}_outer_asymmetry"`: asymmetry of points outside `shape_name`
+    """
     def __init__(self, shape_name):
         super().__init__()
-        self._cell_features.add(tl.cell_radius)
+        self.cell_features.add(tl.cell_radius)
 
         attrs = [shape_name, "cell_radius"]
-        self._cell_attributes.update(attrs)
+        self.cell_attributes.update(attrs)
 
-        self._shape_name = shape_name
+        self.shape_name = shape_name
 
     def extract(self, df):
         df = super().extract(df)
 
-        shape_prefix = self._shape_name.split("_shape")[0]
+        shape_prefix = self.shape_name.split("_shape")[0]
 
         # Get shape polygon
-        shape = df[self._shape_name].values[0]
+        shape = df[self.shape_name].values[0]
 
-        # Get points outside shape
+        # Get points
         points_geo = df["geometry"].values
 
         # Check for points within shape, assume all are intracellular
@@ -224,12 +306,28 @@ class ShapeAsymmetry(SampleFeature):
 
 
 class PointDispersion(SampleFeature):
+    """For a set of points, calculates the second moment of all points in a cell 
+    relative to the centroid of the total RNA signal. This value is normalized by 
+    the second moment of a uniform distribution within the cell boundary.
+
+    Attributes
+    ----------
+    cell_features : int
+        Set of cell-level features needed for computing sample-level features
+    cell_attributes : int
+        Names (keys) used to store computed cell-level features
+    
+    Returns
+    -------
+    dict
+        `"point_dispersion"`: measure of point dispersion
+    """
     def __init__(self):
         super().__init__()
-        self._cell_features.add(tl.raster_cell)
+        self.cell_features.add(tl.raster_cell)
 
         attrs = ["cell_raster"]
-        self._cell_attributes.update(attrs)
+        self.cell_attributes.update(attrs)
 
     def extract(self, df):
         df = super().extract(df)
@@ -249,20 +347,36 @@ class PointDispersion(SampleFeature):
 
 
 class ShapeDispersion(SampleFeature):
+    """For a set of points, calculates the second moment of all points in a cell relative to the 
+    centroid of `shape_name`. This value is normalized by the second moment of a uniform 
+    distribution within the cell boundary.
+
+    Attributes
+    ----------
+    cell_features : int
+        Set of cell-level features needed for computing sample-level features
+    cell_attributes : int
+        Names (keys) used to store computed cell-level features
+
+    Returns
+    -------
+    dict
+        `"{shape_prefix}_dispersion"`: measure of point dispersion relative to `shape_name`
+    """
     def __init__(self, shape_name):
         super().__init__()
 
-        self._cell_features.add(tl.raster_cell)
+        self.cell_features.add(tl.raster_cell)
         attrs = [shape_name, "cell_raster"]
-        self._cell_attributes.update(attrs)
+        self.cell_attributes.update(attrs)
 
-        self._shape_name = shape_name
+        self.shape_name = shape_name
 
     def extract(self, df):
         df = super().extract(df)
 
         # Get shape polygon
-        shape = df[self._shape_name].values[0]
+        shape = df[self.shape_name].values[0]
 
         # Get precomputed shape centroid and raster
         cell_raster = df["cell_raster"].values[0]
@@ -274,17 +388,37 @@ class ShapeDispersion(SampleFeature):
         # Normalize by cell moment
         norm_moment = point_moment / cell_moment
 
-        shape_prefix = self._shape_name.split("_shape")[0]
+        shape_prefix = self.shape_name.split("_shape")[0]
 
         return {f"{shape_prefix}_dispersion": norm_moment}
 
 
 class RipleyStats(SampleFeature):
+    """For a set of points, calculates properties of the L-function. The L-function 
+    measures spatial clustering of a point pattern over the area of the cell.
+
+    Attributes
+    ----------
+    cell_features : int
+        Set of cell-level features needed for computing sample-level features
+    cell_attributes : int
+        Names (keys) used to store computed cell-level features
+    
+    Returns
+    -------
+    dict
+        `"l_max": The max value of the L-function evaluated at r=[1,d], where d is half the cell’s maximum diameter.
+        `"l_max_gradient"`: The max value of the gradient of the above L-function.
+        `"l_min_gradient"`: The min value of the gradient of the above L-function.
+        `"l_monotony"`: The correlation of the L-function and r=[1,d].
+        `"l_half_radius"`: The value of the L-function evaluated at 1/4 of the maximum cell diameter.
+
+    """
     def __init__(self):
         super().__init__()
-        self._cell_features.update([tl.cell_span, tl.cell_bounds, tl.cell_area])
+        self.cell_features.update([tl.cell_span, tl.cell_bounds, tl.cell_area])
 
-        self._cell_attributes.update(
+        self.cell_attributes.update(
             ["cell_span", "cell_minx", "cell_miny", "cell_maxx", "cell_maxy", "cell_area"]
         )
 
@@ -350,18 +484,35 @@ class RipleyStats(SampleFeature):
 
 
 class ShapeEnrichment(SampleFeature):
+    """For a set of points, calculates the fraction of points within `shape_name` 
+    out of all points in the cell.
+
+    Attributes
+    ----------
+    cell_features : int
+        Set of cell-level features needed for computing sample-level features
+    cell_attributes : int
+        Names (keys) used to store computed cell-level features
+    shape_name : str
+        Name of shape to use, must be column name in input DataFrame
+
+    Returns
+    -------
+    dict
+        `"{shape_prefix}_enrichment"`: enrichment fraction of points in `shape_name`
+    """
     def __init__(self, shape_name):
         super().__init__()
 
         attrs = [shape_name]
-        self._cell_attributes.update(attrs)
+        self.cell_attributes.update(attrs)
 
-        self._shape_name = shape_name
+        self.shape_name = shape_name
 
     def extract(self, df):
         df = super().extract(df)
 
-        shape_prefix = self._shape_name.split("_shape")[0]
+        shape_prefix = self.shape_name.split("_shape")[0]
 
         # Get points outside shape
         points_geo = df["geometry"]
@@ -379,6 +530,7 @@ class ShapeEnrichment(SampleFeature):
 def _second_moment(centroid, pts):
     """
     Calculate second moment of points with centroid as reference.
+    
     Parameters
     ----------
     centroid : [1 x 2] float

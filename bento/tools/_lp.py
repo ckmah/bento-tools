@@ -27,11 +27,17 @@ def lp(data, min_count=5, copy=False):
     min_count : int
         Minimum expression count per sample; otherwise ignore sample
     copy : bool
-        Return a copy instead of writing to data
+        Return a copy of `data` instead of writing to data, by default False.
 
     Returns
     -------
     Depending on `copy`, returns or updates `adata` with the following fields.
+
+        - :attr:`anndata.AnnData.layers` ``['cell_edge']`` - `cell_edge` localization pattern labels.
+        - :attr:`anndata.AnnData.layers` ``['cytoplasm']`` - `cytoplasm` localization pattern labels.
+        - :attr:`anndata.AnnData.layers` ``['none']`` - `none` localization pattern labels.
+        - :attr:`anndata.AnnData.layers` ``['nuclear']`` - `nuclear` localization pattern labels.
+        - :attr:`anndata.AnnData.layers` ``['nuclear_edge']`` - `nuclear_edge` localization pattern labels.
     """
     adata = data.copy() if copy else data
 
@@ -84,11 +90,10 @@ def lp_stats(data, copy=False):
 
     Parameters
     ----------
-    data : [type]
-        [description]
-    copy : bool, optional
-        [description], by default False
-
+    data : AnnData
+        Spatial formatted AnnData object
+    copy : bool
+        Return a copy of `data` instead of writing to data, by default False.
     Returns
     -------
     [type]
@@ -138,8 +143,6 @@ def _lp_logfc(data, phenotype=None):
         Anndata formatted spatial data.
     phenotype : str
         Variable grouping cells for differential analysis. Must be in data.obs_names.
-    copy : bool, optional
-        Return view of AnnData if False, return copy if True. By default False.
     """
 
     if phenotype not in data.obs.columns:
@@ -268,8 +271,8 @@ def lp_diff(data, phenotype=None, continuous=False, min_cells=10, copy=False):
         Whether the phenotype is continuous or categorical. By default False.
     n_cores : int, optional
         cores used for multiprocessing, by default 1
-    copy : bool, optional
-        Return view of AnnData if False, return copy if True. By default False.
+    copy : bool
+        Return a copy of `data` instead of writing to data, by default False.
     """
     adata = data.copy() if copy else data
 

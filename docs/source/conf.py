@@ -35,35 +35,31 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
-    "myst_parser"
+    "myst_parser",
+    "nbsphinx",
+    "sphinx_gallery.load_style"
 ]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
-
-autosummary_generate = True
-autosummary_imported_members = True
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = []
 
-
 # -- Options for HTML output -------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = "sphinxawesome_theme"
+html_theme = "sphinx_book_theme"
 
 html_theme_options = {
-      "nav_include_hidden": True,
-      "show_nav": True,
-      "show_breadcrumbs": True,
-      "breadcrumbs_separator": "/",
-      "show_prev_next": True,
-      "show_scrolltop": True
+    "repository_url": "https://github.com/ckmah/bento-tools",
+    "use_repository_button": True,
+    "use_edit_page_button": True,
+    "path_to_docs": "docs"
 }
 
 # pygments_style = 'sphinx'
@@ -73,18 +69,19 @@ html_theme_options = {
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
 
-# -- Options for Napolean docstring format -------------------------------------------------
+# -- Options for Autosummary, Autodoc, Napolean docstring format -------------------------------------------------
 
+autosummary_generate = True
+autodoc_docstring_signature = True
 napoleon_google_docstring = False
 napoleon_numpy_docstring = True
 napoleon_use_param = False
 napoleon_use_rtype = False
+numpydoc_show_class_members=False
 
 html_title = "bento-tools"
-html_logo = "_static/bento-logo.png"
+html_logo = "_static/bento-name.png"
 
-# -- Options for sphinxawesome_theme theme/extension options -------------------------------------------------
+# -- Options for nbsphinx -------------------------------------------------------------------------------
 
-# This option is `False` by default
-html_collapsible_definitions = True
-
+nbsphinx_execute = 'never'

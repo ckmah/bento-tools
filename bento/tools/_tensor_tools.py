@@ -15,23 +15,25 @@ def to_tensor(data, layers, mask=False, copy=False):
 
     Parameters
     ----------
+    data : AnnData
     layers : list of str
-        keys in data.layers
-        whether to only use highly variably expressed genes as defined by scanpy, default False
+        Keys in data.layers to build tensor.
     mask : bool
-        whether to place nans with 0, default False
+        Whether to replace nans with 0, default False.
     copy : bool
+        Return a copy of `data` instead of writing to data, by default False.
 
-    Attributes
-    ----------
-    AnnData, None
-        Returns copy of AnnData if copy=True, otherwise modifies data in place and returns None
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
 
-        `data.uns['tensor']` : np.ndarray
+        `uns['tensor']` : np.ndarray
             3D numpy array of shape (len(layers), adata.n_obs, adata.n_vars)
 
-        `data.uns['tensor_labels'] : dict
-            Element labels across each dimension. Keys are dimension names (layers, cells, genes), values are lists of str
+        `uns['tensor_labels'] : dict
+            Element labels across each dimension. Keys are dimension names (layers, cells, genes), 
+            values are lists of str
 
     """
     adata = data.copy() if copy else data
@@ -59,15 +61,42 @@ def to_tensor(data, layers, mask=False, copy=False):
     return adata
 
 
-def select_tensor_rank(data, layers, upper_rank=10, runs=5, device="auto", random_state=888):
-    """
+def select_tensor_rank(data, layers, upper_rank=10, runs=5, device="auto", random_state=888, copy=False):
+    """Perform `bento.tl.decompose_tensor()` up to rank `upper_rank` repeating each decomposition 
+    `runs` times to compute a 95% confidence interval, plotting reconstruction error for each rank.
+
     Parameters
     ----------
+    data : AnnData
+        Spatial formatted AnnData.
+    layers : list of str
+        Keys in data.layers to build tensor.
     upper_rank : int
-        Maximum rank to perform decomposition.
+        Maximum rank to perform decomposition, by default 10.
     runs : int
-        Number of times to run decomposition for calculating the confidence interval.
+        Number of times to run decomposition for calculating the confidence interval, by default 5.
+    device : str, optional
+        Type of device to use, valid options include `cpu`, `gpu`, and `auto`, by default `auto`.
+        Option `auto` prefers `gpu` over `cpu` if available.
+    random_state : int, optional
+        Random seed used for reproducibility, by default 888
+    copy : bool
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
+
+        `uns['tensor']` : np.ndarray
+            3D numpy array of shape (len(layers), adata.n_obs, adata.n_vars)
+
+        `uns['tensor_labels'] : dict
+            Element labels across each dimension. Keys are dimension names (layers, cells, genes), 
+            values are lists of str
     """
+    adata = data.copy() if copy else data
+
     to_tensor(data, layers=layers, mask=True)
     tensor_c2c = init_c2c_tensor(data, device=device)
 
@@ -80,15 +109,60 @@ def select_tensor_rank(data, layers, upper_rank=10, runs=5, device="auto", rando
     )
 
     plt.tight_layout()
-    return fig, error
+    
+    return adata
 
 
 def loc_signatures(data, rank, device="auto", random_state=888, copy=False):
+    """Calculate localization signatures by performing tensor decomposition on the dataset tensor. 
+        Wrapper for `bento.tl.decompose_tensor()`.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData.
+    rank : int
+        Rank to perform decomposition.
+    device : str, optional
+        Type of device to use, valid options include `cpu`, `gpu`, and `auto`, by default `auto`.
+        Option `auto` prefers `gpu` over `cpu` if available.
+    random_state : int, optional
+        Random seed used for reproducibility, by default 888.
+    copy : bool
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     return decompose_tensor(data, PATTERN_NAMES, rank, device=device, random_state=random_state, copy=copy)
 
 
 @track
 def decompose_tensor(data, layers, rank, device="auto", random_state=888, copy=False):
+    """Perform tensor decomposition on the 3-dimensional tensor built from `[cell, gene, layers]`.
+
+    Parameters
+    ----------
+    data : _type_
+        _description_
+    layers : _type_
+        _description_
+    rank : _type_
+        _description_
+    device : str, optional
+        _description_, by default "auto"
+    random_state : int, optional
+        _description_, by default 888
+    copy : bool, optional
+        _description_, by default False
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     adata = data.copy() if copy else data
 
     to_tensor(data, layers=layers, mask=True)

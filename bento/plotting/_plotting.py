@@ -1,10 +1,6 @@
 import warnings
 
-from matplotlib.lines import Line2D
-
 warnings.filterwarnings("ignore")
-
-from functools import partial
 
 import geopandas
 import matplotlib as mpl
@@ -17,7 +13,7 @@ from upsetplot import UpSet, from_indicators
 
 from ._utils import savefig
 from .._utils import PATTERN_NAMES, PATTERN_COLORS
-from ..preprocessing import get_points, get_features
+from ..preprocessing import get_points
 from ..tools._lp import lp_stats
 
 
@@ -25,6 +21,13 @@ from ..tools._lp import lp_stats
 def qc_metrics(adata, fname=None):
     """
     Plot quality control metric distributions.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    fname : str, optional
+        Save the figure to specified filename, by default None
     """
     color = "lightseagreen"
 
@@ -140,6 +143,15 @@ def lp_dist(data, percentage=False, scale=1, fname=None):
 
 @savefig
 def lp_gene_dist(data, fname=None):
+    """Plot the cell fraction distribution of each pattern as a density plot.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    fname : str, optional
+        Save the figure to specified filename, by default None
+    """
     lp_stats(data)
 
     col_names = [f"{p}_fraction" for p in PATTERN_NAMES]
@@ -169,16 +181,24 @@ def lp_genes(
     **kwargs,
 ):
     """
+    Plot the pattern distribution of each gene in a RadViz plot. RadViz projects
+    an N-dimensional data set into a 2D space where the influence of each dimension
+    can be interpreted as a balance between the influence of all dimensions.
+
     Parameters
     ----------
     data : AnnData
         Spatial formatted AnnData
     kind : str
-        'Scatter' for scatterplot, 'hex' for hex plot
+        'Scatter' for scatter plot, 'hex' for hex plot, default "scatter"
+    hue : str
+        Name of columns in data.obs to color points, default "Pattern"
     sizes : tuple
-        Minimum and maximum point size range
+        Minimum and maximum point size to scale points, default (2, 100)
     gridsize : int
-        Number of bins along each axis
+        Number of hex bins along each axis, default 20
+    fname : str, optional
+        Save the figure to specified filename, by default None
     **kwargs
         Options to pass to matplotlib plotting method.
     """
@@ -194,6 +214,7 @@ def lp_genes(
     fig = plt.figure(figsize=figsize)
 
     # Use Plot the "circular" axis and labels, hide points
+    # TODO move "pattern" computation to lp_stats
     col_names = [f"{p}_fraction" for p in PATTERN_NAMES]
     gene_frac = data.var[col_names]
     gene_frac.columns = PATTERN_NAMES
@@ -232,7 +253,7 @@ def lp_genes(
             x=0,
             y=1,
             size="Fraction of cells",
-            hue="Pattern",
+            hue=hue,
             sizes=sizes,
             linewidth=0,
             palette=palette,
@@ -262,7 +283,18 @@ def lp_genes(
 
 @savefig
 def lp_diff(data, phenotype, fname=None):
-    """Visualize gene pattern frequencies between groups of cells by plotting log2 fold change and -log10p."""
+    """Visualize gene pattern frequencies between groups of cells by plotting
+    log2 fold change and -log10p, similar to volcano plot. Run after `bento.tl.lp_diff()`
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    phenotype : str
+        Variable used to group cells when calling `bento.tl.lp_diff()`.
+    fname : str, optional
+        Save the figure to specified filename, by default None
+    """
     diff_stats = data.uns[f"diff_{phenotype}"]
 
     g = sns.relplot(
@@ -276,15 +308,16 @@ def lp_diff(data, phenotype, fname=None):
         height=2.5,
         palette="tab10",
         s=20,
-        #         alpha=0.4,
         linewidth=0,
     )
 
     for ax in g.axes:
-        ax.axvline(0, lw=0.5, c="grey")
-        ax.axvline(-2, lw=1, c="pink", ls="dotted")
-        ax.axvline(2, lw=1, c="pink", ls="dotted")
-        ax.axhline(-np.log10(0.05), c="pink", ls="dotted", zorder=0)
+        ax.axvline(0, lw=0.5, c="grey")  # -log2fc = 0
+        ax.axvline(-2, lw=1, c="pink", ls="dotted")  # log2fc = -2
+        ax.axvline(2, lw=1, c="pink", ls="dotted")  # log2fc = 2
+        ax.axhline(
+            -np.log10(0.05), c="pink", ls="dotted", zorder=0
+        )  # line where FDR = 0.05
         sns.despine()
 
     return g
@@ -294,6 +327,8 @@ def lp_diff(data, phenotype, fname=None):
 def plot_cells(
     data,
     kind="scatter",
+    fov=None,
+    fov_key="batch",
     hue=None,
     palette=None,
     cmap="Blues_r",
@@ -310,16 +345,55 @@ def plot_cells(
     fname=None,
     **kwargs,
 ):
-    """
-    Visualize distribution of variable in spatial coordinates.
+    """Visualize 2-dimensional distribution of points in spatial coordinates.
 
     Parameters
     ----------
-    data : dict
-    kind : {'scatter', 'hist', 'kde'}
-        Selects the underlying seaborn plot function.
+    data : AnnData
+        Spatial AnnData format
+    kind : 'scatter', 'hist', or 'kde', optional
+        Kind of plot to draw, wrapper for Seaborn `sns.scatterplot()`, `sns.histplot()`,
+        and `sns.kdeplot()` respectively. By default "scatter".
+    fov : str, 'all', list of str, optional
+        If 'all' or list, plots all or specified fields of view (`batch` in `data.obs.keys()`) in
+        separate subplots  and `tile` is ignored.
+    hue : str, optional
+        Grouping variable present in `data.uns['points'].columns` that will produce different colors.
+        Can be either categorical or numeric, although color mapping will behave differently in latter case.
+        By default None.
+    palette : string, list, dict, or `matplotlib.colors.Colormap`, optional
+        Method for choosing the colors to use when mapping the hue semantic. String values are
+        passed to `sns.color_palette()`. List or dict values imply categorical mapping, while a colormap
+        object implies numeric mapping. By default None.
+    cmap : str, optional
+        The mapping from data values to color space, only applies to `kind=hist` and `kind=kde` options.
+        By default "Blues_r".
+    tile : bool, optional
+        If True, plots each cell in separate subplots, else plots all cells in a single subplot assuming
+        a common coordinate space. By default False.
+    lw : int, optional
+        Linewidth of drawn `shape_names`, by default 1
+    col_wrap : int, optional
+        If `tile=True`, or `fov` is specified, wraps tiling at this width, by default 4
+    binwidth : int, optional
+        For `kind=hist`, sets width of each bin, by default 20
+    style : str, optional
+        If `kind=scatter`, grouping variable present in `data.uns['points'].columns` that will produce
+        elements with different styles.  Can have a numeric dtype but will always be treated as categorical.
+        By default None.
+    shape_names : list, optional
+        List of shapes to plot, by default ["cell_shape", "nucleus_shape"]
+    legend : bool, optional
+        Whether to plot legend, by default True
+    frameon : bool, optional
+        Whether to draw figure frame, by default True
+    axsize : int, optional
+        Size of subplot in inches, by default 4
+    ax : _type_, optional
+        Axes in which to draw the plot. If None, use the currently-active Axes.
+    fname : str, optional
+        Save the figure to specified filename, by default None
     """
-
     # Add all shape_names if 'all'
     if shape_names == "all":
         shape_names = data.obs.columns[data.obs.columns.str.endswith("shape")]

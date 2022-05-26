@@ -1,16 +1,17 @@
 # Quick Start Guide
   
 ## Installation
----
-Use the package manager [`pip`](https://pip.pypa.io/en/stable/) to install bento.
 
+Install `bento-tools` with `pip`.
 
-## Usage
----
-```{bash}
-   pip install bento-tools
+```
+pip install bento-tools
 ```
 
+### Dev
+
+TODO instructions for installation with poetry
+
 ## License
----
+
 [MIT License](<https://choosealicense.com/license/mit>)
