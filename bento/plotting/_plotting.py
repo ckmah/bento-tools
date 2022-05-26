@@ -399,107 +399,208 @@ def plot_cells(
         shape_names = data.obs.columns[data.obs.columns.str.endswith("shape")]
 
     # Convert draw_shape_names to list
-    shape_names = [shape_names] if type(shape_names) is str else shape_names
+    shape_names = [shape_names] if isinstance(shape_names) is str else shape_names
 
     # Subset adata info by genes and cells
     points = get_points(data, cells=data.obs_names, genes=data.var_names)
+    points[fov_key] = points[fov_key].astype(str)
 
     points = geopandas.GeoDataFrame(
         points, geometry=geopandas.points_from_xy(points["x"], points["y"])
     )
 
     # Get shape_names and points
+    shapes_gdf = data.obs[shape_names]
+    shapes_gdf[fov_key] = shapes_gdf[fov_key].astype(str)
     shapes_gdf = geopandas.GeoDataFrame(data.obs[shape_names], geometry="cell_shape")
     shape_names = shapes_gdf.columns.tolist()
 
-    # Plot in single figure
-    if not tile:
-        if ax is None:
-            ax = plt.gca()
-        # fig, ax = plt.subplots(1, 1, figsize=(axsize, axsize))
-        ax.set(xticks=[], yticks=[], facecolor="black", adjustable="datalim")
-        ax.axis(frameon)
+    # Plot in single figure if not tiling
+    if fov:
+        # Assume fov is a single field of view
+        if fov == "all":
+            fov = list(set(data.obs[fov_key].sort_values()))
 
-        # Set frame to white
-        for spine in ax.spines.values():
-            spine.set_edgecolor("white")
+        if isinstance(fov) is list:
+            nfov = len(fov)
+            ncols = min(col_wrap, nfov)
+            nrows = max(1, int(np.ceil(nfov / ncols)))
+            fig, axs = plt.subplots(
+                nrows,
+                ncols,
+                sharex=False,
+                sharey=False,
+                subplot_kw=dict(facecolor="black"),
+                figsize=(axsize * ncols, axsize * nrows),
+            )
+            plt.subplots_adjust(wspace=0, hspace=0)
 
-        # Plot points
-        if kind == "scatter":
-            _spatial_scatter(points, hue, palette, style, ax, **kwargs)
-        elif kind == "hist":
-            _spatial_hist(points, hue, cmap, binwidth, ax, **kwargs)
-        elif kind == "kde":
-            _spatial_kde(points, hue, cmap, ax, **kwargs)
+            # Plot list of fovs in separate subplots
+            for i, ax in enumerate(np.array(axs).flatten()):
+                cur_fov = fov[i]
+                # Subset to single fov
+                fov_points = points[points[fov_key] == cur_fov]
+                fov_shapes_gdf = shapes_gdf[shapes_gdf[fov_key] == cur_fov]
+                _plot_cells_subplot(
+                    fov_points,
+                    fov_shapes_gdf,
+                    kind,
+                    hue,
+                    palette,
+                    cmap,
+                    style,
+                    lw,
+                    binwidth,
+                    shape_names,
+                    legend,
+                    frameon,
+                    ax,
+                    **kwargs,
+                )
 
-        # Plot shapes
-        _spatial_line(shapes_gdf, shape_names, lw, ax)
-
-        if not legend:
-            ax.legend().remove()
-
-    # Plot each cell in separate subplots
+        # Plot single fov
+        elif isinstance(fov) is str:
+            points = points[points[fov_key] == fov]
+            shapes_gdf = shapes_gdf[shapes_gdf[fov_key] == fov]
+            _plot_cells_subplot(
+                points,
+                shapes_gdf,
+                kind,
+                hue,
+                palette,
+                cmap,
+                style,
+                lw,
+                binwidth,
+                shape_names,
+                legend,
+                frameon,
+                ax,
+                **kwargs,
+            )
+        else:
+            pass
     else:
-        # Determine fixed radius of each subplot
-        cell_bounds = shapes_gdf.bounds
-        cell_maxw = (cell_bounds["maxx"] - cell_bounds["minx"]).max()
-        cell_maxh = (cell_bounds["maxy"] - cell_bounds["miny"]).max()
-        ax_radius = 1.1 * (max(cell_maxw, cell_maxh) / 2)
+        if not tile:
+            _plot_cells_subplot(
+                points,
+                shapes_gdf,
+                kind,
+                hue,
+                palette,
+                cmap,
+                style,
+                lw,
+                binwidth,
+                shape_names,
+                legend,
+                frameon,
+                ax,
+                **kwargs,
+            )
 
-        # Initialize subplots
-        ncols = min(col_wrap, len(shapes_gdf))
-        nrows = max(1, int(np.ceil(len(shapes_gdf) / ncols)))
-        fig, axs = plt.subplots(
-            nrows,
-            ncols,
-            sharex=False,
-            sharey=False,
-            subplot_kw=dict(facecolor="black"),
-            figsize=(axsize * ncols, axsize * nrows),
-        )
-        plt.subplots_adjust(wspace=0, hspace=0)
+        # Plot each cell in separate subplots
+        else:
+            # Determine fixed radius of each subplot
+            cell_bounds = shapes_gdf.bounds
+            cell_maxw = (cell_bounds["maxx"] - cell_bounds["minx"]).max()
+            cell_maxh = (cell_bounds["maxy"] - cell_bounds["miny"]).max()
+            ax_radius = 1.1 * (max(cell_maxw, cell_maxh) / 2)
 
-        # Plot cells separately
-        for i, ax in enumerate(np.array(axs).flatten()):
-            try:
-                # Select subset data
-                s = shapes_gdf.iloc[[i]]
-                p = points.loc[points["cell"] == s.index[0]]
+            # Initialize subplots
+            ncols = min(col_wrap, len(shapes_gdf))
+            nrows = max(1, int(np.ceil(len(shapes_gdf) / ncols)))
+            fig, axs = plt.subplots(
+                nrows,
+                ncols,
+                sharex=False,
+                sharey=False,
+                subplot_kw=dict(facecolor="black"),
+                figsize=(axsize * ncols, axsize * nrows),
+            )
+            plt.subplots_adjust(wspace=0, hspace=0)
 
-                # Plot points
-                if kind == "scatter":
-                    _spatial_scatter(p, hue, palette, style, ax, **kwargs)
-                elif kind == "hist":
-                    _spatial_hist(p, hue, cmap, binwidth, ax, **kwargs)
-                elif kind == "kde":
-                    _spatial_kde(p, hue, cmap, ax, **kwargs)
+            # Plot cells separately
+            for i, ax in enumerate(np.array(axs).flatten()):
+                try:
+                    # Select subset data
+                    s = shapes_gdf.iloc[[i]]
+                    p = points.loc[points["cell"] == s.index[0]]
 
-                # Plot shapes
-                _spatial_line(s, shape_names, lw, ax)
+                    # Plot points
+                    if kind == "scatter":
+                        _spatial_scatter(p, hue, palette, style, ax, **kwargs)
+                    elif kind == "hist":
+                        _spatial_hist(p, hue, cmap, binwidth, ax, **kwargs)
+                    elif kind == "kde":
+                        _spatial_kde(p, hue, cmap, ax, **kwargs)
 
-                # Set axes boundaries to be square; make sure size of cells are relative to one another
-                s_bound = s.bounds
-                centerx = np.mean([s_bound["minx"], s_bound["maxx"]])
-                centery = np.mean([s_bound["miny"], s_bound["maxy"]])
-                ax.set_xlim(centerx - ax_radius, centerx + ax_radius)
-                ax.set_ylim(centery - ax_radius, centery + ax_radius)
+                    # Plot shapes
+                    _spatial_line(s, shape_names, lw, ax)
 
-                ax.set(xticks=[], yticks=[], xlabel=None, ylabel=None)
-                ax.axis(frameon)
+                    # Set axes boundaries to be square; make sure size of cells are relative to one another
+                    s_bound = s.bounds
+                    centerx = np.mean([s_bound["minx"], s_bound["maxx"]])
+                    centery = np.mean([s_bound["miny"], s_bound["maxy"]])
+                    ax.set_xlim(centerx - ax_radius, centerx + ax_radius)
+                    ax.set_ylim(centery - ax_radius, centery + ax_radius)
 
-                # Set frame to white
-                for spine in ax.spines.values():
-                    spine.set_edgecolor("white")
+                    ax.set(xticks=[], yticks=[], xlabel=None, ylabel=None)
+                    ax.axis(frameon)
 
-                # Only make legend for last plot
-                n_genes = len(np.unique(p["gene"]))
-                if legend and i == len(shapes_gdf) - 1:
-                    ax.legend(loc="upper left", bbox_to_anchor=(1, 1), ncol=1)
-                else:
-                    ax.legend().remove()
+                    # Set frame to white
+                    for spine in ax.spines.values():
+                        spine.set_edgecolor("white")
 
-            except (IndexError, ValueError):
-                ax.remove()
+                    # Only make legend for last plot
+                    if legend and i == len(shapes_gdf) - 1:
+                        ax.legend(loc="upper left", bbox_to_anchor=(1, 1), ncol=1)
+                    else:
+                        ax.legend().remove()
+
+                except (IndexError, ValueError):
+                    ax.remove()
+
+
+def _plot_cells_subplot(
+    points,
+    shapes_gdf,
+    kind,
+    hue,
+    palette,
+    cmap,
+    style,
+    lw,
+    binwidth,
+    shape_names,
+    legend,
+    frameon,
+    ax,
+    **kwargs,
+):
+    if ax is None:
+        ax = plt.gca()
+    # fig, ax = plt.subplots(1, 1, figsize=(axsize, axsize))
+    ax.set(xticks=[], yticks=[], facecolor="black", adjustable="datalim")
+    ax.axis(frameon)
+
+    # Set frame to white
+    for spine in ax.spines.values():
+        spine.set_edgecolor("white")
+
+    # Plot points
+    if kind == "scatter":
+        _spatial_scatter(points, hue, palette, style, ax, **kwargs)
+    elif kind == "hist":
+        _spatial_hist(points, hue, cmap, binwidth, ax, **kwargs)
+    elif kind == "kde":
+        _spatial_kde(points, hue, cmap, ax, **kwargs)
+
+    # Plot shapes
+    _spatial_line(shapes_gdf, shape_names, lw, ax)
+
+    if not legend:
+        ax.legend().remove()
 
 
 def _spatial_line(geo_df, shape_names, lw, ax):
