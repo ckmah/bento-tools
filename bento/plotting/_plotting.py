@@ -5,14 +5,17 @@ warnings.filterwarnings("ignore")
 import geopandas
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from matplotlib_scalebar.scalebar import ScaleBar
 import numpy as np
 import pandas as pd
 from pandas.plotting import radviz
 import seaborn as sns
 from upsetplot import UpSet, from_indicators
 
+from tqdm.auto import tqdm
+
 from ._utils import savefig
-from .._utils import PATTERN_NAMES, PATTERN_COLORS
+from .._utils import PATTERN_NAMES, PATTERN_COLORS, TENSOR_DIM_NAMES
 from ..preprocessing import get_points
 from ..tools._lp import lp_stats
 
@@ -50,7 +53,7 @@ def qc_metrics(adata, fname=None):
 
         sns.kdeplot(adata.obs["cell_area"], ax=axs[1][0], **kde_params)
 
-        sns.kdeplot(adata.obs["cell_perimeter"], ax=axs[1][1], **kde_params)
+        sns.kdeplot(adata.obs["cell_density"], ax=axs[1][1], **kde_params)
 
         dual_colors = sns.light_palette(color, n_colors=2, reverse=True)
         no_nucleus_count = (adata.obs["nucleus_shape"] == None).sum()
@@ -71,10 +74,17 @@ def qc_metrics(adata, fname=None):
         "Transcripts per Gene",
         "Genes per Cell",
         "Cell Area",
-        "Cell Perimeter",
+        "Transcript Density",
         "Cell has Nucleus",
     ]
-    xlabels = ["mRNA count", "Gene count", "Gene count", "Pixels", "Pixels", ""]
+    xlabels = [
+        "mRNA count",
+        "Gene count",
+        "Gene count",
+        "Pixels",
+        "Transcripts/pixel",
+        "",
+    ]
 
     for i, ax in enumerate(np.array(axs).reshape(-1)):
         #         ax.ticklabel_format(axis='y', style='sci', scilimits=(-2,2))
@@ -177,6 +187,7 @@ def lp_genes(
     sizes=(2, 100),
     gridsize=20,
     random_state=4,
+    ax=None,
     fname=None,
     **kwargs,
 ):
@@ -207,11 +218,9 @@ def lp_genes(
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
 
     # RADVIZ plot
-    if kind == "hex":
+    if not ax:
         figsize = (6, 6)
-    else:
-        figsize = (6, 6)
-    fig = plt.figure(figsize=figsize)
+        fig = plt.figure(figsize=figsize)
 
     # Use Plot the "circular" axis and labels, hide points
     # TODO move "pattern" computation to lp_stats
@@ -221,7 +230,14 @@ def lp_genes(
     gene_frac["Pattern"] = gene_frac.idxmax(axis=1)
     gene_frac_copy = gene_frac.copy()
     gene_frac_copy["Pattern"] = ""
-    ax = radviz(gene_frac_copy, "Pattern", s=0)
+
+    if hue and hue != "Pattern":
+        gene_frac = gene_frac.join(data.var[hue])
+
+    if not ax:
+        ax = radviz(gene_frac_copy, "Pattern", s=0)
+    else:
+        radviz(gene_frac_copy, "Pattern", s=0, ax=ax)
     del gene_frac_copy
     ax.get_legend().remove()
     circle = plt.Circle((0, 0), radius=1, color="black", fill=False)
@@ -324,344 +340,221 @@ def lp_diff(data, phenotype, fname=None):
 
 
 @savefig
-def plot_cells(
-    data,
-    kind="scatter",
-    fov=None,
+def cellplot(
+    adata,
+    fovs="0",
     fov_key="batch",
     hue=None,
-    palette=None,
-    cmap="Blues_r",
-    tile=False,
-    lw=1,
-    col_wrap=4,
-    binwidth=20,
-    style=None,
-    shape_names=["cell_shape", "nucleus_shape"],
+    col=None,
+    kind="hist",
     legend=True,
-    frameon=True,
-    axsize=4,
-    ax=None,
+    palette=None,
+    hue_order=None,
+    hue_norm=None,
+    col_wrap=None,
+    col_order=None,
+    shape_names=["cell_shape", "nucleus_shape"],
+    height=8,
+    facet_kws=None,
     fname=None,
     **kwargs,
 ):
-    """Visualize 2-dimensional distribution of points in spatial coordinates.
+    # Get points
+    points = get_points(adata, asgeo=False)
 
-    Parameters
-    ----------
-    data : AnnData
-        Spatial AnnData format
-    kind : 'scatter', 'hist', or 'kde', optional
-        Kind of plot to draw, wrapper for Seaborn `sns.scatterplot()`, `sns.histplot()`,
-        and `sns.kdeplot()` respectively. By default "scatter".
-    fov : str, 'all', list of str, optional
-        If 'all' or list, plots all or specified fields of view (`batch` in `data.obs.keys()`) in
-        separate subplots  and `tile` is ignored.
-    hue : str, optional
-        Grouping variable present in `data.uns['points'].columns` that will produce different colors.
-        Can be either categorical or numeric, although color mapping will behave differently in latter case.
-        By default None.
-    palette : string, list, dict, or `matplotlib.colors.Colormap`, optional
-        Method for choosing the colors to use when mapping the hue semantic. String values are
-        passed to `sns.color_palette()`. List or dict values imply categorical mapping, while a colormap
-        object implies numeric mapping. By default None.
-    cmap : str, optional
-        The mapping from data values to color space, only applies to `kind=hist` and `kind=kde` options.
-        By default "Blues_r".
-    tile : bool, optional
-        If True, plots each cell in separate subplots, else plots all cells in a single subplot assuming
-        a common coordinate space. By default False.
-    lw : int, optional
-        Linewidth of drawn `shape_names`, by default 1
-    col_wrap : int, optional
-        If `tile=True`, or `fov` is specified, wraps tiling at this width, by default 4
-    binwidth : int, optional
-        For `kind=hist`, sets width of each bin, by default 20
-    style : str, optional
-        If `kind=scatter`, grouping variable present in `data.uns['points'].columns` that will produce
-        elements with different styles.  Can have a numeric dtype but will always be treated as categorical.
-        By default None.
-    shape_names : list, optional
-        List of shapes to plot, by default ["cell_shape", "nucleus_shape"]
-    legend : bool, optional
-        Whether to plot legend, by default True
-    frameon : bool, optional
-        Whether to draw figure frame, by default True
-    axsize : int, optional
-        Size of subplot in inches, by default 4
-    ax : _type_, optional
-        Axes in which to draw the plot. If None, use the currently-active Axes.
-    fname : str, optional
-        Save the figure to specified filename, by default None
-    """
+    # Process fovs
+    if fovs == "all":
+        fovs = adata.obs[fov_key].unique().tolist()
+
+    fovs = [fovs] if isinstance(fovs, str) else fovs
+
     # Add all shape_names if 'all'
     if shape_names == "all":
-        shape_names = data.obs.columns[data.obs.columns.str.endswith("shape")]
+        shape_names = adata.obs.columns[adata.obs.columns.str.endswith("shape")]
 
     # Convert draw_shape_names to list
-    shape_names = [shape_names] if isinstance(shape_names) is str else shape_names
+    shape_names = [shape_names] if isinstance(shape_names, str) else shape_names
 
-    # Subset adata info by genes and cells
-    points = get_points(data, cells=data.obs_names, genes=data.var_names)
-    points[fov_key] = points[fov_key].astype(str)
+    # Get shapes
+    obs_columns = list(shape_names)
+    if col:
+        # Likely mistake
+        if col == 'fov' or col == 'fovs':
+            col = fov_key
+            
+        obs_columns.append(col)
+    if fov_key:
+        obs_columns.append(fov_key)
+    obs_columns = list(set(obs_columns))
 
-    points = geopandas.GeoDataFrame(
-        points, geometry=geopandas.points_from_xy(points["x"], points["y"])
-    )
+    # Get shapes
+    shapes = adata.obs.reset_index()[obs_columns]
 
-    # Get shape_names and points
-    shapes_gdf = data.obs[shape_names]
-    shapes_gdf[fov_key] = shapes_gdf[fov_key].astype(str)
-    shapes_gdf = geopandas.GeoDataFrame(data.obs[shape_names], geometry="cell_shape")
-    shape_names = shapes_gdf.columns.tolist()
+    # Make sure col is same type across points and shapes
+    if points[fov_key].dtype != shapes[fov_key].dtype:
+        points[fov_key] = points[fov_key].astype(str)
+        shapes[fov_key] = shapes[fov_key].astype(str)
 
-    # Plot in single figure if not tiling
-    if fov:
-        # Assume fov is a single field of view
-        if fov == "all":
-            fov = list(set(data.obs[fov_key].sort_values()))
+    if fovs[0] != "all":
+        # Subset to specified col values only; less filtering = faster plotting
+        points = points[points[fov_key].isin(fovs)]
+        shapes = shapes[shapes[fov_key].isin(fovs)]
 
-        if isinstance(fov) is list:
-            nfov = len(fov)
-            ncols = min(col_wrap, nfov)
-            nrows = max(1, int(np.ceil(nfov / ncols)))
-            fig, axs = plt.subplots(
-                nrows,
-                ncols,
-                sharex=False,
-                sharey=False,
-                subplot_kw=dict(facecolor="black"),
-                figsize=(axsize * ncols, axsize * nrows),
-            )
-            plt.subplots_adjust(wspace=0, hspace=0)
+    if col:
+        # Make sure col is same type across points and shapes
+        if points[col].dtype != shapes[col].dtype:
+            points[col] = points[col].astype(str)
+            shapes[col] = shapes[col].astype(str)
 
-            # Plot list of fovs in separate subplots
-            for i, ax in enumerate(np.array(axs).flatten()):
-                cur_fov = fov[i]
-                # Subset to single fov
-                fov_points = points[points[fov_key] == cur_fov]
-                fov_shapes_gdf = shapes_gdf[shapes_gdf[fov_key] == cur_fov]
-                _plot_cells_subplot(
-                    fov_points,
-                    fov_shapes_gdf,
-                    kind,
-                    hue,
-                    palette,
-                    cmap,
-                    style,
-                    lw,
-                    binwidth,
-                    shape_names,
-                    legend,
-                    frameon,
-                    ax,
-                    **kwargs,
-                )
+        # Subset to specified col values only; less filtering = faster plotting
+        if col_order:
+            points = points[points[col].isin(col_order)]
+            shapes = shapes[shapes[col].isin(col_order)]
 
-        # Plot single fov
-        elif isinstance(fov) is str:
-            points = points[points[fov_key] == fov]
-            shapes_gdf = shapes_gdf[shapes_gdf[fov_key] == fov]
-            _plot_cells_subplot(
-                points,
-                shapes_gdf,
-                kind,
-                hue,
-                palette,
-                cmap,
-                style,
-                lw,
-                binwidth,
-                shape_names,
-                legend,
-                frameon,
-                ax,
-                **kwargs,
-            )
-        else:
-            pass
-    else:
-        if not tile:
-            _plot_cells_subplot(
-                points,
-                shapes_gdf,
-                kind,
-                hue,
-                palette,
-                cmap,
-                style,
-                lw,
-                binwidth,
-                shape_names,
-                legend,
-                frameon,
-                ax,
-                **kwargs,
-            )
-
-        # Plot each cell in separate subplots
-        else:
-            # Determine fixed radius of each subplot
-            cell_bounds = shapes_gdf.bounds
-            cell_maxw = (cell_bounds["maxx"] - cell_bounds["minx"]).max()
-            cell_maxh = (cell_bounds["maxy"] - cell_bounds["miny"]).max()
-            ax_radius = 1.1 * (max(cell_maxw, cell_maxh) / 2)
-
-            # Initialize subplots
-            ncols = min(col_wrap, len(shapes_gdf))
-            nrows = max(1, int(np.ceil(len(shapes_gdf) / ncols)))
-            fig, axs = plt.subplots(
-                nrows,
-                ncols,
-                sharex=False,
-                sharey=False,
-                subplot_kw=dict(facecolor="black"),
-                figsize=(axsize * ncols, axsize * nrows),
-            )
-            plt.subplots_adjust(wspace=0, hspace=0)
-
-            # Plot cells separately
-            for i, ax in enumerate(np.array(axs).flatten()):
-                try:
-                    # Select subset data
-                    s = shapes_gdf.iloc[[i]]
-                    p = points.loc[points["cell"] == s.index[0]]
-
-                    # Plot points
-                    if kind == "scatter":
-                        _spatial_scatter(p, hue, palette, style, ax, **kwargs)
-                    elif kind == "hist":
-                        _spatial_hist(p, hue, cmap, binwidth, ax, **kwargs)
-                    elif kind == "kde":
-                        _spatial_kde(p, hue, cmap, ax, **kwargs)
-
-                    # Plot shapes
-                    _spatial_line(s, shape_names, lw, ax)
-
-                    # Set axes boundaries to be square; make sure size of cells are relative to one another
-                    s_bound = s.bounds
-                    centerx = np.mean([s_bound["minx"], s_bound["maxx"]])
-                    centery = np.mean([s_bound["miny"], s_bound["maxy"]])
-                    ax.set_xlim(centerx - ax_radius, centerx + ax_radius)
-                    ax.set_ylim(centery - ax_radius, centery + ax_radius)
-
-                    ax.set(xticks=[], yticks=[], xlabel=None, ylabel=None)
-                    ax.axis(frameon)
-
-                    # Set frame to white
-                    for spine in ax.spines.values():
-                        spine.set_edgecolor("white")
-
-                    # Only make legend for last plot
-                    if legend and i == len(shapes_gdf) - 1:
-                        ax.legend(loc="upper left", bbox_to_anchor=(1, 1), ncol=1)
-                    else:
-                        ax.legend().remove()
-
-                except (IndexError, ValueError):
-                    ax.remove()
-
-
-def _plot_cells_subplot(
-    points,
-    shapes_gdf,
-    kind,
-    hue,
-    palette,
-    cmap,
-    style,
-    lw,
-    binwidth,
-    shape_names,
-    legend,
-    frameon,
-    ax,
-    **kwargs,
-):
-    if ax is None:
-        ax = plt.gca()
-    # fig, ax = plt.subplots(1, 1, figsize=(axsize, axsize))
-    ax.set(xticks=[], yticks=[], facecolor="black", adjustable="datalim")
-    ax.axis(frameon)
-
-    # Set frame to white
-    for spine in ax.spines.values():
-        spine.set_edgecolor("white")
-
-    # Plot points
-    if kind == "scatter":
-        _spatial_scatter(points, hue, palette, style, ax, **kwargs)
-    elif kind == "hist":
-        _spatial_hist(points, hue, cmap, binwidth, ax, **kwargs)
-    elif kind == "kde":
-        _spatial_kde(points, hue, cmap, ax, **kwargs)
-
-    # Plot shapes
-    _spatial_line(shapes_gdf, shape_names, lw, ax)
-
-    if not legend:
-        ax.legend().remove()
-
-
-def _spatial_line(geo_df, shape_names, lw, ax):
-    for sname in shape_names:
-        geo_df.set_geometry(sname).plot(
-            color=(0, 0, 0, 0), edgecolor=(1, 1, 1, 0.8), lw=lw, ax=ax
+    # Remove unused categories in points
+    for cat in points.columns:
+        points[cat] = (
+            points[cat].cat.remove_unused_categories()
+            if points[cat].dtype == "category"
+            else points[cat]
         )
 
+    # Convert shapes to GeoDataFrames AFTER filtering
+    shapes = geopandas.GeoDataFrame(shapes, geometry="cell_shape")
 
-def _spatial_scatter(points_gdf, hue, palette, style, ax, **kwargs):
-    # Override scatterplot parameter defaults
-    scatter_kws = dict(linewidth=0, s=10)
-    scatter_kws.update(**kwargs)
+    # Get updated
+    kws = dict(sharex=False, sharey=False)
+    if isinstance(facet_kws, dict):
+        kws.update(facet_kws)
 
-    # Remove categories with no data; otherwise legend is very long
-    for cat in [hue, style]:
-        if cat in points_gdf.columns and points_gdf[cat].dtype == "category":
-            points_gdf[cat].cat.remove_unused_categories(inplace=True)
-
-    sns.scatterplot(
-        data=points_gdf,
-        x="x",
-        y="y",
+    # https://stackoverflow.com/questions/32633322/changing-aspect-ratio-of-subplots-in-matplotlib
+    g = sns.FacetGrid(
+        points,
+        col=col,
         hue=hue,
+        legend_out=legend,
         palette=palette,
-        style=style,
-        ax=ax,
-        **scatter_kws,
+        hue_order=hue_order,
+        col_wrap=col_wrap,
+        col_order=col_order,
+        height=height,
+        aspect=1,
+        margin_titles=False,
+        **kws,
     )
 
+    def hexbin(data, x, y, **kwargs):
+        xmax = data[x].max()
+        xmin = data[x].min()
+        ymax = data[y].max()
+        ymin = data[y].min()
+        dx = xmax - xmin
+        dy = ymax - ymin
+        nx = kwargs['gridsize']
+        ny = int((dy/dx) * nx)
+        print(nx, ny)
+        kwargs['gridsize'] = (nx, ny)
+        plt.hexbin(data[x], data[y], extent=(xmin, xmax, ymin, ymax), **kwargs)
+    
+    if kind == "scatter":
+        scatter_kws = dict(linewidth=0, s=5)
+        scatter_kws.update(**kwargs)
+        g.map_dataframe(sns.scatterplot, x="x", y="y", **scatter_kws)
+    elif kind == "hist":
+        hist_kws = dict(cmap="viridis", binwidth=15)
+        hist_kws.update(**kwargs)
+        g.map_dataframe(sns.histplot, x="x", y="y", **hist_kws)
+    elif kind == "hex":
+        hex_kws = dict(cmap="viridis", mincnt=1, linewidth=0, gridsize=100)
+        hex_kws.update(**kwargs)
+        g.map_dataframe(plt.hexbin, x="x", y="y", **hex_kws)
 
-def _spatial_hist(points_gdf, hue, cmap, binwidth, ax, **kwargs):
-    # Override scatterplot parameter defaults
-    hist_kws = dict()
-    hist_kws.update(**kwargs)
+    if col:
+        shapes = shapes.groupby(col)
 
-    # Remove categories with no data; otherwise legend is very long
+        # Get max ax radius across groups
+        ax_radii = []
+        for k, ax in g.axes_dict.items():
+            s = shapes.get_group(k)
+            # Determine fixed radius of each subplot
+            cell_bounds = s.bounds
+            cell_maxw = cell_bounds["maxx"].max() - cell_bounds["minx"].min()
+            cell_maxh = cell_bounds["maxy"].max() - cell_bounds["miny"].min()
+            ax_radius = 1.1 * (max(cell_maxw, cell_maxh) / 2)
+            ax_radii.append(ax_radius)
 
-    if hue in points_gdf.columns and points_gdf[hue].dtype == "category":
-        points_gdf[hue].cat.remove_unused_categories(inplace=True)
+        ax_radius = max(ax_radii)
 
-    sns.histplot(
-        data=points_gdf,
-        x="x",
-        y="y",
-        hue=hue,
-        cmap=cmap,
-        binwidth=binwidth,
-        ax=ax,
-        **hist_kws,
+        for k, ax in tqdm(g.axes_dict.items()):
+            s = shapes.get_group(k)
+            shape_subplot(s, shape_names, ax_radius=ax_radius, ax=ax)
+
+    else:
+        shape_subplot(shapes, shape_names, ax=g.ax)
+
+    if legend:
+        g.add_legend()
+
+    g.set_titles(template="")
+
+    # box_aspect for Axes, aspect for data
+    g.set(
+        xticks=[],
+        yticks=[],
+        xlabel=None,
+        ylabel=None,
+        xmargin=0,
+        ymargin=0,
+        facecolor="black",
+        box_aspect=1,
+        aspect=1,
     )
+    g.tight_layout()
 
 
-def _spatial_kde(points_gdf, hue, cmap, ax, **kwargs):
-    kde_kws = dict()
-    kde_kws.update(**kwargs)
+def shape_subplot(data, shape_names, ax, ax_radius=None):
+    # Gather all shapes and plot
+    all_shapes = geopandas.GeoSeries(data[shape_names].values.flatten())
+    all_shapes.plot(color=(0,0,0,0), edgecolor=(1, 1, 1, 0.8), lw=1, aspect=None, ax=ax)
 
-    sampled_df = points_gdf.sample(frac=0.2)
+    # Set axes boundaries to be square; make sure size of cells are relative to one another
+    if ax_radius:
+        s_bound = data.bounds
+        centerx = np.mean([s_bound["minx"].min(), s_bound["maxx"].max()])
+        centery = np.mean([s_bound["miny"].min(), s_bound["maxy"].max()])
+        ax.set_xlim(centerx - ax_radius, centerx + ax_radius)
+        ax.set_ylim(centery - ax_radius, centery + ax_radius)
 
-    # Remove categories with no data; otherwise legend is very long
-    if hue in sampled_df.columns and sampled_df[hue].dtype == "category":
-        sampled_df[hue].cat.remove_unused_categories(inplace=True)
+    for spine in ax.spines.values():
+        spine.set(edgecolor="white", linewidth=1)
 
-    sns.kdeplot(data=sampled_df, x="x", y="y", hue=hue, cmap=cmap, ax=ax, **kde_kws)
+    # Create scale bar
+    scalebar = ScaleBar(
+        0.1, "um", location="lower right", color="white", box_alpha=0, scale_loc="top"
+    )
+    ax.add_artist(scalebar)
+
+    
+def sig_samples(data, n=5):
+    for f in data.uns['tensor_loadings'][TENSOR_DIM_NAMES[0]]:
+        top_genes = (
+            data.uns["tensor_loadings"]["genes"]
+            .sort_values(f, ascending=False)
+            .index.tolist()[:n]
+        )
+
+        top_cells = (
+            data.uns["tensor_loadings"]["cells"]
+            .sort_values(f, ascending=False)
+            .index.tolist()[:n]
+        )
+
+        cellplot(
+            data[top_cells, top_genes],
+            fovs="all",
+            kind="scatter",
+            hue="gene",
+            col="cell",
+            height=2,
+        )
+        # plt.suptitle(f)

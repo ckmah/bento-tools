@@ -43,7 +43,7 @@ def _get_loading(data, load, dim, scale):
 
 
 @savefig
-def lp_signatures(data, scale=False, fname=None):
+def lp_signatures(data, scale=True, fname=None):
     factors = list(data.uns["tensor_loadings"][TENSOR_DIM_NAMES[0]].columns)
     n_factors = len(factors)
     n_dims = len(TENSOR_DIM_NAMES)
@@ -176,3 +176,6 @@ def lp_signatures(data, scale=False, fname=None):
             ax.tick_params(axis="y", which="both", length=0)
             ax.set(ylabel=None)
             sns.despine(ax=ax, top=False, bottom=False, left=False, right=False)
+
+            
+            

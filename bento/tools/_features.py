@@ -189,7 +189,7 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
     # TODO dask
     cell_metrics = Parallel(n_jobs=n_cores)(
         delayed(cell_coloc_sim)(
-            get_points(adata, cells=g_density.name, genes=g_density.index.tolist()),
+            get_points(adata, cells=g_density.name, genes=g_density.index.tolist(), asgeo=True),
             g_density,
             g_density.name,
         )

@@ -61,7 +61,7 @@ def to_tensor(data, layers, mask=False, copy=False):
     return adata
 
 
-def select_tensor_rank(data, layers, upper_rank=10, runs=5, device="auto", random_state=888, copy=False):
+def select_tensor_rank(data, layers, upper_rank=5, runs=3, device="auto", random_state=888, copy=False):
     """Perform `bento.tl.decompose_tensor()` up to rank `upper_rank` repeating each decomposition 
     `runs` times to compute a 95% confidence interval, plotting reconstruction error for each rank.
 
@@ -106,14 +106,12 @@ def select_tensor_rank(data, layers, upper_rank=10, runs=5, device="auto", rando
         init="random",
         automatic_elbow=True,
         random_state=random_state,
-    )
+    );
 
     plt.tight_layout()
     
-    return adata
 
-
-def loc_signatures(data, rank, device="auto", random_state=888, copy=False):
+def lp_signatures(data, rank, device="auto", random_state=888, copy=False):
     """Calculate localization signatures by performing tensor decomposition on the dataset tensor. 
         Wrapper for `bento.tl.decompose_tensor()`.
 

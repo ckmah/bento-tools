@@ -3,9 +3,24 @@ import matplotlib.path as mplPath
 import numpy as np
 from scipy.spatial import distance, distance_matrix
 from shapely.geometry import Point
+from tqdm.auto import tqdm
 
 from .._utils import track
 
+
+@track
+def analyze_cells(data, features, copy=False):
+    adata = data.copy() if copy else data
+    
+    if not isinstance(features, list):
+        features = [features]
+        
+    features = list(set(features))
+        
+    for f in tqdm(features):
+        cell_features[f].__wrapped__(adata)
+    
+    return adata if copy else None
 
 @track
 def cell_span(data, copy=False):
@@ -15,37 +30,41 @@ def cell_span(data, copy=False):
         shape_coo = np.array(poly.coords.xy).T
         return int(distance_matrix(shape_coo, shape_coo).max())
 
-    span = gpd.GeoSeries(data=adata.obs['cell_shape']).exterior.apply(get_span)
-    
+    span = gpd.GeoSeries(data=adata.obs["cell_shape"]).exterior.apply(get_span)
+
     adata.obs["cell_span"] = span
 
     return adata if copy else None
+
 
 @track
 def cell_bounds(data, copy=False):
     adata = data.copy() if copy else data
 
-    bounds = gpd.GeoSeries(data=adata.obs['cell_shape']).bounds
-    adata.obs["cell_minx"] = bounds['minx']
-    adata.obs["cell_miny"] = bounds['miny']
-    adata.obs["cell_maxx"] = bounds['maxx']
-    adata.obs["cell_maxy"] = bounds['maxy']
+    bounds = gpd.GeoSeries(data=adata.obs["cell_shape"]).bounds
+    adata.obs["cell_minx"] = bounds["minx"]
+    adata.obs["cell_miny"] = bounds["miny"]
+    adata.obs["cell_maxx"] = bounds["maxx"]
+    adata.obs["cell_maxy"] = bounds["maxy"]
 
     return adata if copy else None
+
 
 @track
 def cell_moments(data, copy=False):
     adata = data.copy() if copy else data
 
-    if 'cell_raster' not in adata.obs:
+    if "cell_raster" not in adata.obs:
         raster_cell(adata)
 
-    cell_rasters = adata.obs['cell_raster']
-    shape_centroids = adata.obs['cell_shape'].centroid
-    cell_moments = [_second_moment(np.array(centroid.xy).reshape(1, 2), cell_raster)
-            for centroid, cell_raster in zip(shape_centroids, cell_rasters)]
+    cell_rasters = adata.obs["cell_raster"]
+    shape_centroids = gpd.GeoSeries(adata.obs["cell_shape"]).centroid
+    cell_moments = [
+        _second_moment(np.array(centroid.xy).reshape(1, 2), cell_raster)
+        for centroid, cell_raster in zip(shape_centroids, cell_rasters)
+    ]
 
-    adata.obs['cell_moment'] = cell_moments
+    adata.obs["cell_moment"] = cell_moments
 
     return adata if copy else None
 
@@ -81,11 +100,12 @@ def _raster_polygon(poly):
     xy = xy[poly_cell_mask]
     return xy
 
+
 @track
 def raster_cell(data, copy=False):
     adata = data.copy() if copy else data
 
-    raster = adata.obs['cell_shape'].apply(_raster_polygon)
+    raster = adata.obs["cell_shape"].apply(_raster_polygon)
     adata.obs["cell_raster"] = raster
 
     return adata if copy else None
@@ -120,6 +140,18 @@ def cell_aspect_ratio(data, copy=False):
 
 
 @track
+def cell_density(data, copy=False):
+    adata = data.copy() if copy else data
+
+    cell_area.__wrapped__(adata)
+
+    count = adata.X.sum(axis=1)
+    adata.obs["cell_density"] = count / adata.obs["cell_area"]
+
+    return adata if copy else None
+
+
+@track
 def cell_area(data, copy=False):
     adata = data.copy() if copy else data
 
@@ -135,8 +167,8 @@ def cell_area(data, copy=False):
 def nucleus_area_ratio(data, copy=False):
     adata = data.copy() if copy else data
 
-    cell_area(adata)
-    nucleus_area(adata)
+    cell_area.__wrapped__(adata)
+    nucleus_area.__wrapped__(adata)
     adata.obs["nucleus_area_ratio"] = adata.obs["nucleus_area"] / adata.obs["cell_area"]
 
     return adata if copy else None
@@ -149,10 +181,8 @@ def nucleus_offset(data, copy=False):
     cell_centroid = gpd.GeoSeries(adata.obs["cell_shape"]).centroid
     nucleus_centroid = gpd.GeoSeries(adata.obs["nucleus_shape"]).centroid
 
-    cell_radius(adata)
-    offset = (
-        cell_centroid.distance(nucleus_centroid, align=False)
-    )
+    cell_radius.__wrapped__(adata)
+    offset = cell_centroid.distance(nucleus_centroid, align=False)
     offset = offset.apply(abs)
 
     adata.obs["nucleus_offset"] = offset
@@ -248,7 +278,7 @@ def cell_morph_open(data, proportion, overwrite=False, copy=False):
         return adata if copy else None
 
     # Compute cell radius as needed
-    cell_radius(adata)
+    cell_radius.__wrapped__(adata)
 
     cells = gpd.GeoSeries(adata.obs["cell_shape"])
     d = proportion * data.obs["cell_radius"]
@@ -257,3 +287,16 @@ def cell_morph_open(data, proportion, overwrite=False, copy=False):
     adata.obs[shape_name] = cells.buffer(-d).buffer(d)
 
     return adata if copy else None
+
+
+cell_features = dict(
+    cell_span=cell_span,
+    cell_bounds=cell_bounds,
+    cell_moments=cell_moments,
+    raster_cell=raster_cell,
+    cell_aspect_ratio=cell_aspect_ratio,
+    cell_density=cell_density,
+    cell_area=cell_area,
+    cell_perimeter=cell_perimeter,
+    cell_radius=cell_radius,
+)

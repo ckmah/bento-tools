@@ -7,7 +7,7 @@ from tqdm.auto import tqdm
 from .._utils import track
 
 
-def get_points(data, cells=None, genes=None):
+def get_points(data, cells=None, genes=None, asgeo=False):
 
     points = data.uns["points"]
 
@@ -33,7 +33,8 @@ def get_points(data, cells=None, genes=None):
             points[col].cat.remove_unused_categories(inplace=True)
 
     # Cast to GeoDataFrame
-    points = gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points.x, points.y))
+    if asgeo:
+        points = gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points.x, points.y))
 
     return points
 

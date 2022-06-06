@@ -1,3 +1,5 @@
 name,n_cells,n_genes,n_points,url,description
-merfish,1153,135,16907948,https://ndownloader.figshare.com/files/29046861,U2-OS cell line (human osteosarcoma)
-seqfish,211,9506,5306521,https://ndownloader.figshare.com/files/29046873,NIH-3T3 cell line (mouse fibroblasts)
+merfish_raw,1153,135,16907948,https://ndownloader.figshare.com/files/29046861,U2-OS cell line profiled with MERFISH
+merfish,1022,135,15315044,https://figshare.com/ndownloader/files/35596979,precomputed version of the U2-OS cell line profiled with MERFISH
+seqfish_raw,211,9506,5306521,https://ndownloader.figshare.com/files/29046873,3T3 cell line profiled with seqFISH+
+seqfish,179,3726,4680210,https://figshare.com/ndownloader/files/35596982,precomputed version of the 3T3 cell line profiled with seqFISH+

@@ -31,13 +31,7 @@ def lp(data, min_count=5, copy=False):
 
     Returns
     -------
-    Depending on `copy`, returns or updates `adata` with the following fields.
-
-        - :attr:`anndata.AnnData.layers` ``['cell_edge']`` - `cell_edge` localization pattern labels.
-        - :attr:`anndata.AnnData.layers` ``['cytoplasm']`` - `cytoplasm` localization pattern labels.
-        - :attr:`anndata.AnnData.layers` ``['none']`` - `none` localization pattern labels.
-        - :attr:`anndata.AnnData.layers` ``['nuclear']`` - `nuclear` localization pattern labels.
-        - :attr:`anndata.AnnData.layers` ``['nuclear_edge']`` - `nuclear_edge` localization pattern labels.
+    Depending on `copy`, returns or updates `adata.layers` with the `'cell_edge'`, `'cytoplasm'`, `'none'`, `'nuclear'`, and `'nuclear_edge'` fields for their respective localization pattern labels.
     """
     adata = data.copy() if copy else data
 
@@ -142,7 +136,7 @@ def _lp_logfc(data, phenotype=None):
     data : AnnData
         Anndata formatted spatial data.
     phenotype : str
-        Variable grouping cells for differential analysis. Must be in data.obs_names.
+        Variable grouping cells for differential analysis. Must be in data.obs.columns.
     """
 
     if phenotype not in data.obs.columns:
