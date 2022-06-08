@@ -7,25 +7,32 @@ from tqdm.auto import tqdm
 from .._utils import track
 
 
-def get_points(data, cells=None, genes=None, asgeo=False):
+def get_points(data, asgeo=False):
+    """Get points DataFrame.
 
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object
+    asgeo : bool, optional
+        Cast as GeoDataFrame using columns x and y for geometry, by default False
+
+    Returns
+    -------
+    DataFrame or GeoDataFrame
+        Returns `data.uns['points']` as a `[Geo]DataFrame`
+    """
     points = data.uns["points"]
 
-    if cells is not None:
-        cells = [cells] if type(cells) is str else cells
-    else:
-        cells = data.obs_names.tolist()
+    cells = data.obs_names.tolist()
+    genes = data.var_names.tolist()
 
     # Subset for cells
-    points = points.loc[points["cell"].isin(cells)]
-
-    if genes is not None:
-        genes = [genes] if type(genes) is str else genes
-    else:
-        genes = data.var_names.tolist()
+    in_cells = points["cell"].isin(cells)
+    in_genes = points["gene"].isin(genes)
 
     # Subset for genes
-    points = points.loc[points["gene"].isin(genes)]
+    points = points.loc[in_cells & in_genes]
 
     # Remove unused categories for categorical columns
     for col in points.columns:
@@ -34,53 +41,31 @@ def get_points(data, cells=None, genes=None, asgeo=False):
 
     # Cast to GeoDataFrame
     if asgeo:
-        points = gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points.x, points.y))
+        points = gpd.GeoDataFrame(
+            points, geometry=gpd.points_from_xy(points.x, points.y)
+        )
 
     return points
 
 
 @track
-def set_points(data, cells=None, genes=None, copy=False):
-    adata = data.copy() if copy else data
-    points = get_points(adata, cells, genes)
-    adata.uns["points"] = points
-    return adata if copy else None
-
-
-@track
-def filter_points(data, min=None, max=None, copy=False):
-    """Select samples with at least min_count and at most max_count points.
+def set_points(data, copy=False):
+    """Set points for the given `AnnData` object, data. Call this setter 
+    to keep the points DataFrame in sync.
 
     Parameters
     ----------
     data : AnnData
-        bento loaded AnnData
-    min : int, optional
-        minimum points needed to keep sample, by default None
-    max : int, optional
-        maximum points needed to keep sample, by default None
-    copy : bool, optional
-        True modifies data in place while False returns a copy of the modified data, by default False
+        Spatial formatted AnnData object
+    copy : bool
+            Return a copy of `data` instead of writing to data, by default False.
+    Returns
+    -------
+    _type_
+        _description_
     """
     adata = data.copy() if copy else data
-    points = get_points(data)
-
-    expr_flat = adata.to_df().reset_index().melt(id_vars="cell")
-
-    if min:
-        expr_flat = expr_flat.query(f"value >= {min}")
-
-    if max:
-        expr_flat = expr_flat.query(f"value <= {max}")
-
-    expr_flat = set(tuple(x) for x in expr_flat[["cell", "gene"]].values)
-
-    sample_ids = [tuple(x) for x in points[["cell", "gene"]].values]
-    keep = [True if x in expr_flat else False for x in sample_ids]
-
-    points = points.loc[keep]
-
-    # points = points.groupby(['cell', 'gene']).apply(lambda df: df if df.shape[0] >= 5 else None).reset_index(drop=True)
+    points = get_points(adata)
     adata.uns["points"] = points
     return adata if copy else None
 
@@ -171,17 +156,17 @@ def subsample(data, frac=0.2, copy=True):
     return adata if copy else None
 
 
-def get_features(data, feature_names, min_count=None):
-    """Get features for all samples by melting features from data.layers.
+def get_layers(data, layers, min_count=None):
+    """Get values of layers reformatted as a long-form dataframe.
 
     Parameters
     ----------
     data : AnnData
         Spatial formatted AnnData object
-    feature_names : list of str
+    layers : list of str
         all values must to be keys in data.layers
     min_count : int, default None
-        minimum number of molecules (count) in sample, otherwise ignored
+        minimum number of molecules (count) required to include in output
     Returns
     -------
     DataFrame
@@ -200,11 +185,11 @@ def get_features(data, feature_names, min_count=None):
             "value", axis=1
         )
 
-    for f in feature_names:
+    for layer in layers:
         values = (
-            data.to_df(f).reset_index().melt(id_vars="cell").set_index(["cell", "gene"])
+            data.to_df(layer).reset_index().melt(id_vars="cell").set_index(["cell", "gene"])
         )
-        values.columns = [f]
+        values.columns = [layer]
         sample_index = sample_index.join(values)
 
-    return sample_index[feature_names]
+    return sample_index[layers]

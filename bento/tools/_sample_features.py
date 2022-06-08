@@ -100,13 +100,14 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
     meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
 
     # Cast to dask dataframe
+    if not chunks and not chunksize:
+        chunks = 1
     ddf = dask_geopandas.from_geopandas(
         points_df, npartitions=chunks, chunksize=chunksize
     )
 
     # Parallel process each partition
     with ProgressBar():
-        print('where is my progress bar')
         task = ddf.map_partitions(
             lambda partition: process_partition(partition, features), meta=meta.dtypes
         )

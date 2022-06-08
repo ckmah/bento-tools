@@ -35,9 +35,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
-    "myst_parser",
-    "nbsphinx",
-    "sphinx_gallery.load_style"
+    "myst_nb",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -59,7 +57,8 @@ html_theme_options = {
     "repository_url": "https://github.com/ckmah/bento-tools",
     "use_repository_button": True,
     "use_edit_page_button": True,
-    "path_to_docs": "docs"
+    "path_to_docs": "docs",
+    "logo_only": True
 }
 
 # pygments_style = 'sphinx'
@@ -68,6 +67,8 @@ html_theme_options = {
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
+
+html_css_files = ['custom.css']
 
 # -- Options for Autosummary, Autodoc, Napolean docstring format -------------------------------------------------
 
@@ -82,6 +83,7 @@ numpydoc_show_class_members=False
 html_title = "bento-tools"
 html_logo = "_static/bento-name.png"
 
-# -- Options for nbsphinx -------------------------------------------------------------------------------
+# -- Options for myst-nb -------------------------------------------------------------------------------
 
-nbsphinx_execute = 'never'
+nb_execution_mode = "off"
+myst_enable_extensions = ["colon_fence"]

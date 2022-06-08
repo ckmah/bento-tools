@@ -2,7 +2,7 @@
 name = "bento-tools"
 packages = [{ include = "bento" }]
 include = ["bento/datasets/datasets.csv", "bento/models/**/*"]
-version = "0.1.1"
+version = "1.0.0-alpha.0"
 description = "A toolkit for subcellular analysis of RNA organization"
 authors = ["Clarence Mah <ckmah@ucsd.edu>"]
 license = "MIT"
@@ -41,15 +41,12 @@ optional = true
 [tool.poetry.group.docs.dependencies]
 Sphinx = "^4.1.2"
 sphinx-autobuild = "^2021.3.14"
-myst-parser = "^0.17.2"
-pypandoc = "^1.8.1"
-sphinx-gallery = "^0.10.1"
 sphinx-book-theme = "^0.3.2"
-nbsphinx = "^0.8.8"
+myst-nb = "^0.15.0"
 
 [tool.poetry.extras]
 torch = ["torch"]
 
 [build-system]
-requires = ["poetry-core>=1.0.0", 'setuptools']
+requires = ["poetry-core>=1.2.0a2", 'setuptools']
 build-backend = "poetry.core.masonry.api"

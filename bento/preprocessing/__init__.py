@@ -1,2 +1,2 @@
-from ._preprocessing import (filter_points, get_features, get_points,
+from ._preprocessing import (get_layers, get_points,
                              remove_extracellular, set_points, subsample)

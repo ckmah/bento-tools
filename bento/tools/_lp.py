@@ -11,7 +11,8 @@ from statsmodels.tools.sm_exceptions import PerfectSeparationError
 from tqdm.auto import tqdm
 
 from .._utils import PATTERN_NAMES, PATTERN_PROBS, track
-from ..preprocessing import get_features
+from ..preprocessing import get_layers
+
 tqdm.pandas()
 
 
@@ -31,15 +32,26 @@ def lp(data, min_count=5, copy=False):
 
     Returns
     -------
-    Depending on `copy`, returns or updates `adata.layers` with the `'cell_edge'`, `'cytoplasm'`, `'none'`, `'nuclear'`, and `'nuclear_edge'` fields for their respective localization pattern labels.
+    Depending on `copy`, returns or updates `adata.layers` with the
+    `'cell_edge'`, `'cytoplasm'`, `'none'`, `'nuclear'`, and `'nuclear_edge'`
+    fields for their respective localization pattern labels.
     """
     adata = data.copy() if copy else data
 
-    # Compute features if missing TODO currently recomputes everything 
+    # Compute features if missing TODO currently recomputes everything
     if not all(f in data.layers.keys() for f in PATTERN_MODEL_FEATURE_NAMES):
-        _pattern_features(data)
+        features = [
+            "cell_proximity",
+            "nucleus_proximity",
+            "cell_asymmetry",
+            "nucleus_asymmetry",
+            "ripley_stats",
+            "point_dispersion",
+            "nucleus_dispersion",
+        ]
+        bento.tl.analyze_samples(data, features, chunksize=100)
 
-    X_df = get_features(adata, PATTERN_MODEL_FEATURE_NAMES, min_count)
+    X_df = get_layers(adata, PATTERN_MODEL_FEATURE_NAMES, min_count)
 
     model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"
     model = pickle.load(open(f"{model_dir}/rf_calib_20220514.pkl", "rb"))
@@ -49,7 +61,9 @@ def lp(data, min_count=5, copy=False):
     )
     thresholds = [0.45300, 0.43400, 0.37900, 0.43700, 0.50500]
     # Save each pattern to adata
-    for p, pp, thresh in tqdm(zip(PATTERN_NAMES, PATTERN_PROBS, thresholds), total=len(PATTERN_NAMES)):
+    for p, pp, thresh in tqdm(
+        zip(PATTERN_NAMES, PATTERN_PROBS, thresholds), total=len(PATTERN_NAMES)
+    ):
         indicator_df = (
             (pattern_prob >= thresh)
             .reset_index()
@@ -70,12 +84,11 @@ def lp(data, min_count=5, copy=False):
         # Save to adata.layers
         adata.layers[p] = indicator_df
         adata.layers[pp] = prob_df
-    
+
     # Run without decorator
     lp_stats.__wrapped__(adata)
 
     return adata if copy else None
-
 
 
 @track
@@ -115,15 +128,15 @@ def lp_stats(data, copy=False):
 
         # Save frequencies across cells
         adata.var[f"{c}_count"] = counts.fillna(0).sum(axis=0).astype(int)
-        adata.var[f"{c}_fraction"] = (
-            adata.var[f"{c}_count"] / adata.n_obs
-        ).astype(float)
+        adata.var[f"{c}_fraction"] = (adata.var[f"{c}_count"] / adata.n_obs).astype(
+            float
+        )
 
-    # Save frequencies across genes
+        # Save frequencies across genes
         adata.obs[f"{c}_count"] = counts.fillna(0).sum(axis=1).astype(int)
-        adata.obs[f"{c}_fraction"] = (
-            adata.obs[f"{c}_count"] / adata.n_vars
-        ).astype(float)
+        adata.obs[f"{c}_fraction"] = (adata.obs[f"{c}_count"] / adata.n_vars).astype(
+            float
+        )
 
     return adata if copy else None
 
@@ -182,12 +195,12 @@ def _lp_logfc(data, phenotype=None):
             p_fc.append(log2fc(group_freq[g]))
 
         p_fc = pd.concat(p_fc)
-        p_fc["pattern"] = c   
-        
+        p_fc["pattern"] = c
+
         gene_fc_stats.append(p_fc)
 
     gene_fc_stats = pd.concat(gene_fc_stats)
-    
+
     gene_fc_stats = gene_fc_stats.reset_index()
 
     return gene_fc_stats
@@ -254,7 +267,7 @@ def _lp_diff_gene(cell_by_pattern, phenotype, phenotype_vector):
 @track
 def lp_diff(data, phenotype=None, continuous=False, min_cells=10, copy=False):
     """Gene-wise test for differential localization across phenotype of interest.
-    
+
     Parameters
     ----------
     data : AnnData
@@ -288,8 +301,7 @@ def lp_diff(data, phenotype=None, continuous=False, min_cells=10, copy=False):
             p_df = adata.to_df(p).loc[:, valid_genes]
             p_corr = p_df.corrwith(phenotype_vector, drop=True)
             pattern_dfs[p] = p_df
-            
-            
+
     else:
         # Load and flatten pattern layers
         pattern_df = []
@@ -303,7 +315,7 @@ def lp_diff(data, phenotype=None, continuous=False, min_cells=10, copy=False):
         pattern_df = pattern_df.pivot(
             index=["cell", "gene"], columns="pattern", values="value"
         ).reset_index()
-        
+
         # Fit logit for each gene
         meta = {
             "pattern": str,
@@ -316,9 +328,9 @@ def lp_diff(data, phenotype=None, continuous=False, min_cells=10, copy=False):
             "phenotype": str,
         }
 
-    #     diff_output = pattern_df.groupby("gene").progress_apply(
-    #         lambda gp: _lp_diff_gene(gp, phenotype, phenotype_vector)
-    #     )
+        #     diff_output = pattern_df.groupby("gene").progress_apply(
+        #         lambda gp: _lp_diff_gene(gp, phenotype, phenotype_vector)
+        #     )
 
         with ProgressBar():
             diff_output = (
@@ -356,7 +368,7 @@ def lp_diff(data, phenotype=None, continuous=False, min_cells=10, copy=False):
         .join(log2fc_stats.set_index(["gene", "pattern", "phenotype"]))
         .reset_index()
     )
-    
+
     # Sort results
     results = results.sort_values("pvalue")
 
@@ -367,29 +379,17 @@ def lp_diff(data, phenotype=None, continuous=False, min_cells=10, copy=False):
 
 
 PATTERN_MODEL_FEATURE_NAMES = [
-        "cell_inner_proximity",
-        "nucleus_inner_proximity",
-        "nucleus_outer_proximity",
-        "cell_inner_asymmetry",
-        "nucleus_inner_asymmetry",
-        "nucleus_outer_asymmetry",
-        "l_max",
-        "l_max_gradient",
-        "l_min_gradient",
-        "l_monotony",
-        "l_half_radius",
-        "point_dispersion",
-        "nucleus_dispersion",
-    ]
-
-def _pattern_features(data):
-    models = [
-        bento.tl.ShapeProximity("cell_shape"),
-        bento.tl.ShapeProximity("nucleus_shape"),
-        bento.tl.ShapeAsymmetry("cell_shape"),
-        bento.tl.ShapeAsymmetry("nucleus_shape"),
-        bento.tl.RipleyStats(),
-        bento.tl.PointDispersion(),
-        bento.tl.ShapeDispersion("nucleus_shape"),
-    ]
-    bento.tl.analyze(data, models, chunksize=100)
+    "cell_inner_proximity",
+    "nucleus_inner_proximity",
+    "nucleus_outer_proximity",
+    "cell_inner_asymmetry",
+    "nucleus_inner_asymmetry",
+    "nucleus_outer_asymmetry",
+    "l_max",
+    "l_max_gradient",
+    "l_min_gradient",
+    "l_monotony",
+    "l_half_radius",
+    "point_dispersion",
+    "nucleus_dispersion",
+]

@@ -6,8 +6,7 @@ Bento is an all-in-one Python toolkit for exploring spatial transcriptomics data
 :maxdepth: 1
 :hidden: true
    
-quick_start
+installation
 tutorials
 api
-contributing
 ```

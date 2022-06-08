@@ -11,16 +11,17 @@ from .._utils import track
 @track
 def analyze_cells(data, features, copy=False):
     adata = data.copy() if copy else data
-    
+
     if not isinstance(features, list):
         features = [features]
-        
+
     features = list(set(features))
-        
+
     for f in tqdm(features):
         cell_features[f].__wrapped__(adata)
-    
+
     return adata if copy else None
+
 
 @track
 def cell_span(data, copy=False):
@@ -164,56 +165,10 @@ def cell_area(data, copy=False):
 
 
 @track
-def nucleus_area_ratio(data, copy=False):
-    adata = data.copy() if copy else data
-
-    cell_area.__wrapped__(adata)
-    nucleus_area.__wrapped__(adata)
-    adata.obs["nucleus_area_ratio"] = adata.obs["nucleus_area"] / adata.obs["cell_area"]
-
-    return adata if copy else None
-
-
-@track
-def nucleus_offset(data, copy=False):
-    adata = data.copy() if copy else data
-
-    cell_centroid = gpd.GeoSeries(adata.obs["cell_shape"]).centroid
-    nucleus_centroid = gpd.GeoSeries(adata.obs["nucleus_shape"]).centroid
-
-    cell_radius.__wrapped__(adata)
-    offset = cell_centroid.distance(nucleus_centroid, align=False)
-    offset = offset.apply(abs)
-
-    adata.obs["nucleus_offset"] = offset
-
-    return adata if copy else None
-
-
-@track
 def cell_perimeter(data, copy=False):
     adata = data.copy() if copy else data
 
     adata.obs["cell_perimeter"] = gpd.GeoSeries(adata.obs["cell_shape"]).length
-
-    return adata if copy else None
-
-
-@track
-def nucleus_area(data, copy=False):
-    adata = data.copy() if copy else data
-
-    adata.obs["nucleus_area"] = gpd.GeoSeries(adata.obs["nucleus_shape"]).area
-
-    return adata if copy else None
-
-
-@track
-def nucleus_aspect_ratio(data, copy=False):
-    adata = data.copy() if copy else data
-
-    ar = adata.obs["nucleus_shape"].apply(lambda poly: _aspect_ratio(poly))
-    adata.obs["nucleus_aspect_ratio"] = ar
 
     return adata if copy else None
 
@@ -242,30 +197,6 @@ def cell_radius(data, overwrite=False, copy=False):
 
 
 @track
-def is_nuclear(data, shape_name, overwrite=False, copy=False):
-    """
-    Check if shape_name is contained within the nucleus.
-    TODO speed up with sjoin
-    """
-    adata = data.copy() if copy else data
-
-    shape_prefix = shape_name.split("_shape")[0]
-    if not overwrite and f"{shape_prefix}_in_nucleus" in adata.obs.columns:
-        return adata if copy else None
-
-    if shape_name == "nucleus_shape":
-        adata.obs["nucleus_in_nucleus"] = True
-    else:
-        shapes = gpd.GeoSeries(data.obs[shape_name])
-        nuclei = gpd.GeoSeries(data.obs["nucleus_shape"])
-
-        shape_in_nucleus = shapes.within(nuclei)
-        adata.obs[f"{shape_prefix}_in_nucleus"] = shape_in_nucleus
-
-    return adata if copy else None
-
-
-@track
 def cell_morph_open(data, proportion, overwrite=False, copy=False):
     """
     Perform opening (morphological) of distance d on cell_shape.
@@ -289,6 +220,76 @@ def cell_morph_open(data, proportion, overwrite=False, copy=False):
     return adata if copy else None
 
 
+@track
+def nucleus_area_ratio(data, copy=False):
+    adata = data.copy() if copy else data
+
+    cell_area.__wrapped__(adata)
+    nucleus_area.__wrapped__(adata)
+    adata.obs["nucleus_area_ratio"] = adata.obs["nucleus_area"] / adata.obs["cell_area"]
+
+    return adata if copy else None
+
+
+@track
+def nucleus_offset(data, copy=False):
+    adata = data.copy() if copy else data
+
+    cell_centroid = gpd.GeoSeries(adata.obs["cell_shape"]).centroid
+    nucleus_centroid = gpd.GeoSeries(adata.obs["nucleus_shape"]).centroid
+
+    cell_radius.__wrapped__(adata)
+    offset = cell_centroid.distance(nucleus_centroid, align=False)
+    offset = offset.apply(abs)
+
+    adata.obs["nucleus_offset"] = offset
+
+    return adata if copy else None
+
+
+@track
+def nucleus_area(data, copy=False):
+    adata = data.copy() if copy else data
+
+    adata.obs["nucleus_area"] = gpd.GeoSeries(adata.obs["nucleus_shape"]).area
+
+    return adata if copy else None
+
+
+@track
+def nucleus_aspect_ratio(data, copy=False):
+    adata = data.copy() if copy else data
+
+    ar = adata.obs["nucleus_shape"].apply(lambda poly: _aspect_ratio(poly))
+    adata.obs["nucleus_aspect_ratio"] = ar
+
+    return adata if copy else None
+
+
+@track
+def is_nuclear(data, shape_name, overwrite=False, copy=False):
+    """
+    Check if shape_name is contained within the nucleus.
+    TODO speed up with sjoin
+    """
+    adata = data.copy() if copy else data
+
+    shape_prefix = shape_name.split("_shape")[0]
+    if not overwrite and f"{shape_prefix}_in_nucleus" in adata.obs.columns:
+        return adata if copy else None
+
+    if shape_name == "nucleus_shape":
+        adata.obs["nucleus_in_nucleus"] = True
+    else:
+        shapes = gpd.GeoSeries(data.obs[shape_name])
+        nuclei = gpd.GeoSeries(data.obs["nucleus_shape"])
+
+        shape_in_nucleus = shapes.within(nuclei)
+        adata.obs[f"{shape_prefix}_in_nucleus"] = shape_in_nucleus
+
+    return adata if copy else None
+
+
 cell_features = dict(
     cell_span=cell_span,
     cell_bounds=cell_bounds,
@@ -299,4 +300,5 @@ cell_features = dict(
     cell_area=cell_area,
     cell_perimeter=cell_perimeter,
     cell_radius=cell_radius,
+    cell_morph_open=cell_morph_open,
 )
