@@ -32,12 +32,12 @@ The package and its dependencies are built using [Poetry](https://python-poetry.
         poetry install
         
         # or with gpu enabled
-        poetry install --all-extras
+        poetry install --extras "torch"
         ```
     - To modify and build documentation, install extra dependencies:
     
         ```bash
-        poetry install --with docs
+        poetry install --extras "docs"
         ```
 
 5. Launch a local live server to preview doc builds:
