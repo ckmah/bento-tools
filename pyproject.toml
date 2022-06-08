@@ -34,18 +34,14 @@ xgboost = ">=1.4.0,<1.5"
 
 torch = { version = "^1.9.0", optional = true }
 
-
-[tool.poetry.group.docs]
-optional = true
-
-[tool.poetry.group.docs.dependencies]
-Sphinx = "^4.1.2"
-sphinx-autobuild = "^2021.3.14"
-sphinx-book-theme = "^0.3.2"
-myst-nb = "^0.15.0"
+Sphinx = { version = "^4.1.2", optional = true }
+sphinx-autobuild = { version = "^2021.3.14", optional = true }
+sphinx-book-theme = { version = "^0.3.2", optional = true }
+myst-nb = { version = "^0.15.0", optional = true }
 
 [tool.poetry.extras]
 torch = ["torch"]
+docs = ["Sphinx", "sphinx-autobuild", "sphinx-book-theme", "myst-nb"]
 
 [build-system]
 requires = ["poetry-core>=1.0.0", 'setuptools']
