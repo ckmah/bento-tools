@@ -3,7 +3,7 @@ name = "bento-tools"
 packages = [{ include = "bento" }]
 include = ["bento/datasets/datasets.csv", "bento/models/**/*"]
 version = "1.0.0-alpha.0"
-description = "A toolkit for subcellular analysis of RNA organization"
+description = "A toolkit for subcellular analysis of spatial transcriptomics data"
 authors = ["Clarence Mah <ckmah@ucsd.edu>"]
 license = "MIT"
 readme = "README.md"
@@ -29,7 +29,7 @@ statsmodels = "0.12.2"
 dask-geopandas = "^0.1.0-alpha.4"
 scanpy = "^1.8.1"
 UpSetPlot = "^0.6.0"
-cell2cell = {git = "https://github.com/ckmah/cell2cell.git", rev = "plot-deps"}
+cell2cell = "^0.5.10"
 xgboost = ">=1.4.0,<1.5"
 
 torch = { version = "^1.9.0", optional = true }

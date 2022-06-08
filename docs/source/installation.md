@@ -10,7 +10,7 @@ pip install bento-tools
 To enable GPU usage, run the following:
 
 ```bash
-pip install bento-tools[extras]
+pip install bento-tools[torch]
 ```
 
 ## Development

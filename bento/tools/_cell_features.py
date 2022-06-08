@@ -9,15 +9,34 @@ from .._utils import track
 
 
 @track
-def analyze_cells(data, features, copy=False):
+def analyze_cells(data, feature_names, copy=False):
+    """Compute multiple cell features at once. Convenience function instead of making 
+    separate calls to compute each feature.
+
+    A list of available cell features and their names is stored in the dict `bento.tl.cell_features`.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    feature_names : list of str
+        list of feature names
+    copy : bool, optional
+        _description_, by default False
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     adata = data.copy() if copy else data
 
-    if not isinstance(features, list):
-        features = [features]
+    if not isinstance(feature_names, list):
+        feature_names = [feature_names]
 
-    features = list(set(features))
+    feature_names = list(set(feature_names))
 
-    for f in tqdm(features):
+    for f in tqdm(feature_names):
         cell_features[f].__wrapped__(adata)
 
     return adata if copy else None
@@ -60,12 +79,12 @@ def cell_moments(data, copy=False):
 
     cell_rasters = adata.obs["cell_raster"]
     shape_centroids = gpd.GeoSeries(adata.obs["cell_shape"]).centroid
-    cell_moments = [
+    moments = [
         _second_moment(np.array(centroid.xy).reshape(1, 2), cell_raster)
         for centroid, cell_raster in zip(shape_centroids, cell_rasters)
     ]
 
-    adata.obs["cell_moment"] = cell_moments
+    adata.obs["cell_moment"] = moments
 
     return adata if copy else None
 
@@ -302,3 +321,6 @@ cell_features = dict(
     cell_radius=cell_radius,
     cell_morph_open=cell_morph_open,
 )
+"""Dict of cell feature names : function. Pass a list of feature name(s) to
+`bento.tl.analyze_cells()` to compute them.
+"""

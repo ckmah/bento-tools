@@ -16,6 +16,7 @@ def to_tensor(data, layers, mask=False, copy=False):
     Parameters
     ----------
     data : AnnData
+        Spatial formatted AnnData
     layers : list of str
         Keys in data.layers to build tensor.
     mask : bool
@@ -32,7 +33,7 @@ def to_tensor(data, layers, mask=False, copy=False):
             3D numpy array of shape (len(layers), adata.n_obs, adata.n_vars)
 
         `uns['tensor_labels'] : dict
-            Element labels across each dimension. Keys are dimension names (layers, cells, genes), 
+            Element labels across each dimension. Keys are dimension names (layers, cells, genes),
             values are lists of str
 
     """
@@ -62,7 +63,7 @@ def to_tensor(data, layers, mask=False, copy=False):
 
 
 def select_tensor_rank(data, layers, upper_rank=5, runs=3, device="auto", random_state=888, copy=False):
-    """Perform `bento.tl.decompose_tensor()` up to rank `upper_rank` repeating each decomposition 
+    """Perform `bento.tl.decompose_tensor()` up to rank `upper_rank` repeating each decomposition
     `runs` times to compute a 95% confidence interval, plotting reconstruction error for each rank.
 
     Parameters
@@ -92,13 +93,13 @@ def select_tensor_rank(data, layers, upper_rank=5, runs=3, device="auto", random
             3D numpy array of shape (len(layers), adata.n_obs, adata.n_vars)
 
         `uns['tensor_labels'] : dict
-            Element labels across each dimension. Keys are dimension names (layers, cells, genes), 
+            Element labels across each dimension. Keys are dimension names (layers, cells, genes),
             values are lists of str
     """
     adata = data.copy() if copy else data
 
-    to_tensor(data, layers=layers, mask=True)
-    tensor_c2c = init_c2c_tensor(data, device=device)
+    to_tensor(adata, layers=layers, mask=True)
+    tensor_c2c = init_c2c_tensor(adata, device=device)
 
     fig, error = tensor_c2c.elbow_rank_selection(
         upper_rank=upper_rank,
@@ -106,13 +107,13 @@ def select_tensor_rank(data, layers, upper_rank=5, runs=3, device="auto", random
         init="random",
         automatic_elbow=True,
         random_state=random_state,
-    );
+    )
 
     plt.tight_layout()
-    
+
 
 def lp_signatures(data, rank, device="auto", random_state=888, copy=False):
-    """Calculate localization signatures by performing tensor decomposition on the dataset tensor. 
+    """Calculate localization signatures by performing tensor decomposition on the dataset tensor.
         Wrapper for `bento.tl.decompose_tensor()`.
 
     Parameters
@@ -134,7 +135,9 @@ def lp_signatures(data, rank, device="auto", random_state=888, copy=False):
     _type_
         _description_
     """
-    return decompose_tensor(data, PATTERN_NAMES, rank, device=device, random_state=random_state, copy=copy)
+    return decompose_tensor(
+        data, PATTERN_NAMES, rank, device=device, random_state=random_state, copy=copy
+    )
 
 
 @track
@@ -173,12 +176,12 @@ def decompose_tensor(data, layers, rank, device="auto", random_state=888, copy=F
     )
 
     tensor_loadings = {}
-    for layer,df in tensor_c2c.factors.items():
-        df.columns = df.columns.str.replace('Factor', 'Signature')
+    for layer, df in tensor_c2c.factors.items():
+        df.columns = df.columns.str.replace("Factor", "Signature")
         tensor_loadings[layer] = df
 
     adata.uns["tensor_loadings"] = tensor_loadings
-    
+
     _assign_factors(data)
 
     return adata

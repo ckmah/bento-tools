@@ -47,7 +47,7 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
         features = [features]
 
     features = [sample_features[f] for f in features]
-        
+
     cell_features = set()  # Cell-level fns to run
     cell_attributes = set()  # Cell-level attributes needed to compute sample features
     for f in features:
@@ -570,3 +570,6 @@ sample_features = dict(
     ripley_stats=RipleyStats(),
     nucleus_enrichment=ShapeEnrichment("nucleus_shape"),
 )
+"""Dict of sample feature names : function. Pass a list of feature name(s) to
+`bento.tl.analyze_samples()` to compute them.
+"""

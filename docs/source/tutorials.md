@@ -2,7 +2,6 @@
 
 ```{toctree}
 :titlesonly:
-:maxdepth: 2
    
 tutorial_gallery/Subcellular_Localization
 tutorial_gallery/Spatial_Plotting
