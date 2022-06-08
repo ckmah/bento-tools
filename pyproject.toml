@@ -48,5 +48,5 @@ myst-nb = "^0.15.0"
 torch = ["torch"]
 
 [build-system]
-requires = ["poetry-core>=1.2.0a2", 'setuptools']
+requires = ["poetry-core>=1.0.0", 'setuptools']
 build-backend = "poetry.core.masonry.api"
