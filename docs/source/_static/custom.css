@@ -21,7 +21,7 @@
 }
 
 /* Font size */
---pst-font-size-base: 14px; /* base font size - applied at body / html level */
+--pst-font-size-base: 15px; /* base font size - applied at body / html level */
 
 /* heading font sizes */
 --pst-font-size-h1: 36px;
