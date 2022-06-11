@@ -73,6 +73,7 @@ instance/
 # Sphinx documentation
 docs/**/_build/
 docs/source/api
+docs/jupyter_execute
 
 # PyBuilder
 target/
@@ -130,3 +131,4 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+docs/build.zip
