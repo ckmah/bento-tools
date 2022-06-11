@@ -6,7 +6,7 @@
 [![GitHub stars](https://badgen.net/github/stars/ckmah/bento-tools)](https://GitHub.com/Naereen/ckmah/bento-tools) 
 
 
-<img src="_static/bento-name.png" alt="Bento Logo" width=350>
+# Bento
 
 Bento is a Python toolkit for performing subcellular analysis of spatial transcriptomics data.
 
