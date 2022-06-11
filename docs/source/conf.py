@@ -35,7 +35,10 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
-    "myst_nb",
+    "myst_parser",
+    "nbsphinx",
+    "sphinx_gallery.load_style"
+    # "myst_nb",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -85,5 +88,6 @@ html_logo = "_static/bento-name.png"
 
 # -- Options for myst-nb -------------------------------------------------------------------------------
 
-nb_execution_mode = "off"
-myst_enable_extensions = ["colon_fence"]
+# nb_execution_mode = "off"
+# myst_enable_extensions = ["colon_fence"]
+nbsphinx_execute = 'never'

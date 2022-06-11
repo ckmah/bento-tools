@@ -37,11 +37,13 @@ torch = { version = "^1.9.0", optional = true }
 Sphinx = { version = "^4.1.2", optional = true }
 sphinx-autobuild = { version = "^2021.3.14", optional = true }
 sphinx-book-theme = { version = "^0.3.2", optional = true }
-myst-nb = { version = "^0.15.0", optional = true }
+nbsphinx = {version = "^0.8.9", optional = true }
+sphinx-gallery = { version = "^0.10.1", optional = true }
+myst-parser = { version = "^0.18.0", optional = true }
 
 [tool.poetry.extras]
 torch = ["torch"]
-docs = ["Sphinx", "sphinx-autobuild", "sphinx-book-theme", "myst-nb"]
+docs = ["Sphinx", "sphinx-autobuild", "sphinx-book-theme", "nbsphinx", "sphinx-gallery", "myst-parser"]
 
 [build-system]
 requires = ["poetry-core>=1.0.0", 'setuptools']

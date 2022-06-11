@@ -33,7 +33,9 @@ Bento takes inspiration from the success of other tools in the python single-cel
     pp.get_layers
 ```
 
-# Sample Features
+# Tools
+
+## Sample Features
 Compute spatial properties of samples. A sample is the set of points for a given gene-pair. These include properties of shape(s) and points associated with each cell.
 
 A list of available cell features and their names is stored in the dict `bento.tl.sample_features`.
@@ -56,7 +58,7 @@ A list of available cell features and their names is stored in the dict `bento.t
 ```
 
 
-# Cell Features
+## Cell Features
 Compute spatial properties of cells. These include properties of shape(s) and points associated with each cell.
 
 A list of available cell features and their names is stored in the dict `bento.tl.cell_features`.
@@ -78,6 +80,18 @@ A list of available cell features and their names is stored in the dict `bento.t
     tl.cell_perimeter
     tl.cell_radius
     tl.cell_span
+```
+
+## Subcellular Shape Features
+Compute spatial properties of shapes linked to each cell, such as nuclei, other organelles, or regions of interest.
+
+```{eval-rst}
+.. module:: bento.tl
+.. currentmodule:: bento
+
+.. autosummary::
+    :toctree: api/
+
     tl.is_nuclear
     tl.nucleus_area
     tl.nucleus_area_ratio
@@ -87,7 +101,7 @@ A list of available cell features and their names is stored in the dict `bento.t
 
 ```
 
-# Localization Patterns
+## Localization Patterns
 ```{eval-rst}
 .. module:: bento.tl
 .. currentmodule:: bento
@@ -103,7 +117,7 @@ A list of available cell features and their names is stored in the dict `bento.t
     tl.select_tensor_rank   
 ```
 
-# Colocalization
+## Colocalization
 ```{eval-rst}
 .. module:: bento.tl
 .. currentmodule:: bento
