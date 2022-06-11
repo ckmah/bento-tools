@@ -1,27 +1,33 @@
 [![PyPI version](https://badge.fury.io/py/bento-tools.svg)](https://badge.fury.io/py/bento-tools)
 [![codecov](https://codecov.io/gh/ckmah/bento-tools/branch/master/graph/badge.svg?token=XVHDKNDCDT)](https://codecov.io/gh/ckmah/bento-tools)
 [![Documentation Status](https://readthedocs.org/projects/bento-tools/badge/?version=latest)](https://bento-tools.readthedocs.io/en/latest/?badge=latest)
+[![Github all releases](https://img.shields.io/github/downloads/ckmah/bento-tools/total.svg)](https://GitHub.com/ckmah/bento-tools)
+[![GitHub stars](https://badgen.net/github/stars/ckmah/bento-tools)](https://GitHub.com/Naereen/ckmah/bento-tools) 
 
-# Bento
-Bento is a toolkit for ingesting, visualizing, and analyzing spatial transcriptomics data at subcellular resolution. 
 
-## Installation
+<img src="docs/source/_static/bento-name.png" alt="Bento Logo" width=350>
 
-Use the package manager [pip](https://pip.pypa.io/en/stable/) to install bento.
+Bento is a Python toolkit for performing subcellular analysis of spatial transcriptomics data.
 
+# Get started
+Install with Python 3.8 or 3.9:
 ```bash
 pip install bento-tools
 ```
 
-## Usage
+Check out the [documentation](https://bento-tools.readthedocs.io/en/latest/) for the installation guide, tutorials, API and more! Read and cite our preprint ____ if you use Bento in your work.
 
-```python
-import bento
-# Todo
-```
 
-## Contributing
-Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+# Main Features
 
-## License
-[MIT](https://choosealicense.com/licenses/mit/)
+<img src="docs/source/_static/tutorial_img/bento_workflow.png" alt="Bento Analysis Workflow" width=800>
+
+
+- Store molecular coordinates and segmentation masks
+- Visualize spatial transcriptomics data at subcellular resolution
+- Compute subcellular spatial features
+- Predict localization patterns and signatures
+- Factor decomposition for high-dimensional spatial feature sets
+
+---
+[![GitHub license](https://img.shields.io/github/license/ckmah/bento-tools.svg)](https://github.com/ckmah/bento-tools/blob/master/LICENSE)
