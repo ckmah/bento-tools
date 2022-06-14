@@ -2,7 +2,7 @@
 [![PyPI version](https://badge.fury.io/py/bento-tools.svg)](https://badge.fury.io/py/bento-tools)
 [![codecov](https://codecov.io/gh/ckmah/bento-tools/branch/master/graph/badge.svg?token=XVHDKNDCDT)](https://codecov.io/gh/ckmah/bento-tools)
 [![Documentation Status](https://readthedocs.org/projects/bento-tools/badge/?version=latest)](https://bento-tools.readthedocs.io/en/latest/?badge=latest)
-[![Github all releases](https://img.shields.io/github/downloads/ckmah/bento-tools/total.svg)](https://GitHub.com/ckmah/bento-tools)
+![PyPI - Downloads](https://img.shields.io/pypi/dm/bento-tools)
 [![GitHub stars](https://badgen.net/github/stars/ckmah/bento-tools)](https://GitHub.com/Naereen/ckmah/bento-tools) 
 
 
