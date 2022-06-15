@@ -41,4 +41,5 @@ Check out the [documentation](https://bento-tools.readthedocs.io/en/latest/) for
 installation
 tutorials
 api
+howitworks
 ```
