@@ -12,7 +12,7 @@
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath('..'))  # Source code dir relative to this file
+sys.path.insert(0, os.path.abspath(".."))  # Source code dir relative to this file
 
 
 # -- Project information -----------------------------------------------------
@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.abspath('..'))  # Source code dir relative to this fi
 project = "bento-tools"
 copyright = "Clarence Mah. 2021"
 author = "Clarence Mah"
-html_favicon = 'favicon.ico'
+html_favicon = "favicon.ico"
 
 # The full version, including alpha/beta/rc tags
 release = "0.1"
@@ -37,8 +37,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "myst_parser",
     "nbsphinx",
-    "sphinx_gallery.load_style"
-    # "myst_nb",
+    "sphinx_gallery.load_style",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -64,14 +63,12 @@ html_theme_options = {
     "logo_only": True
 }
 
-# pygments_style = 'sphinx'
-
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
 
-html_css_files = ['custom.css']
+html_css_files = ["custom.css"]
 
 # -- Options for Autosummary, Autodoc, Napolean docstring format -------------------------------------------------
 
@@ -81,13 +78,18 @@ napoleon_google_docstring = False
 napoleon_numpy_docstring = True
 napoleon_use_param = False
 napoleon_use_rtype = False
-numpydoc_show_class_members=False
+numpydoc_show_class_members = False
 
 html_title = "bento-tools"
 html_logo = "_static/bento-name.png"
 
-# -- Options for myst-nb -------------------------------------------------------------------------------
+# -- Options for extensions -------------------------------------------------------------------------------
 
 # nb_execution_mode = "off"
 # myst_enable_extensions = ["colon_fence"]
-nbsphinx_execute = 'never'
+nbsphinx_execute = "never"
+
+nbsphinx_prolog = """
+.. image:: https://mybinder.org/badge_logo.svg
+ :target: https://mybinder.org/v2/gh/ckmah/bento-tools/HEAD?labpath={{ env.doc2path(env.docname, base=None) }}
+"""

@@ -44,6 +44,23 @@ def analyze_cells(data, feature_names, copy=False):
 
 @track
 def cell_span(data, copy=False):
+    """Compute the length of the longest diagonal of each cell.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    copy : bool, optional
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
+
+        `obs['cell_span']` : float
+            Length of longest diagonal for each polygon in `obs['cell_shape']`
+    """
     adata = data.copy() if copy else data
 
     def get_span(poly):
@@ -59,6 +76,29 @@ def cell_span(data, copy=False):
 
 @track
 def cell_bounds(data, copy=False):
+    """Compute the minimum and maximum coordinate values that bound each cell.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    copy : bool, optional
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
+
+        `obs['cell_minx']` : float
+            x-axis lower bound of each polygon in `obs['cell_shape']`
+        `obs['cell_miny']` : float
+            y-axis lower bound of each polygon in `obs['cell_shape']`
+        `obs['cell_maxx']` : float
+            x-axis upper bound of each polygon in `obs['cell_shape']`
+        `obs['cell_maxy']` : float
+            y-axis upper bound of each polygon in `obs['cell_shape']`
+    """
     adata = data.copy() if copy else data
 
     bounds = gpd.GeoSeries(data=adata.obs["cell_shape"]).bounds
@@ -72,6 +112,23 @@ def cell_bounds(data, copy=False):
 
 @track
 def cell_moments(data, copy=False):
+    """Compute the second moment of each cell.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    copy : bool, optional
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
+
+        `obs['cell_moment']` : float
+            The second moment for each polygon in `obs['cell_shape']`
+    """
     adata = data.copy() if copy else data
 
     if "cell_raster" not in adata.obs:
@@ -105,7 +162,8 @@ def _second_moment(centroid, pts):
 
 def _raster_polygon(poly):
     """
-    Rasterize polygon and return list of coordinates in body of polygon.
+    Generate a grid of points contained within the poly. The points lie on 
+    a 2D grid, with vertices spaced 1 unit apart.
     """
     minx, miny, maxx, maxy = poly.bounds
     x, y = np.meshgrid(
@@ -123,6 +181,24 @@ def _raster_polygon(poly):
 
 @track
 def raster_cell(data, copy=False):
+    """Generate a grid of points contained within each cell. The points lie on 
+    a 2D grid, with vertices spaced 1 unit apart.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    copy : bool, optional
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
+
+        `obs['raster']` : np.array 
+            2D array of grid points for each polygon in `obs['cell_shape']`
+    """
     adata = data.copy() if copy else data
 
     raster = adata.obs["cell_shape"].apply(_raster_polygon)
@@ -150,6 +226,23 @@ def _aspect_ratio(poly):
 
 @track
 def cell_aspect_ratio(data, copy=False):
+    """Compute the aspect ratio of the minimum rotated rectangle that contains each cell.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    copy : bool, optional
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
+
+        `obs['cell_aspect_ratio']` : np.array 
+            Ratio of long / short axis for each polygon in `obs['cell_shape']`
+    """
 
     adata = data.copy() if copy else data
 
@@ -161,6 +254,23 @@ def cell_aspect_ratio(data, copy=False):
 
 @track
 def cell_density(data, copy=False):
+    """Compute the RNA density of each cell.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    copy : bool, optional
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
+
+        `obs['cell_density']` : np.array 
+            Density (total cell counts / cell area) of each polygon in `obs['cell_shape']`
+    """
     adata = data.copy() if copy else data
 
     cell_area.__wrapped__(adata)
@@ -173,6 +283,23 @@ def cell_density(data, copy=False):
 
 @track
 def cell_area(data, copy=False):
+    """Compute the area of each cell.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    copy : bool, optional
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
+
+        `obs['cell_area']` : np.array 
+            Area of each polygon in `obs['cell_shape']`
+    """
     adata = data.copy() if copy else data
 
     # Calculate pixel-wise area
@@ -185,6 +312,23 @@ def cell_area(data, copy=False):
 
 @track
 def cell_perimeter(data, copy=False):
+    """Compute the perimeter of each cell.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    copy : bool, optional
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
+
+        `obs['cell_perimeter']` : np.array 
+            Perimeter of each polygon in `obs['cell_shape']`
+    """
     adata = data.copy() if copy else data
 
     adata.obs["cell_perimeter"] = gpd.GeoSeries(adata.obs["cell_shape"]).length
@@ -194,8 +338,22 @@ def cell_perimeter(data, copy=False):
 
 @track
 def cell_radius(data, overwrite=False, copy=False):
-    """
-    Calculate the mean cell radius.
+    """Compute the radius of each cell.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    copy : bool, optional
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
+
+        `obs['cell_radius']` : np.array 
+            Radius of each polygon in `obs['cell_shape']`
     """
     adata = data.copy() if copy else data
 
@@ -217,8 +375,22 @@ def cell_radius(data, overwrite=False, copy=False):
 
 @track
 def cell_morph_open(data, proportion, overwrite=False, copy=False):
-    """
-    Perform opening (morphological) of distance d on cell_shape.
+    """Compute the opening (morphological) of distance d for each cell.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    copy : bool, optional
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
+
+        `obs['cell_open_{d}_shape']` : Polygons
+            Ratio of long / short axis for each polygon in `obs['cell_shape']`
     """
     adata = data.copy() if copy else data
 

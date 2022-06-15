@@ -21,6 +21,7 @@ Bento takes inspiration from the success of other tools in the python single-cel
 - `bento.io`: reading and writing data stored in the `AnnData` format, customized to hold molecular coordinates and segmentation masks
 
 # Preprocessing
+
 ```{eval-rst}
 .. module:: bento.pp
 .. currentmodule:: bento
@@ -102,6 +103,7 @@ Compute spatial properties of shapes linked to each cell, such as nuclei, other 
 ```
 
 ## Localization Patterns
+
 ```{eval-rst}
 .. module:: bento.tl
 .. currentmodule:: bento
@@ -118,6 +120,7 @@ Compute spatial properties of shapes linked to each cell, such as nuclei, other 
 ```
 
 ## Colocalization
+
 ```{eval-rst}
 .. module:: bento.tl
 .. currentmodule:: bento
@@ -131,6 +134,7 @@ Compute spatial properties of shapes linked to each cell, such as nuclei, other 
 
 
 # Plotting
+
 ```{eval-rst}
 .. module:: bento.pl
 .. currentmodule:: bento
