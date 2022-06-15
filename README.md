@@ -15,7 +15,7 @@ Install with Python 3.8 or 3.9:
 pip install bento-tools
 ```
 
-Check out the [documentation](https://bento-tools.readthedocs.io/en/latest/) for the installation guide, tutorials, API and more! Read and cite our preprint ____ if you use Bento in your work.
+Check out the [documentation](https://bento-tools.readthedocs.io/en/latest/) for the installation guide, tutorials, API and more! Read and cite [our preprint](https://doi.org/10.1101/2022.06.10.495510) if you use Bento in your work.
 
 
 # Main Features
