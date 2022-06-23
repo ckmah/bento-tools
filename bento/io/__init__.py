@@ -1,1 +1,1 @@
-from ._io import read_h5ad, write_h5ad, read_geodata, concatenate
+from ._io import read_h5ad, write_h5ad, prepare, concatenate
