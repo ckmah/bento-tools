@@ -7,9 +7,8 @@ from scipy.spatial import distance
 import dask_geopandas
 import geopandas as gpd
 import numpy as np
-import pandas as pd
+import modin.pandas as pd
 from dask.diagnostics import ProgressBar
-from dask.distributed import Client, progress
 
 from .. import tools as tl
 from .._utils import track
@@ -45,7 +44,6 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
     # Cast features to type list
     if not isinstance(features, list):
         features = [features]
-
     features = [sample_features[f] for f in features]
 
     cell_features = set()  # Cell-level fns to run
@@ -57,9 +55,7 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
     cell_features = list(cell_features)
     cell_attributes = list(cell_attributes)
 
-    # compute cell features
-    for cf in cell_features:
-        cf.__wrapped__(adata)
+    tl.analyze_cells(adata, cell_features)
 
     # Make sure attributes are present
     attrs_found = set(cell_attributes).intersection(set(adata.obs.columns.tolist()))
@@ -71,33 +67,26 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
         get_points(adata, asgeo=True)
         .set_index("cell")
         .join(data.obs[cell_attributes])
-        .reset_index()
-        .set_index("cell")
+        # .reset_index()
+        # .set_index(["cell", "gene"])
         .sort_index()
     )
 
     # Calculate features for a sample
-    def process_sample(df, features):
+    def process_sample(df):
         sample_output = {}
         for f in features:
             sample_output.update(f.extract(df))
-
         return sample_output
 
     # Process all samples in a partition
-    def process_partition(partition_df, features):
+    def process_partition(partition_df):
         # TODO update dask progress bar somehow?
         result = partition_df.groupby(["cell", "gene"], observed=True).apply(
-            lambda sample_df: process_sample(sample_df, features)
+            process_sample
         )
 
         return result
-
-    # Run on a single sample to get output metadata
-    meta_output = process_partition(
-        points_df.reset_index().set_index(["cell", "gene"]).head(1), features
-    )
-    meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
 
     # Cast to dask dataframe
     if not chunks and not chunksize:
@@ -108,9 +97,10 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
 
     # Parallel process each partition
     with ProgressBar():
-        task = ddf.map_partitions(
-            lambda partition: process_partition(partition, features), meta=meta.dtypes
-        )
+        # Run on a single sample to get output metadata
+        meta_output = process_partition(points_df.head())
+        meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
+        task = ddf.map_partitions(process_partition, meta=meta.dtypes)
         output = task.compute()
 
     # Format from Series of dicts to DataFrame
@@ -185,7 +175,7 @@ class ShapeProximity(SampleFeature):
 
     def __init__(self, shape_name):
         super().__init__()
-        self.cell_features.add(tl.cell_radius)
+        self.cell_features.add("cell_radius")
 
         attrs = [shape_name, "cell_radius"]
         self.cell_attributes.update(attrs)
@@ -207,7 +197,7 @@ class ShapeProximity(SampleFeature):
         if shape_prefix == "cell":
             inner = np.array([True] * len(df))
         else:
-            inner = df[shape_prefix] != -1
+            inner = df[shape_prefix] != "-1"
         outer = ~inner
 
         inner_dist = np.nan
@@ -261,7 +251,7 @@ class ShapeAsymmetry(SampleFeature):
 
     def __init__(self, shape_name):
         super().__init__()
-        self.cell_features.add(tl.cell_radius)
+        self.cell_features.add("cell_radius")
 
         attrs = [shape_name, "cell_radius"]
         self.cell_attributes.update(attrs)
@@ -283,7 +273,7 @@ class ShapeAsymmetry(SampleFeature):
         if shape_prefix == "cell":
             inner = np.array([True] * len(df))
         else:
-            inner = df[shape_prefix] != -1
+            inner = df[shape_prefix] != "-1"
         outer = ~inner
 
         inner_to_centroid = np.nan
@@ -332,7 +322,7 @@ class PointDispersion(SampleFeature):
 
     def __init__(self):
         super().__init__()
-        self.cell_features.add(tl.raster_cell)
+        self.cell_features.add("raster_cell")
 
         attrs = ["cell_raster"]
         self.cell_attributes.update(attrs)
@@ -375,7 +365,7 @@ class ShapeDispersion(SampleFeature):
     def __init__(self, shape_name):
         super().__init__()
 
-        self.cell_features.add(tl.raster_cell)
+        self.cell_features.add("raster_cell")
         attrs = [shape_name, "cell_raster"]
         self.cell_attributes.update(attrs)
 
@@ -426,7 +416,7 @@ class RipleyStats(SampleFeature):
 
     def __init__(self):
         super().__init__()
-        self.cell_features.update([tl.cell_span, tl.cell_bounds, tl.cell_area])
+        self.cell_features.update(["cell_span", "cell_bounds", "cell_area"])
 
         self.cell_attributes.update(
             [
@@ -539,7 +529,7 @@ class ShapeEnrichment(SampleFeature):
         if shape_prefix == "cell":
             enrichment = 1.0
         else:
-            inner_count = (df[shape_prefix] != -1).sum()
+            inner_count = (df[shape_prefix] != "-1").sum()
             enrichment = inner_count / float(len(points_geo))
 
         return {f"{shape_prefix}_enrichment": enrichment}

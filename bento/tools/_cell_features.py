@@ -9,7 +9,7 @@ from .._utils import track
 
 
 @track
-def analyze_cells(data, feature_names, copy=False):
+def analyze_cells(data, feature_names, progress=True, copy=False):
     """Compute multiple cell features at once. Convenience function instead of making 
     separate calls to compute each feature.
 
@@ -36,8 +36,12 @@ def analyze_cells(data, feature_names, copy=False):
 
     feature_names = list(set(feature_names))
 
-    for f in tqdm(feature_names):
-        cell_features[f].__wrapped__(adata)
+    if progress:
+        for f in tqdm(feature_names):
+            cell_features[f].__wrapped__(adata)
+    else:
+        for f in feature_names:
+            cell_features[f].__wrapped__(adata)
 
     return adata if copy else None
 

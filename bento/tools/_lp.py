@@ -61,9 +61,7 @@ def lp(data, min_count=5, copy=False):
     )
     thresholds = [0.45300, 0.43400, 0.37900, 0.43700, 0.50500]
     # Save each pattern to adata
-    for p, pp, thresh in tqdm(
-        zip(PATTERN_NAMES, PATTERN_PROBS, thresholds), total=len(PATTERN_NAMES)
-    ):
+    for p, pp, thresh in zip(PATTERN_NAMES, PATTERN_PROBS, thresholds):
         indicator_df = (
             (pattern_prob >= thresh)
             .reset_index()
