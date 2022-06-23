@@ -7,7 +7,7 @@ from scipy.spatial import distance
 import dask_geopandas
 import geopandas as gpd
 import numpy as np
-import modin.pandas as pd
+import pandas as pd
 from dask.diagnostics import ProgressBar
 
 from .. import tools as tl
