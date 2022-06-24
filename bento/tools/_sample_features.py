@@ -55,7 +55,7 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
     cell_features = list(cell_features)
     cell_attributes = list(cell_attributes)
 
-    tl.analyze_cells(adata, cell_features)
+    tl.analyze_cells(adata, cell_features, progress=False)
 
     # Make sure attributes are present
     attrs_found = set(cell_attributes).intersection(set(adata.obs.columns.tolist()))
@@ -67,9 +67,9 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
         get_points(adata, asgeo=True)
         .set_index("cell")
         .join(data.obs[cell_attributes])
-        # .reset_index()
-        # .set_index(["cell", "gene"])
-        .sort_index()
+        .reset_index()
+        .sort_values(["cell", "gene"])
+        .reset_index(drop=True)
     )
 
     # Calculate features for a sample
@@ -81,31 +81,34 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
 
     # Process all samples in a partition
     def process_partition(partition_df):
-        # TODO update dask progress bar somehow?
         result = partition_df.groupby(["cell", "gene"], observed=True).apply(
             process_sample
         )
 
         return result
 
+    
     # Cast to dask dataframe
-    if not chunks and not chunksize:
-        chunks = 1
-    ddf = dask_geopandas.from_geopandas(
-        points_df, npartitions=chunks, chunksize=chunksize
+    ddf = dask_geopandas.from_geopandas(points_df, npartitions=1)
+
+    # Partition so only 10 groups per groupby
+    _, group_loc = np.unique(
+        points_df["cell"].astype(str) + "-" + points_df["gene"].astype(str),
+        return_index=True,
     )
+    divisions = [group_loc[loc] for loc in range(0, len(group_loc), 10)]
+    divisions.append(len(points_df)-1)
+    ddf = ddf.repartition(divisions=divisions)
 
     # Parallel process each partition
-    with ProgressBar():
+    # with ProgressBar():
         # Run on a single sample to get output metadata
-        meta_output = process_partition(points_df.head())
-        meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
-        task = ddf.map_partitions(process_partition, meta=meta.dtypes)
-        output = task.compute()
+    meta_output = process_partition(points_df.head())
+    meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
+    output = ddf.map_partitions(process_partition, meta=meta.dtypes).compute()
 
     # Format from Series of dicts to DataFrame
-    output_index = output.index
-    output = pd.DataFrame(output.tolist(), index=output_index).reset_index()
+    output = pd.DataFrame(output.tolist(), index=output.index).reset_index()
 
     # Save results to data layers
     feature_names = output.columns[~output.columns.isin(["cell", "gene"])]
@@ -433,12 +436,12 @@ class RipleyStats(SampleFeature):
         df = super().extract(df)
 
         # Get precomputed centroid and cell moment
-        cell_span = df["cell_span"][0]
-        cell_minx = df["cell_minx"][0]
-        cell_miny = df["cell_miny"][0]
-        cell_maxx = df["cell_maxx"][0]
-        cell_maxy = df["cell_maxy"][0]
-        cell_area = df["cell_area"][0]
+        cell_span = df["cell_span"].values[0]
+        cell_minx = df["cell_minx"].values[0]
+        cell_miny = df["cell_miny"].values[0]
+        cell_maxx = df["cell_maxx"].values[0]
+        cell_maxy = df["cell_maxy"].values[0]
+        cell_area = df["cell_area"].values[0]
 
         estimator = RipleysKEstimator(
             area=cell_area,
@@ -481,13 +484,15 @@ class RipleyStats(SampleFeature):
             data=points_geo, radii=[half_span], mode="none"
         )[0]
 
-        return {
+        result = {
             "l_max": l_max,
             "l_max_gradient": l_max_gradient,
             "l_min_gradient": l_min_gradient,
             "l_monotony": l_monotony,
             "l_half_radius": l_half_radius,
         }
+
+        return result
 
 
 class ShapeEnrichment(SampleFeature):
