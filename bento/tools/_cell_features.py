@@ -496,6 +496,10 @@ cell_features = dict(
     cell_perimeter=cell_perimeter,
     cell_radius=cell_radius,
     cell_morph_open=cell_morph_open,
+    nucleus_area=nucleus_area,
+    nucleus_area_ratio=nucleus_area_ratio,
+    nucleus_aspect_ratio=nucleus_aspect_ratio,
+    nucleus_offset=nucleus_offset,
 )
 """Dict of cell feature names : function. Pass a list of feature name(s) to
 `bento.tl.analyze_cells()` to compute them.
