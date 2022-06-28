@@ -49,7 +49,7 @@ def lp(data, min_count=5, copy=False):
             "point_dispersion",
             "nucleus_dispersion",
         ]
-        bento.tl.analyze_samples(data, features, chunksize=100)
+        bento.tl.analyze_samples(data, features)
 
     X_df = get_layers(adata, PATTERN_MODEL_FEATURE_NAMES, min_count)
 

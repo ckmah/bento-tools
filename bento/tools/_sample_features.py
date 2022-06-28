@@ -9,13 +9,14 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from dask.diagnostics import ProgressBar
+from tqdm.auto import tqdm
 
 from .. import tools as tl
 from .._utils import track
 from ..preprocessing import get_points
 
 
-def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
+def analyze_samples(data, features, copy=False):
     """Calculate the set of specified `features` for every sample, defined as the set of
     molecules corresponding to every cell-gene pair.
 
@@ -41,6 +42,7 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
     """
     adata = data.copy() if copy else data
 
+    pbar = tqdm(desc="Cell features", total=3)
     # Cast features to type list
     if not isinstance(features, list):
         features = [features]
@@ -56,12 +58,15 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
     cell_attributes = list(cell_attributes)
 
     tl.analyze_cells(adata, cell_features, progress=False)
-
+    
     # Make sure attributes are present
     attrs_found = set(cell_attributes).intersection(set(adata.obs.columns.tolist()))
     if len(attrs_found) != len(cell_attributes):
         raise KeyError(f"df does not have all columns: {cell_attributes}.")
 
+    pbar.update()
+
+    pbar.set_description("Sample features")
     # extract cell attributes
     points_df = (
         get_points(adata, asgeo=True)
@@ -81,31 +86,31 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
 
     # Process all samples in a partition
     def process_partition(partition_df):
-        result = partition_df.groupby(["cell", "gene"], observed=True).apply(
+        return partition_df.groupby(["cell", "gene"], observed=True).apply(
             process_sample
         )
 
-        return result
-
-    
     # Cast to dask dataframe
     ddf = dask_geopandas.from_geopandas(points_df, npartitions=1)
 
-    # Partition so only 10 groups per groupby
+    # Partition so only 100 groups per groupby
     _, group_loc = np.unique(
         points_df["cell"].astype(str) + "-" + points_df["gene"].astype(str),
         return_index=True,
     )
-    divisions = [group_loc[loc] for loc in range(0, len(group_loc), 10)]
-    divisions.append(len(points_df)-1)
+    divisions = [group_loc[loc] for loc in range(0, len(group_loc), 1000)]
+    divisions.append(len(points_df) - 1)
     ddf = ddf.repartition(divisions=divisions)
 
     # Parallel process each partition
-    # with ProgressBar():
+    with ProgressBar():
         # Run on a single sample to get output metadata
-    meta_output = process_partition(points_df.head())
-    meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
-    output = ddf.map_partitions(process_partition, meta=meta.dtypes).compute()
+        meta_output = process_partition(points_df.head())
+        meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
+        output = ddf.map_partitions(process_partition, meta=meta.dtypes).compute()
+
+    pbar.update()
+    pbar.set_description("Saving to AnnData")
 
     # Format from Series of dicts to DataFrame
     output = pd.DataFrame(output.tolist(), index=output.index).reset_index()
@@ -118,6 +123,10 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
             .reindex(index=adata.obs_names, columns=adata.var_names)
             .astype(float)
         )
+
+    pbar.update()
+    pbar.set_description('Done!')
+    pbar.close()
 
 
 class SampleFeature(metaclass=ABCMeta):
@@ -451,8 +460,8 @@ class RipleyStats(SampleFeature):
             y_max=cell_maxy,
         )
 
-        half_span = cell_span / 2
-        radii = np.linspace(1, half_span * 2, num=int(half_span * 2))
+        quarter_span = cell_span / 4
+        radii = np.linspace(1, quarter_span * 2, num=int(quarter_span * 2))
 
         # Get points
         points_geo = df["geometry"].values
@@ -481,7 +490,7 @@ class RipleyStats(SampleFeature):
 
         # L-function at L/4 where length of the cell L is max dist between 2 points on polygon defining cell border
         l_half_radius = estimator.Hfunction(
-            data=points_geo, radii=[half_span], mode="none"
+            data=points_geo, radii=[quarter_span], mode="none"
         )[0]
 
         result = {
