@@ -509,7 +509,7 @@ def shape_subplot(data, shape_names, dx, units, ax, ax_radius=None):
     ax.add_artist(scalebar)
 
 
-def sig_samples(data, n=5):
+def sig_samples(data, n=5, col_wrap=2):
     for f in data.uns["tensor_loadings"][TENSOR_DIM_NAMES[0]]:
         top_genes = (
             data.uns["tensor_loadings"]["genes"]
@@ -528,6 +528,7 @@ def sig_samples(data, n=5):
             kind="scatter",
             hue="gene",
             col="cell",
+            col_wrap=col_wrap,
             height=2,
         )
         # plt.suptitle(f)
