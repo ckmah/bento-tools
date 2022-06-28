@@ -77,6 +77,16 @@ def analyze_samples(data, features, copy=False):
         .reset_index(drop=True)
     )
 
+    # Handle categories as strings to avoid ambiguous cat types
+    for col in points_df.loc[:,(points_df.dtypes == 'category').values]:
+        points_df[col] = points_df[col].astype(str)
+
+    # Handle shape indexes as strings to avoid ambiguous types
+    for shape_name in adata.obs.columns[adata.obs.columns.str.endswith('_shape')]:
+        shape_prefix = '_'.join(shape_name.split('_')[:-1])
+        if shape_prefix in points_df.columns:
+            points_df[shape_prefix] = points_df[shape_prefix].astype(str)
+
     # Calculate features for a sample
     def process_sample(df):
         sample_output = {}
@@ -93,7 +103,7 @@ def analyze_samples(data, features, copy=False):
     # Cast to dask dataframe
     ddf = dask_geopandas.from_geopandas(points_df, npartitions=1)
 
-    # Partition so only 100 groups per groupby
+    # Partition so only 1000 groups per groupby
     _, group_loc = np.unique(
         points_df["cell"].astype(str) + "-" + points_df["gene"].astype(str),
         return_index=True,
