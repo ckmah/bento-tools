@@ -373,7 +373,7 @@ def cellplot(
     obs_attrs = list(shape_names)
 
     # Include col if exists
-    if col and col in adata.obs.columns and col in points.columns:
+    if col and (col == "cell" or (col in adata.obs.columns and col in points.columns)):
         obs_attrs.append(col)
     else:
         col = None
