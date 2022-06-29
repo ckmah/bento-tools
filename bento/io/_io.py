@@ -1,11 +1,17 @@
 import warnings
+
 warnings.filterwarnings("ignore")
 
-anndata = None
-import geopandas
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 from shapely import geometry, wkt
+from shapely.geometry import Polygon
+from tqdm.auto import tqdm
+import anndata
+import rasterio
+import rasterio.features
+import emoji
 
 
 def read_h5ad(filename, backed=None):
@@ -24,25 +30,20 @@ def read_h5ad(filename, backed=None):
     AnnData
         AnnData data object.
     """
-    global anndata
-    if anndata is None:
-        import anndata
 
     adata = anndata.read_h5ad(filename, backed=backed)
 
-    
-    
     # Load obs columns that are shapely geometries
     adata.obs = adata.obs.apply(
-        lambda col: geopandas.GeoSeries(
+        lambda col: gpd.GeoSeries(
             col.astype(str).apply(lambda val: wkt.loads(val) if val != "None" else None)
         )
         if col.astype(str).str.startswith("POLYGON").any()
-        else geopandas.GeoSeries(col)
+        else gpd.GeoSeries(col)
     )
-    
-    adata.obs.index.name = 'cell'
-    adata.var.index.name = 'gene'
+
+    adata.obs.index.name = "cell"
+    adata.var.index.name = "gene"
 
     return adata
 
@@ -67,46 +68,98 @@ def write_h5ad(data, filename):
         if col.astype(str).str.startswith("POLYGON").any()
         else col
     )
-    
-    adata.uns['points'] = adata.uns['points'].drop('geometry', axis=1, errors='ignore')
+
+    adata.uns["points"] = adata.uns["points"].drop("geometry", axis=1, errors="ignore")
 
     # Write to h5ad
     adata.write(filename)
 
 
-def read_geodata(points, cell, other={}):
-    """Load spots and masks for many cells.
+def prepare(
+    molecules,
+    cell_seg,
+    x="x",
+    y="y",
+    gene="gene",
+    other_seg=dict(),
+):
+    """Prepare AnnData with molecule-level spatial data.
 
     Parameters
     ----------
-    points : str
-        Filepath to spots .shp file. Expects GeoDataFrame with geometry of Points, and 'gene' column at minimum.
-    cell : str
-        Filepath to cell segmentation masks .shp file. Expects GeoDataFrame with geometry of Polygons.
-    other : dict(str)
-        Filepaths to all other segmentation masks .shp files; expects GeoDataFrames of same format.
-        Use keys of dict to access corresponding outputs.
+    molecules : DataFrame
+        Molecule coordinates and annotations.
+    cell_seg : np.array
+        Cell segmentation masks represented as 2D numpy array where 1st and 2nd
+        dimensions correspond to x and y respectively. Connected regions must
+        have same value to be considered a valid shape. Data type must be one
+        of rasterio.int16, rasterio.int32, rasterio.uint8, rasterio.uint16, or
+        rasterio.float32. See rasterio.features.shapes for more details.
+    x : str
+        Column name for x coordinates, by default 'x'.
+    y : str
+        Column name for x coordinates, by default 'y'.
+    gene : str
+        Column name for gene name, by default 'gene'.
+    other_seg
+        Additional keyword arguments are interpreted as additional segmentation
+        masks. The user specified parameter name is used to store these masks as
+        {name}_shape in adata.obs.
     Returns
     -------
         AnnData object
     """
-    print("Loading points...")
-    points = geopandas.read_file(points)
+    for var in [x, y, gene]:
+        if var not in molecules.columns:
+            return
 
-    # Load masks
-    print("Loading masks...")
-    mask_paths = {"cell": cell, **other}
-    masks = pd.Series(mask_paths).apply(_load_masks)
+    pbar = tqdm(total=6)
+    pbar.set_description(emoji.emojize(":test_tube: Loading inputs"))
+    points = molecules[[x, y, gene]]
+    points.columns = ["x", "y", "gene"]
+    points = gpd.GeoDataFrame(
+        points, geometry=gpd.points_from_xy(x=points.x, y=points.y)
+    )
+    points["gene"] = points["gene"].astype("category")  # Save memory
+    pbar.update()
 
-    # Index points for all masks
-    print("Indexing points...")
-    point_index = masks.apply(lambda mask: _index_points(points[["geometry"]], mask)).T
+    # Load each set of masks as GeoDataFrame
+    # shapes = Series where index = segs.keys() and values = GeoDataFrames
+    segs_dict = {"cell": cell_seg, **other_seg}
+    # Already formatted, select geometry column already
+    if isinstance(cell_seg, gpd.GeoDataFrame):
+        shapes_dict = {
+            shape_name: shape_seg[["geometry"]]
+            for shape_name, shape_seg in segs_dict.items()
+        }
+    # Load shapes from numpy array image
+    elif isinstance(cell_seg, np.array):
+        shapes_dict = {
+            shape_name: _load_shapes_np(shape_seg)
+            for shape_name, shape_seg in segs_dict.items()
+        }
+    else:
+        print("Segmentation mask format not recognized.")
+        pbar.close()
+        return
+    pbar.update()
 
-    # Index masks to cell
-    print("Indexing masks...")
-    mask_geoms = _index_masks(masks)
+    # Index shapes to cell
+    pbar.set_description(emoji.emojize(":open_book: Indexing"))
+    obs_shapes = _index_shapes(shapes_dict, "cell")
+    pbar.update()
+
+    # Index points for all shapes
+    point_index = dict()
+    for col in obs_shapes.columns:
+        shp_gdf = gpd.GeoDataFrame(geometry=obs_shapes[col])
+        shp_name = '_'.join(str(col).split('_')[:-1])
+        point_index[shp_name] = _index_points(points, shp_gdf)
+    point_index = pd.DataFrame.from_dict(point_index)
+    pbar.update()
 
     # Main long dataframe for reformatting
+    pbar.set_description(emoji.emojize(":computer_disk: Formatting"))
     uns_points = pd.concat(
         [
             points[["x", "y", "gene"]].reset_index(drop=True),
@@ -117,152 +170,187 @@ def read_geodata(points, cell, other={}):
 
     # Remove extracellular points
     uns_points = uns_points.loc[uns_points["cell"] != "-1"]
+    if len(uns_points) == 0:
+        print("No molecules found within cells. Data not processed.")
+        pbar.close()
+        return
+    uns_points[["cell", "gene"]] = uns_points[["cell", "gene"]].astype('category')
 
     # Aggregate points to counts
-    print("Formatting AnnData object...")
-    if "nucleus" not in uns_points.columns:
-        expression = (
-            uns_points[["cell", "gene"]]
-            .groupby(["cell", "gene"])
-            .apply(lambda x: x.shape[0])
-            .reset_index()
-        )
-    else:
-        # Use nuclear inclusion for splicing/unspliced layers
-        expression = (
-            uns_points[["cell", "gene", "nucleus"]]
-            .groupby(["cell", "gene", "nucleus"])
-            .apply(lambda x: x.shape[0])
-            .to_frame()
-            .reset_index()
-        )
+    expression = (
+        uns_points[["cell", "gene"]]
+        .groupby(["cell", "gene"])
+        .apply(lambda x: x.shape[0])
+        .reset_index()
+    )
 
     # Create cell x gene matrix
-    print("Processing expression...")
     cellxgene = expression.pivot_table(
-        index=["cell"], columns=["gene"], aggfunc="sum"
+        index="cell", columns="gene", aggfunc="sum"
     ).fillna(0)
     cellxgene.columns = cellxgene.columns.get_level_values("gene")
-
-    # Add splice data
-    if "nucleus" in uns_points.columns:
-        print("Processing splicing...")
-        spliced, unspliced = _to_spliced_expression(expression)
-
-    print("Processing point coordinates...")
+    pbar.update()
 
     # Create scanpy anndata object
+    pbar.set_description(emoji.emojize(":package: Create AnnData"))
     adata = anndata.AnnData(X=cellxgene)
-    mask_geoms = mask_geoms.reindex(adata.obs.index)
-    adata.obs = pd.concat([adata.obs, mask_geoms], axis=1)
+    obs_shapes = obs_shapes.reindex(index=adata.obs.index)
+    adata.obs = pd.concat([adata.obs, obs_shapes], axis=1)
     adata.obs.index = adata.obs.index.astype(str)
 
-    # Save spliced/unspliced counts to layers
-    if "nucleus" in uns_points.columns:
-        adata.layers["spliced"] = spliced
-        adata.layers["unspliced"] = unspliced
-
-    # Save cell, gene, and nucleus as categorical type to save memory
+    # Save cell, gene, batch, and other shapes as categorical type to save memory
     uns_points["cell"] = uns_points["cell"].astype("category")
     uns_points["gene"] = uns_points["gene"].astype("category")
-
-    if "nucleus" in uns_points.columns:
-        uns_points["nucleus"] = uns_points["nucleus"].astype("category")
+    for shape_name in list(other_seg.keys()):
+        uns_points[shape_name] = uns_points[shape_name].astype('category')
 
     adata.uns = {"points": uns_points}
 
-    print("Done.")
+    pbar.set_description(emoji.emojize(":bento_box: Finished!"))
+    pbar.update()
+    pbar.close()
     return adata
 
 
-def _load_masks(path):
-    """Load GeoDataFrame from path.
+def _load_shapes_np(seg_img):
+    """Extract shapes from segmentation image.
 
     Parameters
     ----------
-    path : str
-        Path to .shp file.
+    seg_img : np.array
+        Segmentation masks represented as 2D numpy array where 1st and 2nd dimensions correspond to x and y respectively.
 
     Returns
     -------
     GeoDataFrame
-        Contains masks as Polygons.
+        Single column GeoDataFrame where each row is a single Polygon.
     """
-    mask = geopandas.read_file(path)
-    mask.index = mask.index.astype(str)
+    seg_img = seg_img.astype("uint16")
+    contours = rasterio.features.shapes(seg_img)  # rasterio to generate contours
+    # Convert to shapely Polygons
+    polygons = [Polygon(p["coordinates"][0]) for p, v in contours]
+    shapes = gpd.GeoDataFrame(geometry=gpd.GeoSeries(polygons))  # Cast to GeoDataFrame
+    shapes.drop(
+        shapes.area.sort_values().tail(1).index, inplace=True
+    )  # Remove extraneous shape
+    shapes = shapes[shapes.geom_type != "MultiPolygon"]
 
-    for i, poly in enumerate(mask["geometry"]):
-        if type(poly) == geometry.MultiPolygon:
-            print(f"Object at index={i} is a MultiPolygon.")
-            print(poly)
-            return
+    shapes.index = shapes.index.astype(str)
 
     # Cleanup polygons
     # mask.geometry = mask.geometry.buffer(2).buffer(-2)
     # mask.geometry = mask.geometry.apply(unary_union)
 
-    return mask
+    return shapes
 
 
-def _index_masks(masks):
-    """Spatially index other masks to cell mask.
+def _load_shapes_json(seg_json):
+    """Extract shapes from python object loaded with json.
 
     Parameters
     ----------
-    masks : dict
-        Dictionary of mask GeoDataFrames.
+    seg_json : list
+        list loaded by json.load(file)
 
     Returns
     -------
     GeoDataFrame
-        [description]
+        Each row represents a single shape,
     """
-    cell_mask = masks["cell"]
+    polys = []
+    for i in range(len(seg_json)):
+        polys.append(Polygon(seg_json[i]["coordinates"][0]))
 
-    shapes = cell_mask.copy()
-    if "FID" in shapes.columns:
-        shapes = shapes.drop("FID", axis=1)
+    shapes = gpd.GeoDataFrame(geometry=gpd.GeoSeries(polys))
+    shapes = shapes[shapes.geom_type != "MultiPolygon"]
 
-    shapes = shapes.rename(columns={"geometry": "cell_shape"})
+    shapes.index = shapes.index.astype(str)
 
-    for m, mask in masks.items():
-        if m != "cell":
-            geometry = (
-                geopandas.sjoin(
-                    mask, cell_mask, how="left", op="within", rsuffix="cell"
-                )
-                .dropna()
-                .drop_duplicates("index_cell")
-                .set_index("index_cell")
-                .reindex(cell_mask.index)["geometry"]
-            )
-            geometry.name = f"{m}_shape"
-            shapes[f"{m}_shape"] = geometry
+    # Cleanup polygons
+    # mask.geometry = mask.geometry.buffer(2).buffer(-2)
+    # mask.geometry = mask.geometry.apply(unary_union)
 
     return shapes
 
 
-def _index_points(points, mask):
-    """Index points to each mask item and save. Assumes non-overlapping masks.
+def _index_shapes(shapes, cell_key):
+    """Spatially index other masks to cell mask.
+
+    Parameters
+    ----------
+    shapes : dict
+        Dictionary of GeoDataFrames.
+
+    Returns
+    -------
+    indexed_shapes : GeoDataFrame
+        Each column is
+    """
+    cell_shapes = shapes[cell_key]
+
+    indexed_shapes = cell_shapes.copy()
+    for shape_name, shape in shapes.items():
+
+        # Don't index cell to itself
+        if shape_name == "cell":
+            continue
+
+        # For each cell, get all overlapping shapes
+        geometry = gpd.sjoin(
+            shape, cell_shapes, how="left", op="intersects", rsuffix="cell"
+        ).dropna()
+
+        # Calculate fraction overlap for each pair SLOW
+        geometry["fraction_overlap"] = (
+            geometry.intersection(
+                cell_shapes.loc[geometry["index_cell"]], align=False
+            ).area
+            / geometry.area
+        )
+
+        # Keep shape that overlaps with cell_shapes the most
+        geometry = (
+            geometry.sort_values("fraction_overlap", ascending=False)
+            .drop_duplicates("index_cell")
+            .set_index("index_cell")
+            .reindex(cell_shapes.index)["geometry"]
+        )
+        geometry.name = f"{shape_name}_shape"
+
+        # Add indexed shapes as new column in GeoDataFrame
+        indexed_shapes[f"{shape_name}_shape"] = geometry
+
+
+    # Cells are rows, intersecting shape sets are columns
+    indexed_shapes = indexed_shapes.rename(columns={"geometry": "cell_shape"})
+    indexed_shapes.index = indexed_shapes.index.astype(str)
+    return indexed_shapes
+
+
+def _index_points(points, shapes):
+    """Index points to each set of shapes item and save. Assumes non-overlapping shapes.
 
     Parameters
     ----------
     points : GeoDataFrame
         Point coordinates.
-    mask : GeoDataFrame
-        Mask polygons.
+    shapes : GeoDataFrame
+        Single column of Polygons.
     Returns
     -------
     Series
         Return list of mask indices corresponding to each point.
     """
-    index = geopandas.sjoin(points.reset_index(), mask, how="left", op="intersects")
+    index = gpd.sjoin(points.reset_index(), shapes, how="left", op="intersects")
 
     # remove multiple cells assigned to same point
-    index = index.drop_duplicates(subset="index", keep="first")
-    index = index.sort_index()
-    index = index.reset_index()["index_right"]
-    index = index.fillna(-1).astype(str)
+    index = (
+        index.drop_duplicates(subset="index", keep="first")
+        .sort_index()
+        .reset_index()["index_right"]
+        .fillna(-1)
+        .astype(str)
+    )
 
     return pd.Series(index)
 
@@ -271,16 +359,20 @@ def concatenate(adatas):
     uns_points = []
     for i, adata in enumerate(adatas):
         points = adata.uns["points"].copy()
-        points["cell"] = points["cell"].astype(str) + f"-{i}"
 
-        points["batch"] = i
+        if "batch" not in points.columns:
+            points["batch"] = i
+
+        points["cell"] = points["cell"].astype(str) + "-" + points["batch"].astype(str)
+
         uns_points.append(points)
 
     new_adata = adatas[0].concatenate(adatas[1:])
 
     uns_points = pd.concat(uns_points)
-    points["cell"] = points["cell"].astype("category")
-    points["batch"] = points["batch"].astype("category")
+    uns_points["cell"] = uns_points["cell"].astype("category")
+    uns_points["gene"] = uns_points["gene"].astype("category")
+    uns_points["batch"] = uns_points["batch"].astype("category")
 
     new_adata.uns["points"] = uns_points
 
