@@ -75,202 +75,202 @@ def write_h5ad(data, filename):
     adata.write(filename)
 
 
-def prepare(
-    molecules,
-    cell_seg,
-    x="x",
-    y="y",
-    gene="gene",
-    other_seg=dict(),
-):
-    """Prepare AnnData with molecule-level spatial data.
+# def prepare(
+#     molecules,
+#     cell_seg,
+#     x="x",
+#     y="y",
+#     gene="gene",
+#     other_seg=dict(),
+# ):
+#     """Prepare AnnData with molecule-level spatial data.
 
-    Parameters
-    ----------
-    molecules : DataFrame
-        Molecule coordinates and annotations.
-    cell_seg : np.array
-        Cell segmentation masks represented as 2D numpy array where 1st and 2nd
-        dimensions correspond to x and y respectively. Connected regions must
-        have same value to be considered a valid shape. Data type must be one
-        of rasterio.int16, rasterio.int32, rasterio.uint8, rasterio.uint16, or
-        rasterio.float32. See rasterio.features.shapes for more details.
-    x : str
-        Column name for x coordinates, by default 'x'.
-    y : str
-        Column name for x coordinates, by default 'y'.
-    gene : str
-        Column name for gene name, by default 'gene'.
-    other_seg
-        Additional keyword arguments are interpreted as additional segmentation
-        masks. The user specified parameter name is used to store these masks as
-        {name}_shape in adata.obs.
-    Returns
-    -------
-        AnnData object
-    """
-    for var in [x, y, gene]:
-        if var not in molecules.columns:
-            return
+#     Parameters
+#     ----------
+#     molecules : DataFrame
+#         Molecule coordinates and annotations.
+#     cell_seg : np.array
+#         Cell segmentation masks represented as 2D numpy array where 1st and 2nd
+#         dimensions correspond to x and y respectively. Connected regions must
+#         have same value to be considered a valid shape. Data type must be one
+#         of rasterio.int16, rasterio.int32, rasterio.uint8, rasterio.uint16, or
+#         rasterio.float32. See rasterio.features.shapes for more details.
+#     x : str
+#         Column name for x coordinates, by default 'x'.
+#     y : str
+#         Column name for x coordinates, by default 'y'.
+#     gene : str
+#         Column name for gene name, by default 'gene'.
+#     other_seg
+#         Additional keyword arguments are interpreted as additional segmentation
+#         masks. The user specified parameter name is used to store these masks as
+#         {name}_shape in adata.obs.
+#     Returns
+#     -------
+#         AnnData object
+#     """
+#     for var in [x, y, gene]:
+#         if var not in molecules.columns:
+#             return
 
-    pbar = tqdm(total=6)
-    pbar.set_description(emoji.emojize(":test_tube: Loading inputs"))
-    points = molecules[[x, y, gene]]
-    points.columns = ["x", "y", "gene"]
-    points = gpd.GeoDataFrame(
-        points, geometry=gpd.points_from_xy(x=points.x, y=points.y)
-    )
-    points["gene"] = points["gene"].astype("category")  # Save memory
-    pbar.update()
+#     pbar = tqdm(total=6)
+#     pbar.set_description(emoji.emojize(":test_tube: Loading inputs"))
+#     points = molecules[[x, y, gene]]
+#     points.columns = ["x", "y", "gene"]
+#     points = gpd.GeoDataFrame(
+#         points, geometry=gpd.points_from_xy(x=points.x, y=points.y)
+#     )
+#     points["gene"] = points["gene"].astype("category")  # Save memory
+#     pbar.update()
 
-    # Load each set of masks as GeoDataFrame
-    # shapes = Series where index = segs.keys() and values = GeoDataFrames
-    segs_dict = {"cell": cell_seg, **other_seg}
-    # Already formatted, select geometry column already
-    if isinstance(cell_seg, gpd.GeoDataFrame):
-        shapes_dict = {
-            shape_name: shape_seg[["geometry"]]
-            for shape_name, shape_seg in segs_dict.items()
-        }
-    # Load shapes from numpy array image
-    elif isinstance(cell_seg, np.array):
-        shapes_dict = {
-            shape_name: _load_shapes_np(shape_seg)
-            for shape_name, shape_seg in segs_dict.items()
-        }
-    else:
-        print("Segmentation mask format not recognized.")
-        pbar.close()
-        return
-    pbar.update()
+#     # Load each set of masks as GeoDataFrame
+#     # shapes = Series where index = segs.keys() and values = GeoDataFrames
+#     segs_dict = {"cell": cell_seg, **other_seg}
+#     # Already formatted, select geometry column already
+#     if isinstance(cell_seg, gpd.GeoDataFrame):
+#         shapes_dict = {
+#             shape_name: shape_seg[["geometry"]]
+#             for shape_name, shape_seg in segs_dict.items()
+#         }
+#     # Load shapes from numpy array image
+#     elif isinstance(cell_seg, np.array):
+#         shapes_dict = {
+#             shape_name: _load_shapes_np(shape_seg)
+#             for shape_name, shape_seg in segs_dict.items()
+#         }
+#     else:
+#         print("Segmentation mask format not recognized.")
+#         pbar.close()
+#         return
+#     pbar.update()
 
-    # Index shapes to cell
-    pbar.set_description(emoji.emojize(":open_book: Indexing"))
-    obs_shapes = _index_shapes(shapes_dict, "cell")
-    pbar.update()
+#     # Index shapes to cell
+#     pbar.set_description(emoji.emojize(":open_book: Indexing"))
+#     obs_shapes = _index_shapes(shapes_dict, "cell")
+#     pbar.update()
 
-    # Index points for all shapes
-    point_index = dict()
-    for col in obs_shapes.columns:
-        shp_gdf = gpd.GeoDataFrame(geometry=obs_shapes[col])
-        shp_name = '_'.join(str(col).split('_')[:-1])
-        point_index[shp_name] = _index_points(points, shp_gdf)
-    point_index = pd.DataFrame.from_dict(point_index)
-    pbar.update()
+#     # Index points for all shapes
+#     point_index = dict()
+#     for col in obs_shapes.columns:
+#         shp_gdf = gpd.GeoDataFrame(geometry=obs_shapes[col])
+#         shp_name = '_'.join(str(col).split('_')[:-1])
+#         point_index[shp_name] = _index_points(points, shp_gdf)
+#     point_index = pd.DataFrame.from_dict(point_index)
+#     pbar.update()
 
-    # Main long dataframe for reformatting
-    pbar.set_description(emoji.emojize(":computer_disk: Formatting"))
-    uns_points = pd.concat(
-        [
-            points[["x", "y", "gene"]].reset_index(drop=True),
-            point_index.reset_index(drop=True),
-        ],
-        axis=1,
-    )
+#     # Main long dataframe for reformatting
+#     pbar.set_description(emoji.emojize(":computer_disk: Formatting"))
+#     uns_points = pd.concat(
+#         [
+#             points[["x", "y", "gene"]].reset_index(drop=True),
+#             point_index.reset_index(drop=True),
+#         ],
+#         axis=1,
+#     )
 
-    # Remove extracellular points
-    uns_points = uns_points.loc[uns_points["cell"] != "-1"]
-    if len(uns_points) == 0:
-        print("No molecules found within cells. Data not processed.")
-        pbar.close()
-        return
-    uns_points[["cell", "gene"]] = uns_points[["cell", "gene"]].astype('category')
+#     # Remove extracellular points
+#     uns_points = uns_points.loc[uns_points["cell"] != "-1"]
+#     if len(uns_points) == 0:
+#         print("No molecules found within cells. Data not processed.")
+#         pbar.close()
+#         return
+#     uns_points[["cell", "gene"]] = uns_points[["cell", "gene"]].astype('category')
 
-    # Aggregate points to counts
-    expression = (
-        uns_points[["cell", "gene"]]
-        .groupby(["cell", "gene"])
-        .apply(lambda x: x.shape[0])
-        .reset_index()
-    )
+#     # Aggregate points to counts
+#     expression = (
+#         uns_points[["cell", "gene"]]
+#         .groupby(["cell", "gene"])
+#         .apply(lambda x: x.shape[0])
+#         .reset_index()
+#     )
 
-    # Create cell x gene matrix
-    cellxgene = expression.pivot_table(
-        index="cell", columns="gene", aggfunc="sum"
-    ).fillna(0)
-    cellxgene.columns = cellxgene.columns.get_level_values("gene")
-    pbar.update()
+#     # Create cell x gene matrix
+#     cellxgene = expression.pivot_table(
+#         index="cell", columns="gene", aggfunc="sum"
+#     ).fillna(0)
+#     cellxgene.columns = cellxgene.columns.get_level_values("gene")
+#     pbar.update()
 
-    # Create scanpy anndata object
-    pbar.set_description(emoji.emojize(":package: Create AnnData"))
-    adata = anndata.AnnData(X=cellxgene)
-    obs_shapes = obs_shapes.reindex(index=adata.obs.index)
-    adata.obs = pd.concat([adata.obs, obs_shapes], axis=1)
-    adata.obs.index = adata.obs.index.astype(str)
+#     # Create scanpy anndata object
+#     pbar.set_description(emoji.emojize(":package: Create AnnData"))
+#     adata = anndata.AnnData(X=cellxgene)
+#     obs_shapes = obs_shapes.reindex(index=adata.obs.index)
+#     adata.obs = pd.concat([adata.obs, obs_shapes], axis=1)
+#     adata.obs.index = adata.obs.index.astype(str)
 
-    # Save cell, gene, batch, and other shapes as categorical type to save memory
-    uns_points["cell"] = uns_points["cell"].astype("category")
-    uns_points["gene"] = uns_points["gene"].astype("category")
-    for shape_name in list(other_seg.keys()):
-        uns_points[shape_name] = uns_points[shape_name].astype('category')
+#     # Save cell, gene, batch, and other shapes as categorical type to save memory
+#     uns_points["cell"] = uns_points["cell"].astype("category")
+#     uns_points["gene"] = uns_points["gene"].astype("category")
+#     for shape_name in list(other_seg.keys()):
+#         uns_points[shape_name] = uns_points[shape_name].astype('category')
 
-    adata.uns = {"points": uns_points}
+#     adata.uns = {"points": uns_points}
 
-    pbar.set_description(emoji.emojize(":bento_box: Finished!"))
-    pbar.update()
-    pbar.close()
-    return adata
-
-
-def _load_shapes_np(seg_img):
-    """Extract shapes from segmentation image.
-
-    Parameters
-    ----------
-    seg_img : np.array
-        Segmentation masks represented as 2D numpy array where 1st and 2nd dimensions correspond to x and y respectively.
-
-    Returns
-    -------
-    GeoDataFrame
-        Single column GeoDataFrame where each row is a single Polygon.
-    """
-    seg_img = seg_img.astype("uint16")
-    contours = rasterio.features.shapes(seg_img)  # rasterio to generate contours
-    # Convert to shapely Polygons
-    polygons = [Polygon(p["coordinates"][0]) for p, v in contours]
-    shapes = gpd.GeoDataFrame(geometry=gpd.GeoSeries(polygons))  # Cast to GeoDataFrame
-    shapes.drop(
-        shapes.area.sort_values().tail(1).index, inplace=True
-    )  # Remove extraneous shape
-    shapes = shapes[shapes.geom_type != "MultiPolygon"]
-
-    shapes.index = shapes.index.astype(str)
-
-    # Cleanup polygons
-    # mask.geometry = mask.geometry.buffer(2).buffer(-2)
-    # mask.geometry = mask.geometry.apply(unary_union)
-
-    return shapes
+#     pbar.set_description(emoji.emojize(":bento_box: Finished!"))
+#     pbar.update()
+#     pbar.close()
+#     return adata
 
 
-def _load_shapes_json(seg_json):
-    """Extract shapes from python object loaded with json.
+# def _load_shapes_np(seg_img):
+#     """Extract shapes from segmentation image.
 
-    Parameters
-    ----------
-    seg_json : list
-        list loaded by json.load(file)
+#     Parameters
+#     ----------
+#     seg_img : np.array
+#         Segmentation masks represented as 2D numpy array where 1st and 2nd dimensions correspond to x and y respectively.
 
-    Returns
-    -------
-    GeoDataFrame
-        Each row represents a single shape,
-    """
-    polys = []
-    for i in range(len(seg_json)):
-        polys.append(Polygon(seg_json[i]["coordinates"][0]))
+#     Returns
+#     -------
+#     GeoDataFrame
+#         Single column GeoDataFrame where each row is a single Polygon.
+#     """
+#     seg_img = seg_img.astype("uint16")
+#     contours = rasterio.features.shapes(seg_img)  # rasterio to generate contours
+#     # Convert to shapely Polygons
+#     polygons = [Polygon(p["coordinates"][0]) for p, v in contours]
+#     shapes = gpd.GeoDataFrame(geometry=gpd.GeoSeries(polygons))  # Cast to GeoDataFrame
+#     shapes.drop(
+#         shapes.area.sort_values().tail(1).index, inplace=True
+#     )  # Remove extraneous shape
+#     shapes = shapes[shapes.geom_type != "MultiPolygon"]
 
-    shapes = gpd.GeoDataFrame(geometry=gpd.GeoSeries(polys))
-    shapes = shapes[shapes.geom_type != "MultiPolygon"]
+#     shapes.index = shapes.index.astype(str)
 
-    shapes.index = shapes.index.astype(str)
+#     # Cleanup polygons
+#     # mask.geometry = mask.geometry.buffer(2).buffer(-2)
+#     # mask.geometry = mask.geometry.apply(unary_union)
 
-    # Cleanup polygons
-    # mask.geometry = mask.geometry.buffer(2).buffer(-2)
-    # mask.geometry = mask.geometry.apply(unary_union)
+#     return shapes
 
-    return shapes
+
+# def _load_shapes_json(seg_json):
+#     """Extract shapes from python object loaded with json.
+
+#     Parameters
+#     ----------
+#     seg_json : list
+#         list loaded by json.load(file)
+
+#     Returns
+#     -------
+#     GeoDataFrame
+#         Each row represents a single shape,
+#     """
+#     polys = []
+#     for i in range(len(seg_json)):
+#         polys.append(Polygon(seg_json[i]["coordinates"][0]))
+
+#     shapes = gpd.GeoDataFrame(geometry=gpd.GeoSeries(polys))
+#     shapes = shapes[shapes.geom_type != "MultiPolygon"]
+
+#     shapes.index = shapes.index.astype(str)
+
+#     # Cleanup polygons
+#     # mask.geometry = mask.geometry.buffer(2).buffer(-2)
+#     # mask.geometry = mask.geometry.apply(unary_union)
+
+#     return shapes
 
 
 def _index_shapes(shapes, cell_key):
