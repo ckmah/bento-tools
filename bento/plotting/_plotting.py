@@ -452,7 +452,6 @@ def cellplot(
         dy = ymax - ymin
         nx = kwargs['gridsize']
         ny = int((dy/dx) * nx)
-        print(nx, ny)
         kwargs['gridsize'] = (nx, ny)
         plt.hexbin(data[x], data[y], extent=(xmin, xmax, ymin, ymax), **kwargs)
     

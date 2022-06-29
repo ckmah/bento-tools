@@ -3,96 +3,12 @@ import warnings
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from scipy.stats import zscore
+from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
 
 from ..preprocessing import get_points
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
-
-dd = None
-ig = None
-la = None
-UMAP = None
-NearestNeighbors = None
-
-
-def gene_leiden(data, copy=False):
-
-    global UMAP, NearestNeighbors
-
-    if UMAP is None:
-        from umap import UMAP
-
-    if NearestNeighbors is None:
-        from sklearn.neighbors import NearestNeighbors
-
-    adata = data.copy() if copy else data
-
-    coloc_sim = (
-        adata.uns["coloc_sim_agg"]
-        .pivot_table(index="g1", columns="g2", values="coloc_sim")
-        .fillna(0)
-    )
-    coloc_sim = coloc_sim.dropna()
-
-    genes = coloc_sim.index
-
-    # Z scale features
-    coloc_sim = zscore(coloc_sim, axis=0)
-
-    nn = NearestNeighbors().fit(coloc_sim)
-    connectivity = nn.kneighbors_graph(coloc_sim, n_neighbors=5).toarray()
-
-    loc_umap = UMAP().fit_transform(connectivity)
-    loc_umap = pd.DataFrame(loc_umap, index=genes)
-    adata.varm["loc_umap"] = loc_umap.reindex(adata.var_names)
-
-    return adata if copy else None
-
-
-def coloc_cluster_genes(data, resolution=1, copy=False):
-
-    global ig, la, z_score, NearestNeighbors
-    if ig is None:
-        import igraph as ig
-
-    if la is None:
-        import leidenalg as la
-
-    if NearestNeighbors is None:
-        from sklearn.neighbors import NearestNeighbors
-
-    adata = data.copy() if copy else data
-
-    coloc_sim = (
-        adata.uns["coloc_sim_agg"]
-        .pivot_table(index="g1", columns="g2", values="coloc_sim")
-        .fillna(0)
-    )
-
-    genes = coloc_sim.index.tolist()
-    coloc_sim = coloc_sim.values
-
-    # Z scale features
-    coloc_sim = zscore(coloc_sim, axis=0)
-
-    nn = NearestNeighbors().fit(coloc_sim)
-    connectivity = nn.kneighbors_graph(coloc_sim, n_neighbors=5).toarray()
-
-    g = ig.Graph.Adjacency(connectivity)
-    g.es["weight"] = connectivity[connectivity != 0]
-    g.vs["label"] = genes
-    partition = la.find_partition(
-        g,
-        la.CPMVertexPartition,
-        weights=g.es["weight"],
-        resolution_parameter=resolution,
-    )
-    gene_clusters = pd.Series(partition.membership, dtype=int, index=g.vs["label"])
-
-    adata.var["coloc_group"] = gene_clusters.reindex(adata.var_names)
-    return adata if copy else None
 
 
 def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
@@ -111,14 +27,6 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
     adata : AnnData
         .uns['coloc_sim']: Pairwise gene colocalization similarity within each cell formatted as a long dataframe.
     """
-
-    global dd, NearestNeighbors
-    if dd is None:
-        import dask.dataframe as dd
-
-    if NearestNeighbors is None:
-        from sklearn.neighbors import NearestNeighbors
-
     adata = data.copy() if copy else data
 
     # Filter points and counts by min_count
