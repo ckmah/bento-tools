@@ -2,7 +2,7 @@
 name = "bento-tools"
 packages = [{ include = "bento" }]
 include = ["bento/datasets/datasets.csv", "bento/models/**/*"]
-version = "1.0.0"
+version = "1.0.1"
 description = "A toolkit for subcellular analysis of spatial transcriptomics data"
 authors = ["Clarence Mah <ckmah@ucsd.edu>"]
 license = "MIT"
