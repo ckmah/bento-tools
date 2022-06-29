@@ -9,8 +9,8 @@ from shapely import geometry, wkt
 from shapely.geometry import Polygon
 from tqdm.auto import tqdm
 import anndata
-import rasterio
-import rasterio.features
+# import rasterio
+# import rasterio.features
 import emoji
 
 
