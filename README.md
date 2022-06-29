@@ -10,7 +10,7 @@
 Bento is a Python toolkit for performing subcellular analysis of spatial transcriptomics data.
 
 # Get started
-Install with Python 3.8 or 3.9:
+Install with Python >=3.8 and <3.11:
 ```bash
 pip install bento-tools
 ```
