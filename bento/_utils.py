@@ -28,6 +28,15 @@ def get_default_args(func):
 def track(func):
     """
     Track changes in AnnData object after applying function.
+    
+    1. First remembers a shallow list of AnnData attributes by listing keys from obs, var, etc.
+    2. Perform arbitrary task
+    3. List attributes again, perform simple diff between list of old and new attributes
+    4. Print to user added and removed keys
+
+    Parameters
+    ----------
+    func : function
     """
 
     @wraps(func)
@@ -85,6 +94,18 @@ def track(func):
 
 
 def list_attributes(adata):
+    """Traverse AnnData object attributes and list keys.
+
+    Parameters
+    ----------
+    adata : AnnData
+        AnnData object
+
+    Returns
+    -------
+    dict
+        Dictionary of keys for each AnnData attribute.
+    """
     found_attr = dict(n_obs=adata.n_obs, n_vars=adata.n_vars)
     for attr in [
         "obs",

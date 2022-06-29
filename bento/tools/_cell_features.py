@@ -9,7 +9,7 @@ from .._utils import track
 
 
 @track
-def analyze_cells(data, feature_names, copy=False):
+def analyze_cells(data, feature_names, progress=True, copy=False):
     """Compute multiple cell features at once. Convenience function instead of making 
     separate calls to compute each feature.
 
@@ -36,8 +36,12 @@ def analyze_cells(data, feature_names, copy=False):
 
     feature_names = list(set(feature_names))
 
-    for f in tqdm(feature_names):
-        cell_features[f].__wrapped__(adata)
+    if progress:
+        for f in tqdm(feature_names):
+            cell_features[f].__wrapped__(adata)
+    else:
+        for f in feature_names:
+            cell_features[f].__wrapped__(adata)
 
     return adata if copy else None
 
@@ -492,6 +496,10 @@ cell_features = dict(
     cell_perimeter=cell_perimeter,
     cell_radius=cell_radius,
     cell_morph_open=cell_morph_open,
+    nucleus_area=nucleus_area,
+    nucleus_area_ratio=nucleus_area_ratio,
+    nucleus_aspect_ratio=nucleus_aspect_ratio,
+    nucleus_offset=nucleus_offset,
 )
 """Dict of cell feature names : function. Pass a list of feature name(s) to
 `bento.tl.analyze_cells()` to compute them.

@@ -9,14 +9,14 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from dask.diagnostics import ProgressBar
-from dask.distributed import Client, progress
+from tqdm.auto import tqdm
 
 from .. import tools as tl
 from .._utils import track
 from ..preprocessing import get_points
 
 
-def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
+def analyze_samples(data, features, copy=False):
     """Calculate the set of specified `features` for every sample, defined as the set of
     molecules corresponding to every cell-gene pair.
 
@@ -42,10 +42,10 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
     """
     adata = data.copy() if copy else data
 
+    pbar = tqdm(desc="Cell features", total=3)
     # Cast features to type list
     if not isinstance(features, list):
         features = [features]
-
     features = [sample_features[f] for f in features]
 
     cell_features = set()  # Cell-level fns to run
@@ -57,65 +57,73 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
     cell_features = list(cell_features)
     cell_attributes = list(cell_attributes)
 
-    # compute cell features
-    for cf in cell_features:
-        cf.__wrapped__(adata)
-
+    tl.analyze_cells(adata, cell_features, progress=False)
+    
     # Make sure attributes are present
     attrs_found = set(cell_attributes).intersection(set(adata.obs.columns.tolist()))
     if len(attrs_found) != len(cell_attributes):
         raise KeyError(f"df does not have all columns: {cell_attributes}.")
 
+    pbar.update()
+
+    pbar.set_description("Sample features")
     # extract cell attributes
     points_df = (
         get_points(adata, asgeo=True)
         .set_index("cell")
         .join(data.obs[cell_attributes])
         .reset_index()
-        .set_index("cell")
-        .sort_index()
+        .sort_values(["cell", "gene"])
+        .reset_index(drop=True)
     )
 
+    # Handle categories as strings to avoid ambiguous cat types
+    for col in points_df.loc[:,(points_df.dtypes == 'category').values]:
+        points_df[col] = points_df[col].astype(str)
+
+    # Handle shape indexes as strings to avoid ambiguous types
+    for shape_name in adata.obs.columns[adata.obs.columns.str.endswith('_shape')]:
+        shape_prefix = '_'.join(shape_name.split('_')[:-1])
+        if shape_prefix in points_df.columns:
+            points_df[shape_prefix] = points_df[shape_prefix].astype(str)
+
     # Calculate features for a sample
-    def process_sample(df, features):
+    def process_sample(df):
         sample_output = {}
         for f in features:
             sample_output.update(f.extract(df))
-
         return sample_output
 
     # Process all samples in a partition
-    def process_partition(partition_df, features):
-        # TODO update dask progress bar somehow?
-        result = partition_df.groupby(["cell", "gene"], observed=True).apply(
-            lambda sample_df: process_sample(sample_df, features)
+    def process_partition(partition_df):
+        return partition_df.groupby(["cell", "gene"], observed=True).apply(
+            process_sample
         )
 
-        return result
-
-    # Run on a single sample to get output metadata
-    meta_output = process_partition(
-        points_df.reset_index().set_index(["cell", "gene"]).head(1), features
-    )
-    meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
-
     # Cast to dask dataframe
-    if not chunks and not chunksize:
-        chunks = 1
-    ddf = dask_geopandas.from_geopandas(
-        points_df, npartitions=chunks, chunksize=chunksize
+    ddf = dask_geopandas.from_geopandas(points_df, npartitions=1)
+
+    # Partition so only 1000 groups per groupby
+    _, group_loc = np.unique(
+        points_df["cell"].astype(str) + "-" + points_df["gene"].astype(str),
+        return_index=True,
     )
+    divisions = [group_loc[loc] for loc in range(0, len(group_loc), 1000)]
+    divisions.append(len(points_df) - 1)
+    ddf = ddf.repartition(divisions=divisions)
 
     # Parallel process each partition
     with ProgressBar():
-        task = ddf.map_partitions(
-            lambda partition: process_partition(partition, features), meta=meta.dtypes
-        )
-        output = task.compute()
+        # Run on a single sample to get output metadata
+        meta_output = process_partition(points_df.head())
+        meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
+        output = ddf.map_partitions(process_partition, meta=meta.dtypes).compute()
+
+    pbar.update()
+    pbar.set_description("Saving to AnnData")
 
     # Format from Series of dicts to DataFrame
-    output_index = output.index
-    output = pd.DataFrame(output.tolist(), index=output_index).reset_index()
+    output = pd.DataFrame(output.tolist(), index=output.index).reset_index()
 
     # Save results to data layers
     feature_names = output.columns[~output.columns.isin(["cell", "gene"])]
@@ -125,6 +133,10 @@ def analyze_samples(data, features, chunks=None, chunksize=None, copy=False):
             .reindex(index=adata.obs_names, columns=adata.var_names)
             .astype(float)
         )
+
+    pbar.update()
+    pbar.set_description('Done!')
+    pbar.close()
 
 
 class SampleFeature(metaclass=ABCMeta):
@@ -185,7 +197,7 @@ class ShapeProximity(SampleFeature):
 
     def __init__(self, shape_name):
         super().__init__()
-        self.cell_features.add(tl.cell_radius)
+        self.cell_features.add("cell_radius")
 
         attrs = [shape_name, "cell_radius"]
         self.cell_attributes.update(attrs)
@@ -207,7 +219,7 @@ class ShapeProximity(SampleFeature):
         if shape_prefix == "cell":
             inner = np.array([True] * len(df))
         else:
-            inner = df[shape_prefix] != -1
+            inner = df[shape_prefix] != "-1"
         outer = ~inner
 
         inner_dist = np.nan
@@ -261,7 +273,7 @@ class ShapeAsymmetry(SampleFeature):
 
     def __init__(self, shape_name):
         super().__init__()
-        self.cell_features.add(tl.cell_radius)
+        self.cell_features.add("cell_radius")
 
         attrs = [shape_name, "cell_radius"]
         self.cell_attributes.update(attrs)
@@ -283,7 +295,7 @@ class ShapeAsymmetry(SampleFeature):
         if shape_prefix == "cell":
             inner = np.array([True] * len(df))
         else:
-            inner = df[shape_prefix] != -1
+            inner = df[shape_prefix] != "-1"
         outer = ~inner
 
         inner_to_centroid = np.nan
@@ -332,7 +344,7 @@ class PointDispersion(SampleFeature):
 
     def __init__(self):
         super().__init__()
-        self.cell_features.add(tl.raster_cell)
+        self.cell_features.add("raster_cell")
 
         attrs = ["cell_raster"]
         self.cell_attributes.update(attrs)
@@ -375,7 +387,7 @@ class ShapeDispersion(SampleFeature):
     def __init__(self, shape_name):
         super().__init__()
 
-        self.cell_features.add(tl.raster_cell)
+        self.cell_features.add("raster_cell")
         attrs = [shape_name, "cell_raster"]
         self.cell_attributes.update(attrs)
 
@@ -426,7 +438,7 @@ class RipleyStats(SampleFeature):
 
     def __init__(self):
         super().__init__()
-        self.cell_features.update([tl.cell_span, tl.cell_bounds, tl.cell_area])
+        self.cell_features.update(["cell_span", "cell_bounds", "cell_area"])
 
         self.cell_attributes.update(
             [
@@ -443,12 +455,12 @@ class RipleyStats(SampleFeature):
         df = super().extract(df)
 
         # Get precomputed centroid and cell moment
-        cell_span = df["cell_span"][0]
-        cell_minx = df["cell_minx"][0]
-        cell_miny = df["cell_miny"][0]
-        cell_maxx = df["cell_maxx"][0]
-        cell_maxy = df["cell_maxy"][0]
-        cell_area = df["cell_area"][0]
+        cell_span = df["cell_span"].values[0]
+        cell_minx = df["cell_minx"].values[0]
+        cell_miny = df["cell_miny"].values[0]
+        cell_maxx = df["cell_maxx"].values[0]
+        cell_maxy = df["cell_maxy"].values[0]
+        cell_area = df["cell_area"].values[0]
 
         estimator = RipleysKEstimator(
             area=cell_area,
@@ -458,8 +470,8 @@ class RipleyStats(SampleFeature):
             y_max=cell_maxy,
         )
 
-        half_span = cell_span / 2
-        radii = np.linspace(1, half_span * 2, num=int(half_span * 2))
+        quarter_span = cell_span / 4
+        radii = np.linspace(1, quarter_span * 2, num=int(quarter_span * 2))
 
         # Get points
         points_geo = df["geometry"].values
@@ -488,16 +500,18 @@ class RipleyStats(SampleFeature):
 
         # L-function at L/4 where length of the cell L is max dist between 2 points on polygon defining cell border
         l_half_radius = estimator.Hfunction(
-            data=points_geo, radii=[half_span], mode="none"
+            data=points_geo, radii=[quarter_span], mode="none"
         )[0]
 
-        return {
+        result = {
             "l_max": l_max,
             "l_max_gradient": l_max_gradient,
             "l_min_gradient": l_min_gradient,
             "l_monotony": l_monotony,
             "l_half_radius": l_half_radius,
         }
+
+        return result
 
 
 class ShapeEnrichment(SampleFeature):
@@ -539,7 +553,7 @@ class ShapeEnrichment(SampleFeature):
         if shape_prefix == "cell":
             enrichment = 1.0
         else:
-            inner_count = (df[shape_prefix] != -1).sum()
+            inner_count = (df[shape_prefix] != "-1").sum()
             enrichment = inner_count / float(len(points_geo))
 
         return {f"{shape_prefix}_enrichment": enrichment}

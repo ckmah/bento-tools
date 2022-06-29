@@ -342,11 +342,9 @@ def lp_diff(data, phenotype, fname=None):
 @savefig
 def cellplot(
     adata,
-    fovs="0",
-    fov_key="batch",
     hue=None,
-    col=None,
     kind="hist",
+    col="batch",
     legend=True,
     palette=None,
     hue_order=None,
@@ -354,7 +352,9 @@ def cellplot(
     col_wrap=None,
     col_order=None,
     shape_names=["cell_shape", "nucleus_shape"],
-    height=8,
+    dx=0.1,
+    units="um",
+    height=6,
     facet_kws=None,
     fname=None,
     **kwargs,
@@ -362,43 +362,26 @@ def cellplot(
     # Get points
     points = get_points(adata, asgeo=False)
 
-    # Process fovs
-    if fovs == "all":
-        fovs = adata.obs[fov_key].unique().tolist()
+    # Add all shape_names if None
+    if shape_names == None:
+        shape_names = adata.obs.columns[adata.obs.columns.str.endswith("_shape")]
 
-    fovs = [fovs] if isinstance(fovs, str) else fovs
-
-    # Add all shape_names if 'all'
-    if shape_names == "all":
-        shape_names = adata.obs.columns[adata.obs.columns.str.endswith("shape")]
-
-    # Convert draw_shape_names to list
+    # Convert shape_names to list
     shape_names = [shape_names] if isinstance(shape_names, str) else shape_names
 
-    # Get shapes
-    obs_columns = list(shape_names)
-    if col:
-        # Likely mistake
-        if col == 'fov' or col == 'fovs':
-            col = fov_key
-            
-        obs_columns.append(col)
-    if fov_key:
-        obs_columns.append(fov_key)
-    obs_columns = list(set(obs_columns))
+    # Get obs attributes starting with shapes
+    obs_attrs = list(shape_names)
+
+    # Include col if exists
+    if col and (col == "cell" or (col in adata.obs.columns and col in points.columns)):
+        obs_attrs.append(col)
+    else:
+        col = None
+
+    obs_attrs = list(set(obs_attrs))
 
     # Get shapes
-    shapes = adata.obs.reset_index()[obs_columns]
-
-    # Make sure col is same type across points and shapes
-    if points[fov_key].dtype != shapes[fov_key].dtype:
-        points[fov_key] = points[fov_key].astype(str)
-        shapes[fov_key] = shapes[fov_key].astype(str)
-
-    if fovs[0] != "all":
-        # Subset to specified col values only; less filtering = faster plotting
-        points = points[points[fov_key].isin(fovs)]
-        shapes = shapes[shapes[fov_key].isin(fovs)]
+    shapes = adata.obs.reset_index()[obs_attrs]
 
     if col:
         # Make sure col is same type across points and shapes
@@ -412,12 +395,13 @@ def cellplot(
             shapes = shapes[shapes[col].isin(col_order)]
 
     # Remove unused categories in points
-    for cat in points.columns:
-        points[cat] = (
-            points[cat].cat.remove_unused_categories()
-            if points[cat].dtype == "category"
-            else points[cat]
-        )
+    if col or hue:
+        for cat in points.columns:
+            points[cat] = (
+                points[cat].cat.remove_unused_categories()
+                if points[cat].dtype == "category"
+                else points[cat]
+            )
 
     # Convert shapes to GeoDataFrames AFTER filtering
     shapes = geopandas.GeoDataFrame(shapes, geometry="cell_shape")
@@ -443,18 +427,6 @@ def cellplot(
         **kws,
     )
 
-    def hexbin(data, x, y, **kwargs):
-        xmax = data[x].max()
-        xmin = data[x].min()
-        ymax = data[y].max()
-        ymin = data[y].min()
-        dx = xmax - xmin
-        dy = ymax - ymin
-        nx = kwargs['gridsize']
-        ny = int((dy/dx) * nx)
-        kwargs['gridsize'] = (nx, ny)
-        plt.hexbin(data[x], data[y], extent=(xmin, xmax, ymin, ymax), **kwargs)
-    
     if kind == "scatter":
         scatter_kws = dict(linewidth=0, s=5)
         scatter_kws.update(**kwargs)
@@ -468,28 +440,29 @@ def cellplot(
         hex_kws.update(**kwargs)
         g.map_dataframe(plt.hexbin, x="x", y="y", **hex_kws)
 
-    if col:
-        shapes = shapes.groupby(col)
+    if shapes.shape[0] > 0:
+        if col:
+            shapes = shapes.groupby(col)
 
-        # Get max ax radius across groups
-        ax_radii = []
-        for k, ax in g.axes_dict.items():
-            s = shapes.get_group(k)
-            # Determine fixed radius of each subplot
-            cell_bounds = s.bounds
-            cell_maxw = cell_bounds["maxx"].max() - cell_bounds["minx"].min()
-            cell_maxh = cell_bounds["maxy"].max() - cell_bounds["miny"].min()
-            ax_radius = 1.1 * (max(cell_maxw, cell_maxh) / 2)
-            ax_radii.append(ax_radius)
+            # Get max ax radius across groups
+            ax_radii = []
+            for k, ax in g.axes_dict.items():
+                s = shapes.get_group(k)
+                # Determine fixed radius of each subplot
+                cell_bounds = s.bounds
+                cell_maxw = cell_bounds["maxx"].max() - cell_bounds["minx"].min()
+                cell_maxh = cell_bounds["maxy"].max() - cell_bounds["miny"].min()
+                ax_radius = 1.1 * (max(cell_maxw, cell_maxh) / 2)
+                ax_radii.append(ax_radius)
 
-        ax_radius = max(ax_radii)
+            ax_radius = max(ax_radii)
 
-        for k, ax in tqdm(g.axes_dict.items()):
-            s = shapes.get_group(k)
-            shape_subplot(s, shape_names, ax_radius=ax_radius, ax=ax)
+            for k, ax in tqdm(g.axes_dict.items()):
+                s = shapes.get_group(k)
+                shape_subplot(s, shape_names, dx, units, ax_radius=ax_radius, ax=ax)
 
-    else:
-        shape_subplot(shapes, shape_names, ax=g.ax)
+        else:
+            shape_subplot(shapes, shape_names, dx, units, ax=g.ax)
 
     if legend:
         g.add_legend()
@@ -511,10 +484,12 @@ def cellplot(
     g.tight_layout()
 
 
-def shape_subplot(data, shape_names, ax, ax_radius=None):
+def shape_subplot(data, shape_names, dx, units, ax, ax_radius=None):
     # Gather all shapes and plot
     all_shapes = geopandas.GeoSeries(data[shape_names].values.flatten())
-    all_shapes.plot(color=(0,0,0,0), edgecolor=(1, 1, 1, 0.8), lw=1, aspect=None, ax=ax)
+    all_shapes.plot(
+        color=(0, 0, 0, 0), edgecolor=(1, 1, 1, 0.8), lw=1, aspect=None, ax=ax
+    )
 
     # Set axes boundaries to be square; make sure size of cells are relative to one another
     if ax_radius:
@@ -529,13 +504,13 @@ def shape_subplot(data, shape_names, ax, ax_radius=None):
 
     # Create scale bar
     scalebar = ScaleBar(
-        0.1, "um", location="lower right", color="white", box_alpha=0, scale_loc="top"
+        dx, units, location="lower right", color="white", box_alpha=0, scale_loc="top"
     )
     ax.add_artist(scalebar)
 
-    
-def sig_samples(data, n=5):
-    for f in data.uns['tensor_loadings'][TENSOR_DIM_NAMES[0]]:
+
+def sig_samples(data, n=5, col_wrap=2):
+    for f in data.uns["tensor_loadings"][TENSOR_DIM_NAMES[0]]:
         top_genes = (
             data.uns["tensor_loadings"]["genes"]
             .sort_values(f, ascending=False)
@@ -550,10 +525,10 @@ def sig_samples(data, n=5):
 
         cellplot(
             data[top_cells, top_genes],
-            fovs="all",
             kind="scatter",
             hue="gene",
             col="cell",
+            col_wrap=col_wrap,
             height=2,
         )
         # plt.suptitle(f)
