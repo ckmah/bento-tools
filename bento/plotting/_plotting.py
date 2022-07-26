@@ -373,10 +373,21 @@ def cellplot(
     obs_attrs = list(shape_names)
 
     # Include col if exists
-    if col and (col == "cell" or (col in adata.obs.columns and col in points.columns)):
+    if col and (col == "cell" or (col in adata.obs.columns or col in points.columns)):
         obs_attrs.append(col)
+
+        if col not in points.columns:
+            points = (
+                points.set_index("cell")
+                .join(adata.obs[[col]].reset_index(), on="cell")
+                .reset_index()
+            )
     else:
         col = None
+
+    # Transfer obs hue to points
+    if hue and hue in adata.obs.columns and hue not in points.columns:
+        points = points.set_index("cell").join(adata.obs[[hue]]).reset_index()
 
     obs_attrs = list(set(obs_attrs))
 
@@ -511,14 +522,15 @@ def shape_subplot(data, shape_names, dx, units, ax, ax_radius=None):
 
 def sig_samples(data, n=5, col_wrap=2):
     for f in data.uns["tensor_loadings"][TENSOR_DIM_NAMES[0]]:
-        top_genes = (
-            data.uns["tensor_loadings"]["genes"]
+
+        top_cells = (
+            data.uns["tensor_loadings"][TENSOR_DIM_NAMES[1]]
             .sort_values(f, ascending=False)
             .index.tolist()[:n]
         )
 
-        top_cells = (
-            data.uns["tensor_loadings"]["cells"]
+        top_genes = (
+            data.uns["tensor_loadings"][TENSOR_DIM_NAMES[2]]
             .sort_values(f, ascending=False)
             .index.tolist()[:n]
         )

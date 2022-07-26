@@ -87,7 +87,7 @@ def lp_signatures(data, scale=True, fname=None):
             ax.set_title(str(pattern_dim).capitalize(), weight="600")
 
         # Set row labels
-        ax.set_ylabel(factor, labelpad=3.5*len(factor), rotation=0, weight="600")
+        ax.set_ylabel(factor, labelpad=3.5*len(str(factor)), rotation=0, weight="600")
 
         # Turn off xlabels except bottom row
         if factor != factors[-1]:

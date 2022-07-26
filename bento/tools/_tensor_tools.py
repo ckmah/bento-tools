@@ -3,13 +3,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from scipy.stats import zscore
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 from .._utils import track, PATTERN_NAMES, TENSOR_DIM_NAMES
 
 
 @track
-def to_tensor(data, layers, mask=False, copy=False):
+def to_tensor(data, layers, scale=True, copy=False):
     """
     Generate tensor from data where dimensions are (layers, cells, genes).
 
@@ -19,8 +20,6 @@ def to_tensor(data, layers, mask=False, copy=False):
         Spatial formatted AnnData
     layers : list of str
         Keys in data.layers to build tensor.
-    mask : bool
-        Whether to replace nans with 0, default False.
     copy : bool
         Return a copy of `data` instead of writing to data, by default False.
 
@@ -46,15 +45,11 @@ def to_tensor(data, layers, mask=False, copy=False):
     tensor = []
     for l in layers:
         tensor.append(adata.to_df(l).values)
-    tensor = np.array(tensor)
-
-    # Replace nans with 0 if mask == True
-    if mask:
-        tensor_mask = ~np.isnan(tensor)
-        tensor[~tensor_mask] = 0
-
+        
     # Save tensor values
-    adata.uns["tensor"] = tensor
+    tensor = np.array(tensor)
+    tensor = zscore(tensor, axis=0)
+    adata.uns["tensor"] = np.array(tensor)
 
     # Save tensor dimension indexes
     adata.uns["tensor_labels"] = dict(zip(TENSOR_DIM_NAMES, [layers, cells, genes]))
@@ -247,12 +242,13 @@ def _assign_factors(data, n_clusters=None, copy=False):
 
 def init_c2c_tensor(data, device="auto"):
 
-    try:
-        import torch
+    if device != "cpu":
+        try:
+            import torch
 
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    except ImportError:
-        device = None
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            device = None
 
     print(f"Device: {device}")
 
