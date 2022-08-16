@@ -1,4 +1,3 @@
-import cell2cell as c2c
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -7,7 +6,6 @@ from scipy.stats import zscore
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import tensorly as tl
 from tensorly.decomposition import non_negative_parafac
-from tensorly.metrics.regression import RMSE
 from tqdm.auto import tqdm
 
 from .._utils import track, PATTERN_PROBS
@@ -197,7 +195,7 @@ def lp_signatures(data, ranks, nruns=3, device="auto", random_state=888, copy=Fa
     _type_
         _description_
     """
-    return decompose_tensor(
+    return signatures(
         data,
         PATTERN_PROBS,
         ranks,

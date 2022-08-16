@@ -30,7 +30,7 @@ from ._sample_features import (
     ShapeProximity,
 )
 from ._shapes import inner_edge, outer_edge
-from ._tensor_tools import (
+from ._signatures import (
     to_tensor,
     signatures,
     lp_signatures

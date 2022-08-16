@@ -5,19 +5,18 @@ warnings.filterwarnings("ignore")
 import geopandas
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from matplotlib_scalebar.scalebar import ScaleBar
 import numpy as np
 import pandas as pd
-from pandas.plotting import radviz
 import seaborn as sns
+from matplotlib_scalebar.scalebar import ScaleBar
+from pandas.plotting import radviz
+from tqdm.auto import tqdm
 from upsetplot import UpSet, from_indicators
 
-from tqdm.auto import tqdm
-
-from ._utils import savefig
-from .._utils import PATTERN_NAMES, PATTERN_COLORS, TENSOR_DIM_NAMES
+from .._utils import PATTERN_COLORS, PATTERN_NAMES
 from ..preprocessing import get_points
 from ..tools._lp import lp_stats
+from ._utils import savefig
 
 
 @savefig

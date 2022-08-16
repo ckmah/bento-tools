@@ -1,7 +1,7 @@
-import matplotlib.pyplot as plt
 import inspect
 from functools import wraps
 
+import matplotlib.pyplot as plt
 
 
 def get_default_args(func):
