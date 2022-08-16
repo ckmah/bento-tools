@@ -103,20 +103,21 @@ def analyze_samples(data, features, copy=False):
     # Cast to dask dataframe
     ddf = dask_geopandas.from_geopandas(points_df, npartitions=1)
 
-    # Partition so only 1000 groups per groupby
+    # Partition so only 500 groups per groupby
     _, group_loc = np.unique(
         points_df["cell"].astype(str) + "-" + points_df["gene"].astype(str),
         return_index=True,
     )
-    divisions = [group_loc[loc] for loc in range(0, len(group_loc), 1000)]
+    divisions = [group_loc[loc] for loc in range(0, len(group_loc), 500)]
     divisions.append(len(points_df) - 1)
     ddf = ddf.repartition(divisions=divisions)
 
+    # Run on a single sample to get output metadata
+    meta_output = process_partition(points_df.head())
+    meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
+    
     # Parallel process each partition
     with ProgressBar():
-        # Run on a single sample to get output metadata
-        meta_output = process_partition(points_df.head())
-        meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
         output = ddf.map_partitions(process_partition, meta=meta.dtypes).compute()
 
     pbar.update()

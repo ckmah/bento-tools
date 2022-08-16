@@ -143,21 +143,4 @@ def _cell_clq(cell_points, n_neighbors, radius, min_count):
         counts.loc[clq_df["neighbor"]].values / n_points
     )
 
-    # global_clq()
-
     return clq_df
-
-def global_clq():
-    global_clq = pd.DataFrame(obs_genes, columns=["gene", "neighbor"])
-    global_clq["gclq"] = obs_count
-    global_clq = global_clq[global_clq["gene"] == global_clq["neighbor"]]
-    global_counts = counts.loc[global_clq["gene"]].values
-    global_clq["gclq"] = global_clq["gclq"].sum() / (global_counts * ((global_counts - 1)/(n_points-1)))
-    
-    return global_clq
-
-
-
-def local_clq():
-    # nai->b / nb (N - 1)
-    
