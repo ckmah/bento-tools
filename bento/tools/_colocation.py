@@ -6,52 +6,7 @@ from dask.diagnostics import ProgressBar
 from ..preprocessing import get_points
 from sklearn.neighbors import NearestNeighbors
 
-# Step 1: count_neighbors()
-# Step 2: get_clq()
-
-
-def count_neighbors(points_df, n_neighbors, agg=True):
-    """Build nearest neighbor index for points.
-
-    Parameters
-    ----------
-    points_df : pd.DataFrame
-        Points dataframe. Must have columns "x", "y", and "gene".
-    n_neighbors : int
-        Number of nearest neighbors to consider.
-    agg : bool
-        Whether to aggregate nearest neighbors at the gene-level. Default True.
-    Returns
-    -------
-    list or dict of dicts
-        If agg='point', returns a list of dicts, one for each point. Dict keys are gene names, values are counts.
-        If agg='gene', returns a DataFrame with columns "gene", "neighbor", and "count".
-    """
-    # Build knn index
-    neighbor_index = (
-        NearestNeighbors(n_neighbors=n_neighbors)
-        .fit(points_df[["x", "y"]].values)
-        .kneighbors(points_df[["x", "y"]].values, return_distance=False)
-    )
-    point_labels = points_df["gene"].values
-
-    # Get gene-level neighbor counts for each gene
-    if agg is True:
-        source_genes, source_indices = np.unique(point_labels, return_index=True)
-
-        gene_index = []
-
-        for g, gi in zip(source_genes, source_indices):
-            # First get all points for this gene
-            g_neighbors = np.unique(neighbor_index[gi].flatten())
-              # get unique neighbor points
-            g_neighbors = point_labels[g_neighbors]  # Get point gene names
-            neighbor_names, neighbor_counts = np.unique(
-                g_neighbors, return_counts=True
-            )  # aggregate neighbor gene counts
-
-            for neighbor, count in zip(neighbor_names, neighbor_counts):
-                gene_index.append([g, neighbor, count])
+from ..preprocessing import get_points
 
         gene_index = pd.DataFrame(gene_index, columns=["gene", "neighbor", "count"])
         return gene_index
@@ -64,9 +19,10 @@ def count_neighbors(points_df, n_neighbors, agg=True):
             point_index.append(dict(zip(np.unique(row, return_counts=True))))
         return point_index
 
-
-def coloc_quotient(data, n_neighbors=20, min_count=20, chunksize=64, copy=False):
-    """Calculate pairwise gene colocalization quotient in each cell.
+def coloc_quotient(
+    data, n_neighbors=25, radius=None, min_count=20, batchsize=64, copy=False
+):
+    """Calculate pairwise gene colocalization quotient in each cell. Specify either n_neighbors or radius, for knn neighbors or radius neighbors.
 
     Parameters
     ----------
@@ -150,60 +106,68 @@ def _cell_clq(cell_points, n_neighbors, min_count):
     # Cleanup gene categories
     valid_points["gene"] = valid_points["gene"].cat.remove_unused_categories()
 
-    neighbor_counts = count_neighbors(valid_points, n_neighbors, agg=True)
+    # Get neighbors within fixed outer_radius for every point
+    if n_neighbors:
+        nn = NearestNeighbors(n_neighbors=n_neighbors).fit(valid_points[["x", "y"]])
+        point_index = nn.kneighbors(valid_points[["x", "y"]], return_distance=False)
+    elif radius:
+        nn = NearestNeighbors(radius=radius).fit(valid_points[["x", "y"]])
+        point_index = nn.radius_neighbors(
+            valid_points[["x", "y"]], return_distance=False
+        )
 
-    clq_df = _clq(neighbor_counts, counts)
+    # Flatten adjacency list to pairs
+    source_index = []
+    neighbor_index = []
+    for source, neighbors in zip(range(valid_points.shape[0]), point_index):
+        source_index.extend([source] * len(neighbors))
+        neighbor_index.extend(neighbors)
+
+    source_index = np.array(source_index)
+    neighbor_index = np.array(neighbor_index)
+
+    # Remove self neighbors
+    is_self = source_index == neighbor_index
+    source_index = source_index[~is_self]
+    neighbor_index = neighbor_index[~is_self]
+
+    # Remove duplicate neighbors
+    _, is_uniq = np.unique(neighbor_index, return_index=True)
+    source_index = source_index[is_uniq]
+    neighbor_index = neighbor_index[is_uniq]
+
+    # Index to gene mapping; dict for fast lookup
+    index2gene = valid_points["gene"].reset_index(drop=True).to_dict()
+
+    # Map to genes
+    source2neighbor = np.array(
+        [[index2gene[i], index2gene[j]] for i, j in zip(source_index, neighbor_index)]
+    )
+    
+    # For each gene, count neighbors
+    obs_genes, obs_count = np.unique(source2neighbor, axis=0, return_counts=True)
+    
+    # TODO move to gene gene clq function
+    clq_df = pd.DataFrame(obs_genes, columns=["gene", "neighbor"])
+    clq_df["clq"] = (obs_count / counts.loc[clq_df["gene"]].values) / (
+        counts.loc[clq_df["neighbor"]].values / n_points
+    )
+
+    # global_clq()
 
     return clq_df
 
-
-def _clq(neighbor_counts, counts):
-    """
-    Compute the colocation quotient for each gene pair.
-
-    Parameters
-    ----------
-    neighbor_counts : pd.DataFrame
-        Dataframe with columns "gene", "neighbor", and "count".
-    counts : pd.Series
-        Series of raw gene counts.
-    """
-    clq_df = neighbor_counts.copy()
-    clq_df["clq"] = (clq_df["count"] / counts.loc[clq_df["gene"]].values) / (
-        counts.loc[clq_df["neighbor"]].values / counts.sum()
-    )
-
-    return clq_df.drop('count', axis=1)
-
-
-def global_clq(neighbor_counts, counts):
-    gclq_df = neighbor_counts.copy()
-    gclq_df = gclq_df[gclq_df["gene"] == gclq_df["neighbor"]]
-    global_counts = counts.loc[gclq_df["gene"]].values
-    total_count = global_counts.sum()
-    gclq_df["gclq"] = (
-        gclq_df["gclq"].sum()
-        / (global_counts * ((global_counts - 1) / (total_count - 1))).sum()
-    )
-
+def global_clq():
+    global_clq = pd.DataFrame(obs_genes, columns=["gene", "neighbor"])
+    global_clq["gclq"] = obs_count
+    global_clq = global_clq[global_clq["gene"] == global_clq["neighbor"]]
+    global_counts = counts.loc[global_clq["gene"]].values
+    global_clq["gclq"] = global_clq["gclq"].sum() / (global_counts * ((global_counts - 1)/(n_points-1)))
+    
     return global_clq
 
 
-def local_clq(adata, gene_a, gene_b):
-    """
-    Compute local colocation quotients for every point between two genes across all cells. Note that this is not a symmetric function.
-    Parameters
-    ----------
-    gene_a : str
-        Gene name
-    gene_b : str
-        Gene name
-    Returns
-    -------
-    clq : float
-        Local colocation quotient for each point in gene_b
-    """
-    # Get points for cell
 
-    return
+def local_clq():
     # nai->b / nb (N - 1)
+    

@@ -31,8 +31,7 @@ from ._sample_features import (
 )
 from ._shapes import inner_edge, outer_edge
 from ._tensor_tools import (
-    TENSOR_DIM_NAMES,
-    decompose_tensor,
-    lp_signatures,
-    select_tensor_rank,
+    to_tensor,
+    signatures,
+    lp_signatures
 )

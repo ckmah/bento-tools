@@ -352,6 +352,7 @@ def cellplot(
     col_wrap=None,
     col_order=None,
     shape_names=["cell_shape", "nucleus_shape"],
+    lw=1,
     dx=0.1,
     units="um",
     height=6,
@@ -470,13 +471,16 @@ def cellplot(
 
             for k, ax in tqdm(g.axes_dict.items()):
                 s = shapes.get_group(k)
-                shape_subplot(s, shape_names, dx, units, ax_radius=ax_radius, ax=ax)
+                shape_subplot(s, shape_names, lw, dx, units, ax_radius=ax_radius, ax=ax)
 
         else:
-            shape_subplot(shapes, shape_names, dx, units, ax=g.ax)
+            shape_subplot(shapes, shape_names, lw, dx, units, ax=g.ax)
 
     if legend:
         g.add_legend()
+        for lh in g._legend.legendHandles:
+            lh.set_alpha(1)
+            lh._sizes = [40]
 
     g.set_titles(template="")
 
@@ -495,11 +499,11 @@ def cellplot(
     g.tight_layout()
 
 
-def shape_subplot(data, shape_names, dx, units, ax, ax_radius=None):
+def shape_subplot(data, shape_names, lw, dx, units, ax, ax_radius=None):
     # Gather all shapes and plot
     all_shapes = geopandas.GeoSeries(data[shape_names].values.flatten())
     all_shapes.plot(
-        color=(0, 0, 0, 0), edgecolor=(1, 1, 1, 0.8), lw=1, aspect=None, ax=ax
+        color=(0, 0, 0, 0), edgecolor=(1, 1, 1, 0.8), lw=lw, aspect=None, ax=ax
     )
 
     # Set axes boundaries to be square; make sure size of cells are relative to one another
@@ -520,19 +524,19 @@ def shape_subplot(data, shape_names, dx, units, ax, ax_radius=None):
     ax.add_artist(scalebar)
 
 
-def sig_samples(data, n=5, col_wrap=2):
-    for f in data.uns["tensor_loadings"][TENSOR_DIM_NAMES[0]]:
+def sig_samples(data, rank, n_genes=5, n_cells=4, col_wrap=4, **kwargs):
+    for f in data.uns["tensor_loadings"][rank][TENSOR_DIM_NAMES[0]].columns:
 
         top_cells = (
-            data.uns["tensor_loadings"][TENSOR_DIM_NAMES[1]]
+            data.uns["tensor_loadings"][rank][TENSOR_DIM_NAMES[1]]
             .sort_values(f, ascending=False)
-            .index.tolist()[:n]
+            .index.tolist()[:n_cells]
         )
 
         top_genes = (
-            data.uns["tensor_loadings"][TENSOR_DIM_NAMES[2]]
+            data.uns["tensor_loadings"][rank][TENSOR_DIM_NAMES[2]]
             .sort_values(f, ascending=False)
-            .index.tolist()[:n]
+            .index.tolist()[:n_genes]
         )
 
         cellplot(
@@ -542,5 +546,6 @@ def sig_samples(data, n=5, col_wrap=2):
             col="cell",
             col_wrap=col_wrap,
             height=2,
+            **kwargs
         )
-        # plt.suptitle(f)
+        plt.suptitle(f)
