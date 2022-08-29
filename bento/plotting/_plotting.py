@@ -312,6 +312,7 @@ def lp_diff(data, phenotype, fname=None):
     """
     diff_stats = data.uns[f"diff_{phenotype}"]
 
+    palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
     g = sns.relplot(
         data=diff_stats,
         x=f"log2fc",
@@ -321,11 +322,13 @@ def lp_diff(data, phenotype, fname=None):
         col="phenotype",
         col_wrap=3,
         height=2.5,
-        palette="tab10",
+        palette=palette,
         s=20,
         linewidth=0,
     )
 
+    g.set_titles(col_template='{col_name}')
+    
     for ax in g.axes:
         ax.axvline(0, lw=0.5, c="grey")  # -log2fc = 0
         ax.axvline(-2, lw=1, c="pink", ls="dotted")  # log2fc = -2
@@ -524,16 +527,16 @@ def shape_subplot(data, shape_names, lw, dx, units, ax, ax_radius=None):
 
 
 def sig_samples(data, rank, n_genes=5, n_cells=4, col_wrap=4, **kwargs):
-    for f in data.uns["tensor_loadings"][rank][TENSOR_DIM_NAMES[0]].columns:
+    for f in data.uns[f"r{rank}_signatures"].columns:
 
         top_cells = (
-            data.uns["tensor_loadings"][rank][TENSOR_DIM_NAMES[1]]
+            data.obsm[f"r{rank}_signatures"]
             .sort_values(f, ascending=False)
             .index.tolist()[:n_cells]
         )
 
         top_genes = (
-            data.uns["tensor_loadings"][rank][TENSOR_DIM_NAMES[2]]
+            data.varm[f"r{rank}_signatures"]
             .sort_values(f, ascending=False)
             .index.tolist()[:n_genes]
         )
