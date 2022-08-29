@@ -132,3 +132,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 docs/build.zip
+tests/data/processed/data.pt
+tests/data/processed/pre_filter.pt
+tests/data/processed/pre_transform.pt

@@ -2,8 +2,9 @@ import numpy as np
 import pandas as pd
 from dask import dataframe as dd
 from dask.diagnostics import ProgressBar
-from ..preprocessing import get_points
 from sklearn.neighbors import NearestNeighbors
+
+from ..preprocessing import get_points
 
 
 def count_neighbors(points_df, n_neighbors, agg=True):
@@ -89,9 +90,9 @@ def coloc_quotient(data, n_neighbors=20, min_count=20, chunksize=64, copy=False)
     )
 
     meta = _cell_clq(
-        points.loc[points["cell"] == adata.obs_names[0]], n_neighbors, min_count
+        points.loc[points["cell"] == points["cell"].values[0]], n_neighbors, min_count=1
     )
-
+    
     ddf = dd.from_pandas(points, npartitions=1)
 
     # Partition so {chunksize} cells per partition
