@@ -184,7 +184,7 @@ def _lp_logfc(data, phenotype=None):
             # log2fc(group frequency / mean other frequency)
             log2fc = np.log2((group_col + 1) / (rest_mean + 1))
             results = log2fc.to_frame("log2fc")
-            results["phenotype"] = f"{phenotype}_{group_name}"
+            results["phenotype"] = group_name
             return results
 
         # Compute log2fc of group / mean(rest) for each group
@@ -218,7 +218,7 @@ def _lp_diff_gene(cell_by_pattern, phenotype, phenotype_vector):
 
     # One hot encode categories
     group_dummies = pd.get_dummies(pd.Series(phenotype_vector))
-    group_dummies.columns = [f"{phenotype}_{g}" for g in group_dummies.columns]
+    # group_dummies.columns = [f"{phenotype}_{g}" for g in group_dummies.columns]
     group_names = group_dummies.columns.tolist()
     group_data = pd.concat([cell_by_pattern, group_dummies], axis=1)
     group_data.columns = group_data.columns.astype(str)
@@ -271,7 +271,7 @@ def lp_diff(data, phenotype=None, continuous=False, min_cells=10, copy=False):
     data : AnnData
         Anndata formatted spatial data.
     phenotype : str
-        Variable grouping cells for differential analysis. Must be in data.obs_names.
+        Variable grouping cells for differential analysis. Must be in data.obs.columns.
     continuous : bool
         Whether the phenotype is continuous or categorical. By default False.
     n_cores : int, optional

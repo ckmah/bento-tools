@@ -89,7 +89,7 @@ def coloc_quotient(data, n_neighbors=20, min_count=20, chunksize=64, copy=False)
     )
 
     meta = _cell_clq(
-        points.loc[points["cell"] == adata.obs_names[0]], n_neighbors, min_count
+        points.loc[points["cell"] == adata.obs_names[0]], n_neighbors, 1
     )
 
     ddf = dd.from_pandas(points, npartitions=1)
