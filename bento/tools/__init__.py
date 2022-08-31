@@ -4,10 +4,10 @@ from ._shape_features import (
     feature_functions
 )
 from ._colocation import coloc_quotient
-from ._lp import PATTERN_MODEL_FEATURE_NAMES, lp, lp_diff, lp_stats
+from ._lp import lp, lp_diff, lp_stats
 from ._sample_features import (
     analyze_samples,
-    sample_features,
+    sample_feature_fns,
     PointDispersion,
     RipleyStats,
     ShapeAsymmetry,

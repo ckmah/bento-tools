@@ -55,7 +55,7 @@ def qc_metrics(adata, fname=None):
         sns.kdeplot(adata.obs["cell_density"], ax=axs[1][1], **kde_params)
 
         dual_colors = sns.light_palette(color, n_colors=2, reverse=True)
-        no_nucleus_count = (adata.obs["nucleus_shape"] == None).sum()
+        no_nucleus_count = (adata.obs["nucleus_shape"] is None).sum()
         pie_values = [adata.n_obs - no_nucleus_count, no_nucleus_count]
         pie_percents = np.array(pie_values) / adata.n_obs * 100
         pie_labels = [
@@ -315,7 +315,7 @@ def lp_diff(data, phenotype, fname=None):
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
     g = sns.relplot(
         data=diff_stats,
-        x=f"log2fc",
+        x="log2fc",
         y="-log10padj",
         size=4,
         hue="pattern",
@@ -327,8 +327,8 @@ def lp_diff(data, phenotype, fname=None):
         linewidth=0,
     )
 
-    g.set_titles(col_template='{col_name}')
-    
+    g.set_titles(col_template="{col_name}")
+
     for ax in g.axes:
         ax.axvline(0, lw=0.5, c="grey")  # -log2fc = 0
         ax.axvline(-2, lw=1, c="pink", ls="dotted")  # log2fc = -2
@@ -366,7 +366,7 @@ def cellplot(
     points = get_points(adata, asgeo=False)
 
     # Add all shape_names if None
-    if shape_names == None:
+    if shape_names is None:
         shape_names = adata.obs.columns[adata.obs.columns.str.endswith("_shape")]
 
     # Convert shape_names to list
@@ -548,6 +548,6 @@ def sig_samples(data, rank, n_genes=5, n_cells=4, col_wrap=4, **kwargs):
             col="cell",
             col_wrap=col_wrap,
             height=2,
-            **kwargs
+            **kwargs,
         )
         plt.suptitle(f)

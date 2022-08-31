@@ -19,9 +19,9 @@ def analyze_shapes(data, shape_names, feature_names, progress=True, copy=False):
     ----------
     data : AnnData
         Spatial formatted AnnData
-    shape_names : list
+    shape_names : list of str
         List of shapes to analyze.
-    feature_names : list
+    feature_names : list of str
         List of features to analyze.
     copy : bool, optional
         Return a copy of `data` instead of writing to data, by default False.
@@ -44,9 +44,6 @@ def analyze_shapes(data, shape_names, feature_names, progress=True, copy=False):
         feature_names = [feature_names]
     elif isinstance(feature_names, tuple):
         feature_names = list(set(feature_names))
-
-    # Remove duplicate features
-    feature_names = list(set(feature_names))
 
     # Generate feature x shape combinations
     combos = [(f, s) for f in feature_names for s in shape_names]

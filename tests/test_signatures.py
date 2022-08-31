@@ -17,7 +17,7 @@ class TestSignatures(unittest.TestCase):
 
         signame = f"r{rank}_signatures"
         # Check that signatures are correct size
-        self.assertTrue(data.uns[signame].shape == (len(bento.PATTERN_NAMES), rank))
+        self.assertTrue(data.uns[signame].shape == (len(bento.utils.PATTERN_NAMES), rank))
         self.assertTrue(data.obsm[signame].shape == (data.n_obs, rank))
         self.assertTrue(data.varm[signame].shape == (data.n_vars, rank))
 

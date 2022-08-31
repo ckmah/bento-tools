@@ -10,3 +10,5 @@ class TestPatterns(unittest.TestCase):
         self.assertTrue(
             all(name in data.layers.keys() for name in bento._utils.PATTERN_NAMES)
         )
+        # Make sure the pattern layers are not empty
+        self.assertFalse(all(data.to_df(name).isna().all().all() for name in bento.PATTERN_NAMES))

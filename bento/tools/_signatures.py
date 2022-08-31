@@ -1,11 +1,8 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from scipy.stats import zscore
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import tensorly as tl
-from tensorly.decomposition import non_negative_parafac
+from tensorly.decomposition import non_negative_parafac, non_negative_parafac_hals
 from tqdm.auto import tqdm
 
 from .._utils import track, PATTERN_PROBS
@@ -35,9 +32,6 @@ def to_tensor(data, layers, scale=False, copy=False):
     """
     adata = data.copy() if copy else data
 
-    cells = adata.obs_names.tolist()
-    genes = adata.var_names.tolist()
-
     # Build tensor from specified layers
     tensor = []
     for l in layers:
@@ -62,7 +56,6 @@ def signatures(
     layers,
     ranks,
     nruns=3,
-    fillna=0,
     scale=True,
     device="auto",
     random_state=888,
@@ -72,18 +65,13 @@ def signatures(
 
     Parameters
     ----------
-    data : _type_
-        _description_
-    layers : _type_
-        _description_
-    rank : _type_
-        _description_
-    device : str, optional
-        _description_, by default "auto"
-    random_state : int, optional
-        _description_, by default 888
-    copy : bool, optional
-        _description_, by default False
+    data : spatial formatted AnnData object
+    layers : list of str
+        Keys in data.layers to build tensor.
+    ranks : int or list of int
+        Rank(s) to perform decomposition.
+    nruns : int, 3 by default
+        Number of times to run decomposition to compute confidence interval at each rank.
 
     Returns
     -------
@@ -95,18 +83,9 @@ def signatures(
     to_tensor(adata, layers=layers, scale=scale)
     tensor = adata.uns["tensor"].copy()
 
-    # Replace nans with 0
-    if fillna == 0:
-        tensor_mask = ~np.isnan(tensor)
-        tensor[~tensor_mask] = 0
-
-    # Or impute nans with mean value across cell dimension (mean for each layer x gene)
-    elif fillna == "mean":
-        for i, layer in enumerate(tensor):
-            imputed = np.where(
-                np.isnan(layer), np.nanmean(layer, axis=0), layer
-            )
-            tensor[i] = imputed
+    # Replace nans with 0 for decomposition
+    tensor_mask = ~np.isnan(tensor)
+    tensor[~tensor_mask] = 0
 
     if isinstance(ranks, int):
         ranks = [ranks]
@@ -134,8 +113,9 @@ def signatures(
     for rank in tqdm(ranks, desc=f"Device {device}"):
         for i in range(nruns):
             # non-negative parafac decomposition
-            weights, factors = non_negative_parafac(
-                tensor, rank, init="random", random_state=random_state
+
+            weights, factors = non_negative_parafac_hals(
+                tensor, rank, init="random"
             )
             
             if device == "cuda":
@@ -151,7 +131,6 @@ def signatures(
             errors.append([error, rank])
 
         # Save loadings from last decomposition run to adata
-        tensor_loadings = {}
         sig_names = [f"Signature {i+1}" for i in range(factors[0].shape[1])]
         adata.uns[f"r{rank}_signatures"] = pd.DataFrame(
             factors[0].numpy(), index=layers, columns=sig_names

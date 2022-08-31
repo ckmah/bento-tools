@@ -10,7 +10,7 @@ from patsy import PatsyError
 from statsmodels.tools.sm_exceptions import PerfectSeparationError
 from tqdm.auto import tqdm
 
-from .._utils import PATTERN_NAMES, PATTERN_PROBS, track
+from .._utils import PATTERN_NAMES, PATTERN_PROBS, PATTERN_FEATURES, track
 from ..preprocessing import get_layers
 
 tqdm.pandas()
@@ -39,19 +39,15 @@ def lp(data, min_count=5, copy=False):
     adata = data.copy() if copy else data
 
     # Compute features if missing TODO currently recomputes everything
-    if not all(f in data.layers.keys() for f in PATTERN_MODEL_FEATURE_NAMES):
-        features = [
-            "cell_proximity",
-            "nucleus_proximity",
-            "cell_asymmetry",
-            "nucleus_asymmetry",
-            "ripley_stats",
-            "point_dispersion",
-            "nucleus_dispersion",
-        ]
-        bento.tl.analyze_samples(data, features)
+    if not all(f in data.layers.keys() for f in PATTERN_FEATURES):
+        bento.tl.analyze_samples(
+            data, "cell_shape", ["proximity", "asymmetry", "ripley", "point_dispersion"]
+        )
+        bento.tl.analyze_samples(
+            data, "nucleus_shape", ["proximity", "asymmetry", "shape_dispersion"]
+        )
 
-    X_df = get_layers(adata, PATTERN_MODEL_FEATURE_NAMES, min_count)
+    X_df = get_layers(adata, PATTERN_FEATURES, min_count)
 
     model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"
     model = pickle.load(open(f"{model_dir}/rf_calib_20220514.pkl", "rb"))
@@ -112,12 +108,12 @@ def lp_stats(data, copy=False):
         detected = detected & ~data.to_df(c).isna()
 
     adata.var["n_detected"] = detected.sum().astype(int)
-    adata.var[f"fraction_detected"] = (adata.var["n_detected"] / adata.n_obs).astype(
+    adata.var["fraction_detected"] = (adata.var["n_detected"] / adata.n_obs).astype(
         float
     )
 
     adata.obs["n_detected"] = detected.sum(axis=1).astype(int)
-    adata.obs[f"fraction_detected"] = (adata.obs["n_detected"] / adata.n_vars).astype(
+    adata.obs["fraction_detected"] = (adata.obs["n_detected"] / adata.n_vars).astype(
         float
     )
 
@@ -374,20 +370,3 @@ def lp_diff(data, phenotype=None, continuous=False, min_cells=10, copy=False):
     adata.uns[f"diff_{phenotype}"] = results
 
     return adata if copy else None
-
-
-PATTERN_MODEL_FEATURE_NAMES = [
-    "cell_inner_proximity",
-    "nucleus_inner_proximity",
-    "nucleus_outer_proximity",
-    "cell_inner_asymmetry",
-    "nucleus_inner_asymmetry",
-    "nucleus_outer_asymmetry",
-    "l_max",
-    "l_max_gradient",
-    "l_min_gradient",
-    "l_monotony",
-    "l_half_radius",
-    "point_dispersion",
-    "nucleus_dispersion",
-]

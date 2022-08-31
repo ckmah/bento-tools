@@ -5,18 +5,24 @@ from scipy.stats.stats import spearmanr
 from scipy.spatial import distance
 
 import dask_geopandas
-import geopandas as gpd
 import numpy as np
 import pandas as pd
 from dask.diagnostics import ProgressBar
 from tqdm.auto import tqdm
 
 from .. import tools as tl
-from .._utils import track
 from ..preprocessing import get_points
 
 
-def analyze_samples(data, features, copy=False):
+def analyze_samples(
+    data,
+    shape_names,
+    feature_names,
+    groupby="gene",
+    progress=True,
+    chunksize=500,
+    copy=False,
+):
     """Calculate the set of specified `features` for every sample, defined as the set of
     molecules corresponding to every cell-gene pair.
 
@@ -24,12 +30,14 @@ def analyze_samples(data, features, copy=False):
     ----------
     data : AnnData
         Spatially formatted AnnData
-    features : list of :class:`SampleFeature`
-        List of :class:`SampleFeature` to compute.
-    chunks : int, optional
-        Number of partitions to use, passed to `dask`, by default None.
+    shape_names : list of str
+        Names of the shapes to analyze.
+    feature_names : list of str
+        Names of the features to analyze.
+    groupby : str, optional
+        How to group points within each cell, by default "gene".
     chunksize : int, optional
-        Size of partitions, passed to `dask`, by default None.
+        Size of partitions, passed to `dask`, by default 500.
     copy : bool
         Return a copy of `data` instead of writing to data, by default False.
 
@@ -37,32 +45,56 @@ def analyze_samples(data, features, copy=False):
     -------
     adata : anndata.AnnData
         Returns `adata` if `copy=True`, otherwise adds fields to `data`:
-        `.layers[`keys`]`
+        `.layers[`keys`]` if `groupby` == "gene"
             See the output of each :class:`SampleFeature` in `features` for keys added.
+        `.obsm[`sp`]` if `groupby` != "gene"
+            DataFrame with rows aligned to `adata.obs_names` and `features` as columns.
+
     """
     adata = data.copy() if copy else data
 
-    pbar = tqdm(desc="Cell features", total=3)
-    # Cast features to type list
-    if not isinstance(features, list):
-        features = [features]
-    features = [sample_features[f] for f in features]
+    if groupby is None:
+        groupby = ["cell"]
+    elif groupby not in get_points(adata).columns:
+        raise ValueError(f"groupby {groupby} not in points")
+    else:
+        groupby = ["cell", groupby]
 
-    cell_features = set()  # Cell-level fns to run
-    cell_attributes = set()  # Cell-level attributes needed to compute sample features
-    for f in features:
+    # Cast to list if not already
+    if isinstance(shape_names, str):
+        shape_names = [shape_names]
+    elif isinstance(shape_names, tuple):
+        shape_names = list(set(shape_names))
+
+    # Cast to list if not already
+    if isinstance(feature_names, str):
+        feature_names = [feature_names]
+    elif isinstance(feature_names, tuple):
+        feature_names = list(set(feature_names))
+
+    pbar = tqdm(desc="Cell features", total=3)
+
+    # Generate feature x shape combinations
+    feature_combos = [
+        sample_feature_fns[f](s) for f in feature_names for s in shape_names
+    ]
+
+    # Compile dependency set of features and attributes
+    cell_features = set()
+    obs_attrs = set()
+    for f in feature_combos:
         cell_features.update(f.cell_features)
-        cell_attributes.update(f.cell_attributes)
+        obs_attrs.update(f.attributes)
 
     cell_features = list(cell_features)
-    cell_attributes = list(cell_attributes)
+    obs_attrs = list(obs_attrs)
 
-    tl.analyze_cells(adata, cell_features, progress=False)
-    
+    tl.analyze_shapes(adata, "cell_shape", cell_features, progress=False)
+
     # Make sure attributes are present
-    attrs_found = set(cell_attributes).intersection(set(adata.obs.columns.tolist()))
-    if len(attrs_found) != len(cell_attributes):
-        raise KeyError(f"df does not have all columns: {cell_attributes}.")
+    attrs_found = set(obs_attrs).intersection(set(adata.obs.columns.tolist()))
+    if len(attrs_found) != len(obs_attrs):
+        raise KeyError(f"df does not have all columns: {obs_attrs}.")
 
     pbar.update()
 
@@ -71,32 +103,32 @@ def analyze_samples(data, features, copy=False):
     points_df = (
         get_points(adata, asgeo=True)
         .set_index("cell")
-        .join(data.obs[cell_attributes])
+        .join(data.obs[obs_attrs])
         .reset_index()
-        .sort_values(["cell", "gene"])
+        .sort_values(groupby)
         .reset_index(drop=True)
     )
 
     # Handle categories as strings to avoid ambiguous cat types
-    for col in points_df.loc[:,(points_df.dtypes == 'category').values]:
+    for col in points_df.loc[:, (points_df.dtypes == "category").values]:
         points_df[col] = points_df[col].astype(str)
 
     # Handle shape indexes as strings to avoid ambiguous types
-    for shape_name in adata.obs.columns[adata.obs.columns.str.endswith('_shape')]:
-        shape_prefix = '_'.join(shape_name.split('_')[:-1])
+    for shape_name in adata.obs.columns[adata.obs.columns.str.endswith("_shape")]:
+        shape_prefix = "_".join(shape_name.split("_")[:-1])
         if shape_prefix in points_df.columns:
             points_df[shape_prefix] = points_df[shape_prefix].astype(str)
 
     # Calculate features for a sample
     def process_sample(df):
         sample_output = {}
-        for f in features:
+        for f in feature_combos:
             sample_output.update(f.extract(df))
         return sample_output
 
     # Process all samples in a partition
     def process_partition(partition_df):
-        return partition_df.groupby(["cell", "gene"], observed=True).apply(
+        return partition_df.groupby(groupby, observed=True).apply(
             process_sample
         )
 
@@ -105,17 +137,17 @@ def analyze_samples(data, features, copy=False):
 
     # Partition so only 500 groups per groupby
     _, group_loc = np.unique(
-        points_df["cell"].astype(str) + "-" + points_df["gene"].astype(str),
+        points_df[groupby].agg('-'.join, axis=1),
         return_index=True,
     )
-    divisions = [group_loc[loc] for loc in range(0, len(group_loc), 500)]
+    divisions = [group_loc[loc] for loc in range(0, len(group_loc), chunksize)]
     divisions.append(len(points_df) - 1)
     ddf = ddf.repartition(divisions=divisions)
 
     # Run on a single sample to get output metadata
     meta_output = process_partition(points_df.head())
     meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
-    
+
     # Parallel process each partition
     with ProgressBar():
         output = ddf.map_partitions(process_partition, meta=meta.dtypes).compute()
@@ -127,16 +159,20 @@ def analyze_samples(data, features, copy=False):
     output = pd.DataFrame(output.tolist(), index=output.index).reset_index()
 
     # Save results to data layers
-    feature_names = output.columns[~output.columns.isin(["cell", "gene"])]
-    for feature_name in feature_names:
-        adata.layers[feature_name] = (
-            output.pivot(index="cell", columns="gene", values=feature_name)
-            .reindex(index=adata.obs_names, columns=adata.var_names)
-            .astype(float)
-        )
+    feature_names = output.columns[~output.columns.isin(groupby)]
+
+    if len(groupby) == 2:
+        for feature_name in feature_names:
+            adata.layers[feature_name] = (
+                output.pivot(index="cell", columns=groupby[1], values=feature_name)
+                .reindex(index=adata.obs_names, columns=adata.var_names)
+                .astype(float)
+            )
+    else:
+        adata.obsm["sp"] = output.set_index("cell").reindex(index=adata.obs_names).astype(float)
 
     pbar.update()
-    pbar.set_description('Done!')
+    pbar.set_description("Done!")
     pbar.close()
 
 
@@ -153,14 +189,18 @@ class SampleFeature(metaclass=ABCMeta):
     ----------
     cell_features : int
         Set of cell-level features needed for computing sample-level features.
-    cell_attributes : int
+    attributes : int
         Names (keys) used to store computed cell-level features.
     """
 
-    @abstractmethod
-    def __init__(self):
+    def __init__(self, shape_name):
         self.cell_features = set()
-        self.cell_attributes = set()
+        self.attributes = set()
+
+        if shape_name:
+            self.attributes.add(shape_name)
+            self.shape_name = shape_name
+            self.shape_prefix = "_".join(shape_name.split("_")[:-1])
 
     @abstractmethod
     def extract(self, df):
@@ -171,7 +211,6 @@ class SampleFeature(metaclass=ABCMeta):
         df : DataFrame
             Assumes each row is a molecule and that columns `x`, `y`, `cell`, and `gene` are present.
         """
-
         return df
 
 
@@ -186,7 +225,7 @@ class ShapeProximity(SampleFeature):
     ----------
     cell_features : int
         Set of cell-level features needed for computing sample-level features
-    cell_attributes : int
+    attributes : int
         Names (keys) used to store computed cell-level features
 
     Returns
@@ -196,19 +235,14 @@ class ShapeProximity(SampleFeature):
         `"{shape_prefix}_outer_proximity"`: proximity of points outside `shape_name`
     """
 
+    # Cell-level features needed for computing sample-level features
     def __init__(self, shape_name):
-        super().__init__()
-        self.cell_features.add("cell_radius")
-
-        attrs = [shape_name, "cell_radius"]
-        self.cell_attributes.update(attrs)
-
-        self.shape_name = shape_name
+        super().__init__(shape_name)
+        self.cell_features.add("radius")
+        self.attributes.add("cell_radius")
 
     def extract(self, df):
         df = super().extract(df)
-
-        shape_prefix = self.shape_name.split("_shape")[0]
 
         # Get shape polygon
         shape = df[self.shape_name].values[0]
@@ -217,10 +251,10 @@ class ShapeProximity(SampleFeature):
         points_geo = df["geometry"].values
 
         # Check for points within shape, assume all are intracellular
-        if shape_prefix == "cell":
+        if self.shape_prefix == "cell":
             inner = np.array([True] * len(df))
         else:
-            inner = df[shape_prefix] != "-1"
+            inner = df[self.shape_prefix] != "-1"
         outer = ~inner
 
         inner_dist = np.nan
@@ -244,8 +278,8 @@ class ShapeProximity(SampleFeature):
             outer_proximity = 0
 
         return {
-            f"{shape_prefix}_inner_proximity": inner_proximity,
-            f"{shape_prefix}_outer_proximity": outer_proximity,
+            f"{self.shape_prefix}_inner_proximity": inner_proximity,
+            f"{self.shape_prefix}_outer_proximity": outer_proximity,
         }
 
 
@@ -260,7 +294,7 @@ class ShapeAsymmetry(SampleFeature):
     ----------
     cell_features : int
         Set of cell-level features needed for computing sample-level features
-    cell_attributes : int
+    attributes : int
         Names (keys) used to store computed cell-level features
     shape_name : str
         Name of shape to use, must be column name in input DataFrame
@@ -271,20 +305,14 @@ class ShapeAsymmetry(SampleFeature):
         `"{shape_prefix}_inner_asymmetry"`: asymmetry of points inside `shape_name`
         `"{shape_prefix}_outer_asymmetry"`: asymmetry of points outside `shape_name`
     """
-
     def __init__(self, shape_name):
-        super().__init__()
-        self.cell_features.add("cell_radius")
+        super().__init__(shape_name)
+        self.cell_features.add("radius")
+        self.attributes.add("cell_radius")
 
-        attrs = [shape_name, "cell_radius"]
-        self.cell_attributes.update(attrs)
-
-        self.shape_name = shape_name
 
     def extract(self, df):
         df = super().extract(df)
-
-        shape_prefix = self.shape_name.split("_shape")[0]
 
         # Get shape polygon
         shape = df[self.shape_name].values[0]
@@ -293,10 +321,10 @@ class ShapeAsymmetry(SampleFeature):
         points_geo = df["geometry"].values
 
         # Check for points within shape, assume all are intracellular
-        if shape_prefix == "cell":
+        if self.shape_prefix == "cell":
             inner = np.array([True] * len(df))
         else:
-            inner = df[shape_prefix] != "-1"
+            inner = df[self.shape_prefix] != "-1"
         outer = ~inner
 
         inner_to_centroid = np.nan
@@ -320,8 +348,8 @@ class ShapeAsymmetry(SampleFeature):
             outer_asymmetry = 0
 
         return {
-            f"{shape_prefix}_inner_asymmetry": inner_asymmetry,
-            f"{shape_prefix}_outer_asymmetry": outer_asymmetry,
+            f"{self.shape_prefix}_inner_asymmetry": inner_asymmetry,
+            f"{self.shape_prefix}_outer_asymmetry": outer_asymmetry,
         }
 
 
@@ -334,7 +362,7 @@ class PointDispersion(SampleFeature):
     ----------
     cell_features : int
         Set of cell-level features needed for computing sample-level features
-    cell_attributes : int
+    attributes : int
         Names (keys) used to store computed cell-level features
 
     Returns
@@ -343,12 +371,11 @@ class PointDispersion(SampleFeature):
         `"point_dispersion"`: measure of point dispersion
     """
 
-    def __init__(self):
-        super().__init__()
-        self.cell_features.add("raster_cell")
-
-        attrs = ["cell_raster"]
-        self.cell_attributes.update(attrs)
+    # shape_name set to None to follow the same convention as other shape features
+    def __init__(self, shape_name=None):
+        super().__init__(shape_name)
+        self.cell_features.add("raster")
+        self.attributes.add("cell_raster")
 
     def extract(self, df):
         df = super().extract(df)
@@ -376,7 +403,7 @@ class ShapeDispersion(SampleFeature):
     ----------
     cell_features : int
         Set of cell-level features needed for computing sample-level features
-    cell_attributes : int
+    attributes : int
         Names (keys) used to store computed cell-level features
 
     Returns
@@ -386,13 +413,9 @@ class ShapeDispersion(SampleFeature):
     """
 
     def __init__(self, shape_name):
-        super().__init__()
-
-        self.cell_features.add("raster_cell")
-        attrs = [shape_name, "cell_raster"]
-        self.cell_attributes.update(attrs)
-
-        self.shape_name = shape_name
+        super().__init__(shape_name)
+        self.cell_features.add("raster")
+        self.attributes.add("cell_raster")
 
     def extract(self, df):
         df = super().extract(df)
@@ -410,9 +433,7 @@ class ShapeDispersion(SampleFeature):
         # Normalize by cell moment
         norm_moment = point_moment / cell_moment
 
-        shape_prefix = self.shape_name.split("_shape")[0]
-
-        return {f"{shape_prefix}_dispersion": norm_moment}
+        return {f"{self.shape_prefix}_dispersion": norm_moment}
 
 
 class RipleyStats(SampleFeature):
@@ -423,7 +444,7 @@ class RipleyStats(SampleFeature):
     ----------
     cell_features : int
         Set of cell-level features needed for computing sample-level features
-    cell_attributes : int
+    attributes : int
         Names (keys) used to store computed cell-level features
 
     Returns
@@ -437,11 +458,11 @@ class RipleyStats(SampleFeature):
 
     """
 
-    def __init__(self):
-        super().__init__()
-        self.cell_features.update(["cell_span", "cell_bounds", "cell_area"])
+    def __init__(self, shape_name=None):
+        super().__init__(shape_name)
+        self.cell_features.update(["span", "bounds", "area"])
 
-        self.cell_attributes.update(
+        self.attributes.update(
             [
                 "cell_span",
                 "cell_minx",
@@ -523,7 +544,7 @@ class ShapeEnrichment(SampleFeature):
     ----------
     cell_features : int
         Set of cell-level features needed for computing sample-level features
-    cell_attributes : int
+    attributes : int
         Names (keys) used to store computed cell-level features
     shape_name : str
         Name of shape to use, must be column name in input DataFrame
@@ -535,29 +556,22 @@ class ShapeEnrichment(SampleFeature):
     """
 
     def __init__(self, shape_name):
-        super().__init__()
-
-        attrs = [shape_name]
-        self.cell_attributes.update(attrs)
-
-        self.shape_name = shape_name
+        super().__init__(shape_name)
 
     def extract(self, df):
         df = super().extract(df)
-
-        shape_prefix = self.shape_name.split("_shape")[0]
 
         # Get points outside shape
         points_geo = df["geometry"]
 
         # Check for points within shape, assume all are intracellular
-        if shape_prefix == "cell":
+        if self.shape_prefix == "cell":
             enrichment = 1.0
         else:
-            inner_count = (df[shape_prefix] != "-1").sum()
+            inner_count = (df[self.shape_prefix] != "-1").sum()
             enrichment = inner_count / float(len(points_geo))
 
-        return {f"{shape_prefix}_enrichment": enrichment}
+        return {f"{self.shape_prefix}_enrichment": enrichment}
 
 
 def _second_moment(centroid, pts):
@@ -575,16 +589,11 @@ def _second_moment(centroid, pts):
     return second_moment
 
 
-sample_features = dict(
-    cell_proximity=ShapeProximity("cell_shape"),
-    nucleus_proximity=ShapeProximity("nucleus_shape"),
-    cell_asymmetry=ShapeAsymmetry("cell_shape"),
-    nucleus_asymmetry=ShapeAsymmetry("nucleus_shape"),
-    point_dispersion=PointDispersion(),
-    nucleus_dispersion=ShapeDispersion("nucleus_shape"),
-    ripley_stats=RipleyStats(),
-    nucleus_enrichment=ShapeEnrichment("nucleus_shape"),
-)
-"""Dict of sample feature names : function. Pass a list of feature name(s) to
-`bento.tl.analyze_samples()` to compute them.
-"""
+sample_feature_fns = dict(
+    proximity=ShapeProximity,
+    asymmetry=ShapeAsymmetry,
+    point_dispersion=PointDispersion,
+    shape_dispersion=ShapeDispersion,
+    ripley=RipleyStats,
+    shape_enrichment=ShapeEnrichment,
+    )
