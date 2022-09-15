@@ -37,15 +37,13 @@ xgboost = "1.4.0"
 emoji = "^1.7.0"
 tensorly = "^0.7.0"
 rasterio = "^1.3.0"
-ipywidgets = "^7.7.1"
-mpl-interactions = {extras = ["jupyter"], version = "^0.22.0"}
+ipywidgets = "^7.5.1"
+rich = {extras = ["jupyter"], version = "^12.5.1"}
 
 [tool.poetry.extras]
 torch = ["torch"]
 docs = ["Sphinx", "sphinx-autobuild", "sphinx-book-theme", "nbsphinx", "sphinx-gallery", "myst-parser"]
 
-[tool.poetry.dev-dependencies]
-ipykernel = "^6.15.1"
 [tool.setuptools]
 py_modules=[]
 

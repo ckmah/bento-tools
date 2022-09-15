@@ -1,65 +1,11 @@
 import numpy as np
 import pandas as pd
 from dask import dataframe as dd
-from dask.diagnostics import ProgressBar
+from tqdm.rich import tqdm
+from tqdm.dask import TqdmCallback
 from sklearn.neighbors import NearestNeighbors
 
 from ..preprocessing import get_points
-
-
-def count_neighbors(points_df, n_neighbors, agg=True):
-    """Build nearest neighbor index for points.
-
-    Parameters
-    ----------
-    points_df : pd.DataFrame
-        Points dataframe. Must have columns "x", "y", and "gene".
-    n_neighbors : int
-        Number of nearest neighbors to consider.
-    agg : bool
-        Whether to aggregate nearest neighbors at the gene-level. Default True.
-    Returns
-    -------
-    list or dict of dicts
-        If agg='point', returns a list of dicts, one for each point. Dict keys are gene names, values are counts.
-        If agg='gene', returns a DataFrame with columns "gene", "neighbor", and "count".
-    """
-    # Build knn index
-    neighbor_index = (
-        NearestNeighbors(n_neighbors=n_neighbors)
-        .fit(points_df[["x", "y"]].values)
-        .kneighbors(points_df[["x", "y"]].values, return_distance=False)
-    )
-    point_labels = points_df["gene"].values
-
-    # Get gene-level neighbor counts for each gene
-    if agg is True:
-        source_genes, source_indices = np.unique(point_labels, return_index=True)
-
-        gene_index = []
-
-        for g, gi in zip(source_genes, source_indices):
-            # First get all points for this gene
-            g_neighbors = np.unique(neighbor_index[gi].flatten())
-              # get unique neighbor points
-            g_neighbors = point_labels[g_neighbors]  # Get point gene names
-            neighbor_names, neighbor_counts = np.unique(
-                g_neighbors, return_counts=True
-            )  # aggregate neighbor gene counts
-
-            for neighbor, count in zip(neighbor_names, neighbor_counts):
-                gene_index.append([g, neighbor, count])
-
-        gene_index = pd.DataFrame(gene_index, columns=["gene", "neighbor", "count"])
-        return gene_index
-    # Get gene-level neighbor counts for each point
-    else:
-        neighborhood_shape = neighbor_index.shape
-        gene_labels = point_labels[neighbor_index.flatten()].reshape(neighborhood_shape)
-        point_index = []
-        for row in gene_labels[:, 1:]:
-            point_index.append(dict(zip(np.unique(row, return_counts=True))))
-        return point_index
 
 
 def coloc_quotient(data, n_neighbors=20, min_count=20, chunksize=64, copy=False):
@@ -72,7 +18,7 @@ def coloc_quotient(data, n_neighbors=20, min_count=20, chunksize=64, copy=False)
     n_neighbors : int
         Number of nearest neighbors to consider, default 25
     min_count : int
-        Minimum points needed to be eligible for analysis. default 20
+        Minimum number of points for a given gene in a cell to be considered, default 20
     chunksize : int
         Number of cells per processing chunk. Default 64.
     Returns
@@ -93,6 +39,9 @@ def coloc_quotient(data, n_neighbors=20, min_count=20, chunksize=64, copy=False)
         points.loc[points["cell"] == points["cell"].values[0]], n_neighbors, min_count=1
     )
     
+    if chunksize:
+        chunksize = min(chunksize, points['cell'].nunique())
+
     ddf = dd.from_pandas(points, npartitions=1)
 
     # Partition so {chunksize} cells per partition
@@ -106,7 +55,7 @@ def coloc_quotient(data, n_neighbors=20, min_count=20, chunksize=64, copy=False)
         divisions.append(len(points) - 1)
         ddf = ddf.repartition(divisions=divisions)
 
-    with ProgressBar():
+    with TqdmCallback(desc="", tqdm_class=tqdm):
         cell_metrics = (
             ddf.groupby("cell")
             .apply(
@@ -147,14 +96,17 @@ def _cell_clq(cell_points, n_neighbors, min_count):
     # Cleanup gene categories
     valid_points["gene"] = valid_points["gene"].cat.remove_unused_categories()
 
-    neighbor_counts = count_neighbors(valid_points, n_neighbors, agg=True)
+    neighbor_counts = _count_neighbors(valid_points, n_neighbors, agg=True)
 
-    clq_df = _clq(neighbor_counts, counts)
+    clq_df = _clq_statistic(neighbor_counts, counts)
 
     return clq_df
 
 
-def _clq(neighbor_counts, counts):
+
+
+
+def _clq_statistic(neighbor_counts, counts):
     """
     Compute the colocation quotient for each gene pair.
 
@@ -169,7 +121,7 @@ def _clq(neighbor_counts, counts):
     clq_df["clq"] = (clq_df["count"] / counts.loc[clq_df["gene"]].values) / (
         counts.loc[clq_df["neighbor"]].values / counts.sum()
     )
-    return clq_df.drop('count', axis=1)
+    return clq_df.drop("count", axis=1)
 
 
 def global_clq(neighbor_counts, counts):

@@ -8,19 +8,20 @@ import dask_geopandas
 import numpy as np
 import pandas as pd
 from dask.diagnostics import ProgressBar
-from tqdm.auto import tqdm
+from tqdm.rich import tqdm
+from tqdm.dask import TqdmCallback
 
 from .. import tools as tl
 from ..preprocessing import get_points
 
 
-def analyze_samples(
+def analyze_points(
     data,
     shape_names,
     feature_names,
-    groupby="gene",
+    groupby=None,
     progress=True,
-    chunksize=500,
+    chunksize=100,
     copy=False,
 ):
     """Calculate the set of specified `features` for every sample, defined as the set of
@@ -30,14 +31,14 @@ def analyze_samples(
     ----------
     data : AnnData
         Spatially formatted AnnData
-    shape_names : list of str
+    shape_names : str or list of str
         Names of the shapes to analyze.
-    feature_names : list of str
+    feature_names : str or list of str
         Names of the features to analyze.
-    groupby : str, optional
-        How to group points within each cell, by default "gene".
+    groupby : str or list of str, optional (default: None)
+        Key in `data.uns['points'] to groupby, by default None. Always treats each cell separately
     chunksize : int, optional
-        Size of partitions, passed to `dask`, by default 500.
+        Number of cells to process in each chunk, passed to `dask`, by default 100.
     copy : bool
         Return a copy of `data` instead of writing to data, by default False.
 
@@ -47,36 +48,37 @@ def analyze_samples(
         Returns `adata` if `copy=True`, otherwise adds fields to `data`:
         `.layers[`keys`]` if `groupby` == "gene"
             See the output of each :class:`SampleFeature` in `features` for keys added.
-        `.obsm[`sp`]` if `groupby` != "gene"
+        `.obsm[`point_features`]` if `groupby` != "gene"
             DataFrame with rows aligned to `adata.obs_names` and `features` as columns.
 
     """
     adata = data.copy() if copy else data
 
-    if groupby is None:
-        groupby = ["cell"]
-    elif groupby not in get_points(adata).columns:
-        raise ValueError(f"groupby {groupby} not in points")
-    else:
-        groupby = ["cell", groupby]
-
+    
     # Cast to list if not already
     if isinstance(shape_names, str):
         shape_names = [shape_names]
-    elif isinstance(shape_names, tuple):
-        shape_names = list(set(shape_names))
 
     # Cast to list if not already
     if isinstance(feature_names, str):
         feature_names = [feature_names]
-    elif isinstance(feature_names, tuple):
-        feature_names = list(set(feature_names))
 
+    # Make sure groupby is a list
+    if isinstance(groupby, str):
+        groupby = ["cell", groupby]
+    else:
+        groupby = ["cell"]
+
+    # Make sure all groupby keys are in point columns
+    for g in groupby:
+        if g not in get_points(adata).columns:
+            raise ValueError(f"Groupby key {g} not found in point columns.")
+    
     pbar = tqdm(desc="Cell features", total=3)
 
     # Generate feature x shape combinations
     feature_combos = [
-        sample_feature_fns[f](s) for f in feature_names for s in shape_names
+        point_features[f](s) for f in feature_names for s in shape_names
     ]
 
     # Compile dependency set of features and attributes
@@ -105,8 +107,6 @@ def analyze_samples(
         .set_index("cell")
         .join(data.obs[obs_attrs])
         .reset_index()
-        .sort_values(groupby)
-        .reset_index(drop=True)
     )
 
     # Handle categories as strings to avoid ambiguous cat types
@@ -128,30 +128,33 @@ def analyze_samples(
 
     # Process all samples in a partition
     def process_partition(partition_df):
-        return partition_df.groupby(groupby, observed=True).apply(
-            process_sample
-        )
+        # Groupby by cell and groupby keys and process each sample
+        return partition_df.groupby(groupby, observed=True).apply(process_sample)
 
     # Cast to dask dataframe
     ddf = dask_geopandas.from_geopandas(points_df, npartitions=1)
 
-    # Partition so only 500 groups per groupby
-    _, group_loc = np.unique(
-        points_df[groupby].agg('-'.join, axis=1),
+    # Create chunks with chunksize cells
+    groups, group_loc = np.unique(
+        points_df["cell"],
         return_index=True,
     )
-    divisions = [group_loc[loc] for loc in range(0, len(group_loc), chunksize)]
-    divisions.append(len(points_df) - 1)
-    ddf = ddf.repartition(divisions=divisions)
+    if len(groups) > chunksize:
+        divisions = [group_loc[loc] for loc in range(0, len(group_loc), chunksize)]
+        divisions.append(len(points_df) - 1)
+        ddf = ddf.repartition(divisions=divisions)
 
     # Run on a single sample to get output metadata
     meta_output = process_partition(points_df.head())
     meta = pd.DataFrame(meta_output.tolist(), index=meta_output.index)
 
     # Parallel process each partition
-    with ProgressBar():
+    if progress:
+        with TqdmCallback():
+            output = ddf.map_partitions(process_partition, meta=meta.dtypes).compute()
+    else:
         output = ddf.map_partitions(process_partition, meta=meta.dtypes).compute()
-
+        
     pbar.update()
     pbar.set_description("Saving to AnnData")
 
@@ -161,29 +164,26 @@ def analyze_samples(
     # Save results to data layers
     feature_names = output.columns[~output.columns.isin(groupby)]
 
-    if len(groupby) == 2:
+    if groupby == ["cell", "gene"]:
         for feature_name in feature_names:
             adata.layers[feature_name] = (
-                output.pivot(index="cell", columns=groupby[1], values=feature_name)
+                output.pivot(index="cell", columns="gene", values=feature_name)
                 .reindex(index=adata.obs_names, columns=adata.var_names)
                 .astype(float)
             )
     else:
-        adata.obsm["sp"] = output.set_index("cell").reindex(index=adata.obs_names).astype(float)
+        adata.obsm["point_features"] = output.set_index("cell").reindex(index=adata.obs_names).astype(float)
 
     pbar.update()
     pbar.set_description("Done!")
     pbar.close()
 
+    return adata if copy else None
 
-class SampleFeature(metaclass=ABCMeta):
+
+class PointFeature(metaclass=ABCMeta):
     """Abstract class for calculating sample features. A sample is defined as the set of
     molecules corresponding to a single cell-gene pair.
-
-    Parameters
-    ----------
-    metaclass : _type_, optional
-        _description_, by default ABCMeta
 
     Attributes
     ----------
@@ -214,12 +214,9 @@ class SampleFeature(metaclass=ABCMeta):
         return df
 
 
-class ShapeProximity(SampleFeature):
-    """For a set of points, computes the proximity of points within `shape_name`
-    as well as the proximity of points outside `shape_name`. Proximity is defined as
-    the average absolute distance to the specified `shape_name` normalized by cell
-    radius. Values closer to 0 denote farther from the `shape_name`, values closer
-    to 1 denote closer to the `shape_name`.
+class ShapeDistance(PointFeature):
+    """For a set of points, computes the distance of points within `shape_name`
+    as well as the distance of points outside `shape_name`. 
 
     Attributes
     ----------
@@ -231,15 +228,13 @@ class ShapeProximity(SampleFeature):
     Returns
     -------
     dict
-        `"{shape_prefix}_inner_proximity"`: proximity of points inside `shape_name`
-        `"{shape_prefix}_outer_proximity"`: proximity of points outside `shape_name`
+        `"{shape_prefix}_inner_distance"`: distance of points inside `shape_name`
+        `"{shape_prefix}_outer_distance"`: distance of points outside `shape_name`
     """
 
     # Cell-level features needed for computing sample-level features
     def __init__(self, shape_name):
         super().__init__(shape_name)
-        self.cell_features.add("radius")
-        self.attributes.add("cell_radius")
 
     def extract(self, df):
         df = super().extract(df)
@@ -257,38 +252,27 @@ class ShapeProximity(SampleFeature):
             inner = df[self.shape_prefix] != "-1"
         outer = ~inner
 
-        inner_dist = np.nan
-        outer_dist = np.nan
-
         if inner.sum() > 0:
             inner_dist = points_geo[inner].distance(shape.boundary).mean()
+        else:
+            inner_dist = np.nan
 
         if outer.sum() > 0:
             outer_dist = points_geo[outer].distance(shape.boundary).mean()
-
-        # Scale from [0, 1], where 1 is close and 0 is far.
-        cell_radius = df["cell_radius"].values[0]
-        inner_proximity = (cell_radius - inner_dist) / cell_radius
-        outer_proximity = (cell_radius - outer_dist) / cell_radius
-
-        if np.isnan(inner_proximity):
-            inner_proximity = 0
-
-        if np.isnan(outer_proximity):
-            outer_proximity = 0
+        else:
+            outer_dist = np.nan
 
         return {
-            f"{self.shape_prefix}_inner_proximity": inner_proximity,
-            f"{self.shape_prefix}_outer_proximity": outer_proximity,
+            f"{self.shape_prefix}_inner_distance": inner_dist,
+            f"{self.shape_prefix}_outer_distance": outer_dist,
         }
 
 
-class ShapeAsymmetry(SampleFeature):
+class ShapeAsymmetry(PointFeature):
     """For a set of points, computes the asymmetry of points within `shape_name`
     as well as the asymmetry of points outside `shape_name`. Asymmetry is defined as
     the offset between the centroid of points to the centroid of the specified
-    `shape_name`, normalized by cell radius. Values closer to 0 denote symmetry,
-    values closer to 1 denote asymmetry.
+    `shape_name`.
 
     Attributes
     ----------
@@ -307,8 +291,6 @@ class ShapeAsymmetry(SampleFeature):
     """
     def __init__(self, shape_name):
         super().__init__(shape_name)
-        self.cell_features.add("radius")
-        self.attributes.add("cell_radius")
 
 
     def extract(self, df):
@@ -327,36 +309,25 @@ class ShapeAsymmetry(SampleFeature):
             inner = df[self.shape_prefix] != "-1"
         outer = ~inner
 
-        inner_to_centroid = np.nan
-        outer_to_centroid = np.nan
-
         if inner.sum() > 0:
             inner_to_centroid = points_geo[inner].distance(shape.centroid).mean()
+        else:
+            inner_to_centroid = np.nan
 
         if outer.sum() > 0:
             outer_to_centroid = points_geo[outer].distance(shape.centroid).mean()
-
-        # Values [0, 1], where 1 is asymmetrical and 0 is symmetrical.
-        cell_radius = df["cell_radius"].values[0]
-        inner_asymmetry = inner_to_centroid / cell_radius
-        outer_asymmetry = outer_to_centroid / cell_radius
-
-        if np.isnan(inner_asymmetry):
-            inner_asymmetry = 0
-
-        if np.isnan(outer_asymmetry):
-            outer_asymmetry = 0
+        else:
+            outer_to_centroid = np.nan
 
         return {
-            f"{self.shape_prefix}_inner_asymmetry": inner_asymmetry,
-            f"{self.shape_prefix}_outer_asymmetry": outer_asymmetry,
+            f"{self.shape_prefix}_inner_asymmetry": inner_to_centroid,
+            f"{self.shape_prefix}_outer_asymmetry": outer_to_centroid,
         }
 
 
-class PointDispersion(SampleFeature):
+class PointDispersion(PointFeature):
     """For a set of points, calculates the second moment of all points in a cell
-    relative to the centroid of the total RNA signal. This value is normalized by
-    the second moment of a uniform distribution within the cell boundary.
+    relative to the centroid of the total RNA signal.
 
     Attributes
     ----------
@@ -374,30 +345,22 @@ class PointDispersion(SampleFeature):
     # shape_name set to None to follow the same convention as other shape features
     def __init__(self, shape_name=None):
         super().__init__(shape_name)
-        self.cell_features.add("raster")
-        self.attributes.add("cell_raster")
 
     def extract(self, df):
         df = super().extract(df)
 
         # Get precomputed cell centroid and raster
         pt_centroid = df[["x", "y"]].values.mean(axis=0).reshape(1, 2)
-        cell_raster = df["cell_raster"].values[0]
 
         # calculate points moment
         point_moment = _second_moment(pt_centroid, df[["x", "y"]].values)
-        cell_moment = _second_moment(pt_centroid, cell_raster)
 
-        # Normalize by cell moment
-        norm_moment = point_moment / cell_moment
-
-        return {"point_dispersion": norm_moment}
+        return {"point_dispersion": point_moment}
 
 
-class ShapeDispersion(SampleFeature):
+class ShapeDispersion(PointFeature):
     """For a set of points, calculates the second moment of all points in a cell relative to the
-    centroid of `shape_name`. This value is normalized by the second moment of a uniform
-    distribution within the cell boundary.
+    centroid of `shape_name`.
 
     Attributes
     ----------
@@ -414,8 +377,6 @@ class ShapeDispersion(SampleFeature):
 
     def __init__(self, shape_name):
         super().__init__(shape_name)
-        self.cell_features.add("raster")
-        self.attributes.add("cell_raster")
 
     def extract(self, df):
         df = super().extract(df)
@@ -423,20 +384,13 @@ class ShapeDispersion(SampleFeature):
         # Get shape polygon
         shape = df[self.shape_name].values[0]
 
-        # Get precomputed shape centroid and raster
-        cell_raster = df["cell_raster"].values[0]
-
         # calculate points moment
         point_moment = _second_moment(shape.centroid, df[["x", "y"]].values)
-        cell_moment = _second_moment(shape.centroid, cell_raster)
 
-        # Normalize by cell moment
-        norm_moment = point_moment / cell_moment
-
-        return {f"{self.shape_prefix}_dispersion": norm_moment}
+        return {f"{self.shape_prefix}_dispersion": point_moment}
 
 
-class RipleyStats(SampleFeature):
+class RipleyStats(PointFeature):
     """For a set of points, calculates properties of the L-function. The L-function
     measures spatial clustering of a point pattern over the area of the cell.
 
@@ -536,7 +490,7 @@ class RipleyStats(SampleFeature):
         return result
 
 
-class ShapeEnrichment(SampleFeature):
+class ShapeEnrichment(PointFeature):
     """For a set of points, calculates the fraction of points within `shape_name`
     out of all points in the cell.
 
@@ -589,11 +543,27 @@ def _second_moment(centroid, pts):
     return second_moment
 
 
-sample_feature_fns = dict(
-    proximity=ShapeProximity,
+point_features = dict(
+    distance=ShapeDistance,
     asymmetry=ShapeAsymmetry,
     point_dispersion=PointDispersion,
     shape_dispersion=ShapeDispersion,
     ripley=RipleyStats,
     shape_enrichment=ShapeEnrichment,
     )
+
+
+def register_point_feature(name, func):
+    """Register a new point feature function.
+
+    Parameters
+    ----------
+    name : str
+        Name of feature function
+    func : class
+        Function that takes a DataFrame of points and return a dictionary of features.
+    """
+
+    new_feature = PointFeature()
+
+    point_features[name] = func
