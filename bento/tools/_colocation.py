@@ -1,11 +1,11 @@
 import numpy as np
 import pandas as pd
 from dask import dataframe as dd
-from tqdm.rich import tqdm
+from tqdm.auto import tqdm
 from tqdm.dask import TqdmCallback
-from sklearn.neighbors import NearestNeighbors
 
 from ..preprocessing import get_points
+from ._embeddings import _count_neighbors
 
 
 def coloc_quotient(data, n_neighbors=20, min_count=20, chunksize=64, copy=False):
@@ -36,7 +36,7 @@ def coloc_quotient(data, n_neighbors=20, min_count=20, chunksize=64, copy=False)
     )
 
     meta = _cell_clq(
-        points.loc[points["cell"] == points["cell"].values[0]], n_neighbors, min_count=1
+        points.loc[points["cell"] == points["cell"].values[0]], adata.n_vars, n_neighbors, min_count=1
     )
     
     if chunksize:
@@ -59,7 +59,7 @@ def coloc_quotient(data, n_neighbors=20, min_count=20, chunksize=64, copy=False)
         cell_metrics = (
             ddf.groupby("cell")
             .apply(
-                lambda df: _cell_clq(df, n_neighbors, min_count),
+                lambda df: _cell_clq(df, adata.n_vars, n_neighbors, min_count),
                 meta=meta,
             )
             .compute()
@@ -77,7 +77,7 @@ def coloc_quotient(data, n_neighbors=20, min_count=20, chunksize=64, copy=False)
     return adata if copy else None
 
 
-def _cell_clq(cell_points, n_neighbors, min_count):
+def _cell_clq(cell_points, n_genes, n_neighbors, min_count):
 
     # Count number of points for each gene
     counts = cell_points["gene"].value_counts()
@@ -96,13 +96,11 @@ def _cell_clq(cell_points, n_neighbors, min_count):
     # Cleanup gene categories
     valid_points["gene"] = valid_points["gene"].cat.remove_unused_categories()
 
-    neighbor_counts = _count_neighbors(valid_points, n_neighbors, agg=True)
+    neighbor_counts = _count_neighbors(valid_points, n_genes, n_neighbors, agg=True)
 
     clq_df = _clq_statistic(neighbor_counts, counts)
 
     return clq_df
-
-
 
 
 
@@ -152,6 +150,10 @@ def local_clq(adata, gene_a, gene_b):
         Local colocation quotient for each point in gene_b
     """
     # Get points for cell
+    points = get_points(adata, asgeo=False)
+
+    # Get counts for each gene
+    counts = points["gene"].value_counts()
 
     return
     # nai->b / nb (N - 1)

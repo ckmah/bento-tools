@@ -19,8 +19,8 @@ PATTERN_FEATURES = [
     "l_min_gradient",
     "l_monotony",
     "l_half_radius",
-    "point_dispersion",
-    "nucleus_dispersion",
+    "point_dispersion_norm",
+    "nucleus_dispersion_norm",
 ]
 
 # Colors correspond to order of PATTERN_NAMES: cyan, blue, gray, orange, red

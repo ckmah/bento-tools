@@ -414,7 +414,7 @@ def analyze_shapes(data, shape_names, feature_names, progress=True, copy=False):
 
     # Set up progress bar
     if progress:
-        combos = tqdm(combos, desc="Analyzing shapes")
+        combos = tqdm(combos)
 
     # Analyze each feature x shape combination
     for feature, shape in combos:

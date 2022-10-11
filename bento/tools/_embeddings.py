@@ -1,53 +1,90 @@
 import numpy as np
 import pandas as pd
+from dask import dataframe as dd
+from tqdm.dask import TqdmCallback
 from tqdm.auto import tqdm
+from scipy.sparse import csr_matrix, vstack
+
 from sklearn.neighbors import NearestNeighbors
 
 from ..preprocessing import get_points
 
 
-def local_point_embedding(
+def nn_embed(
     data,
     n_neighbors=None,
     radius=None,
+    agg=False,
     relative=False,
     copy=False,
 ):
+    """
+    Generate local gene neighborhood embeddings within each cell. Specify either n_neighbors or radius, not both.
+
+    Parameters
+    ----------
+    data : AnnData
+         Anndata formatted spatial data.
+    n_neighbors : int
+        Number of nearest neighbors to consider per point.
+    radius : float
+        Radius to consider for nearest neighbors.
+    agg : bool
+        Whether to aggregate nearest neighbors counts at the gene-level or for each point. Default False.
+    relative : bool, optional
+        Whether to normalize counts by number of neighbors. Default False.
+    copy : bool, optional
+        Return a copy of `data` instead of writing to data, by default False.
+
+
+    """
     adata = data.copy() if copy else data
 
-    points = (
-        get_points(adata).sort_values("cell")[["cell", "gene", "x", "y"]].reset_index()
-    )
+    adata.uns["points"] = get_points(adata).sort_values("cell")
+
+    points = get_points(adata)[["cell", "gene", "x", "y"]]
+
+    # Extract gene names and codes
+    gene_names = points["gene"].cat.categories.tolist()
+    gene_codes = points["gene"].cat.codes
+    n_genes = len(gene_names)
+
+    # Factorize for more efficient computation
+    points["gene"] = gene_codes.values
+
+    ddf = dd.from_pandas(points, npartitions=1)
 
     # Process points of each cell separately
-    cells, start_loc = np.unique(
+    cells, group_loc = np.unique(
         points["cell"],
         return_index=True,
     )
-    end_loc = np.append(start_loc[1:], points.shape[0])
+
+    end_loc = np.append(group_loc[1:], points.shape[0])
 
     cell_metrics = []
-    for start, end in tqdm(zip(start_loc, end_loc), total=len(cells)):
+    for start, end in tqdm(zip(group_loc, end_loc), total=len(cells)):
         cell_points = points.iloc[start:end]
         cell_metrics.append(
             _count_neighbors(
                 cell_points,
+                n_genes,
                 n_neighbors=n_neighbors,
                 radius=radius,
                 relative=relative,
-                agg=False,
+                agg=agg,
             )
         )
+    cell_metrics = vstack(cell_metrics)
 
-    cell_metrics = pd.concat(cell_metrics, axis=0)
-
-    adata.uns["local_point_embed"] = cell_metrics
+    adata.uns["nn_genes"] = gene_names
+    adata.uns["nn_embed"] = cell_metrics
 
     return adata if copy else None
 
 
 def _count_neighbors(
-    points_df, n_neighbors=None, radius=None, relative=False, agg=True
+    points_df, n_genes, n_neighbors=None, radius=None, relative=False, agg=True
 ):
     """Build nearest neighbor index for points.
 
@@ -71,12 +108,6 @@ def _count_neighbors(
     if not n_neighbors and not radius:
         raise ValueError("Neither n_neighbors or radius is specified, one required.")
 
-    if points_df.shape[0] < 1:
-        return pd.DataFrame(
-            [0] * points_df["gene"].nunique(),
-            columns=points_df["gene"].cat.categories,
-        )
-
     # Build knn index
     if n_neighbors:
         # Can't find more neighbors than total points
@@ -93,12 +124,10 @@ def _count_neighbors(
             .radius_neighbors(points_df[["x", "y"]], return_distance=False)
         )
 
-    gene_names = points_df["gene"].cat.categories.values
-    gene_codes = points_df["gene"].cat.codes.values
-
     # Get gene-level neighbor counts for each gene
-    if agg is True:
-        source_genes, source_indices = np.unique(gene_codes, return_index=True)
+    if agg:
+        gene_code = points_df["gene"].values
+        source_genes, source_indices = np.unique(gene_code, return_index=True)
 
         gene_index = []
 
@@ -106,7 +135,7 @@ def _count_neighbors(
             # First get all points for this gene
             g_neighbors = np.unique(neighbor_index[gi].flatten())
             # get unique neighbor points
-            g_neighbors = gene_codes[g_neighbors]  # Get point gene names
+            g_neighbors = gene_code[g_neighbors]  # Get point gene names
             neighbor_names, neighbor_counts = np.unique(
                 g_neighbors, return_counts=True
             )  # aggregate neighbor gene counts
@@ -115,38 +144,32 @@ def _count_neighbors(
                 gene_index.append([g, neighbor, count])
 
         gene_index = pd.DataFrame(gene_index, columns=["gene", "neighbor", "count"])
-        gene_index["gene"] = points_df["gene"].cat.categories[gene_index["gene"]]
+
         return gene_index
 
     # Get gene-level neighbor counts for each point
     else:
-        neighborhood_sizes = [len(n) for n in neighbor_index]
-        flat_index = np.concatenate(neighbor_index).ravel()
+        gene_code = points_df["gene"].values
+        neighborhood_sizes = np.array([len(n) for n in neighbor_index])
+        flat_nindex = np.concatenate(neighbor_index)
 
         # Count number of times each gene is a neighbor of a given point
-        point_neighbor_counts = []
-        label_query = gene_codes[flat_index]
+        flat_ncodes = gene_code[flat_nindex]
+        point_ncounts = []
         cur_pos = 0
-
+        # np.bincount only works on ints but much faster than np.unique
+        # https://stackoverflow.com/questions/66037744/2d-vectorization-of-unique-values-per-row-with-condition
         for s in neighborhood_sizes:
-            cur_neighbors = label_query[cur_pos : cur_pos + s]
-            cur_labels, cur_counts = np.unique(cur_neighbors, return_counts=True)
-            cur_point_counts = dict(zip(cur_labels, cur_counts))
-            point_neighbor_counts.append(cur_point_counts)
+            cur_codes = flat_ncodes[cur_pos : cur_pos + s]
+            point_ncounts.append(np.bincount(cur_codes, minlength=n_genes))
             cur_pos = cur_pos + s
 
-        # [Points x gene]
-        point_neighbor_counts = pd.DataFrame(
-            point_neighbor_counts,
-            index=points_df["index"],
-        )
-        point_neighbor_counts.columns = gene_names[
-            point_neighbor_counts.columns
-        ].tolist()
+        point_ncounts = np.array(point_ncounts)
 
+        # Normalize by # neighbors
         if relative:
-            point_neighbor_counts = point_neighbor_counts.div(
-                point_neighbor_counts.sum(axis=1), axis=0
-            )
+            point_ncounts = point_ncounts / neighborhood_sizes.reshape(-1, 1)
 
-        return point_neighbor_counts
+        point_ncounts = csr_matrix(point_ncounts)
+
+        return point_ncounts

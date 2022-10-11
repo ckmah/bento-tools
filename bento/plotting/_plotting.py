@@ -17,7 +17,7 @@ from .._utils import PATTERN_COLORS, PATTERN_NAMES
 from ..preprocessing import get_points
 from ..tools._lp import lp_stats
 from ._utils import savefig
-
+from ._colors import red_dark, blue_dark
 
 @savefig
 def qc_metrics(adata, fname=None):
@@ -55,7 +55,7 @@ def qc_metrics(adata, fname=None):
         sns.kdeplot(adata.obs["cell_density"], ax=axs[1][1], **kde_params)
 
         dual_colors = sns.light_palette(color, n_colors=2, reverse=True)
-        no_nucleus_count = (adata.obs["nucleus_shape"] is None).sum()
+        no_nucleus_count = (adata.obs["nucleus_shape"] == None).sum()
         pie_values = [adata.n_obs - no_nucleus_count, no_nucleus_count]
         pie_percents = np.array(pie_values) / adata.n_obs * 100
         pie_labels = [
@@ -110,20 +110,9 @@ def lp_dist(data, percentage=False, scale=1, fname=None):
     fname : str, optional
         Save the figure to specified filename, by default None
     """
-    sample_labels = []
-    for p in PATTERN_NAMES:
-        p_df = data.to_df(p).reset_index().melt(id_vars="cell")
-        p_df = p_df[~p_df["value"].isna()]
-        p_df = p_df.set_index(["cell", "gene"])
-        sample_labels.append(p_df)
-
-    sample_labels = pd.concat(sample_labels, axis=1) == 1
+    sample_labels = data.uns['lp']
     sample_labels = sample_labels == 1
-    sample_labels.columns = PATTERN_NAMES
-
-    # Drop unlabeled samples
-    # sample_labels = sample_labels[sample_labels.sum(axis=1) > 0]
-
+    
     # Sort by degree, then pattern name
     sample_labels["degree"] = -sample_labels[PATTERN_NAMES].sum(axis=1)
     sample_labels = (
@@ -147,7 +136,7 @@ def lp_dist(data, percentage=False, scale=1, fname=None):
             upset.style_subsets(present=p, max_degree=1, facecolor=color)
 
     upset.plot()
-    plt.suptitle(f"Localization Patterns\n{data.n_obs} cells, {data.n_vars} genes")
+    plt.suptitle(f"Localization Patterns\n{sample_labels.shape[0]} samples")
 
 
 @savefig
@@ -181,6 +170,7 @@ def lp_gene_dist(data, fname=None):
 @savefig
 def lp_genes(
     data,
+    groupby="gene",
     kind="scatter",
     hue="Pattern",
     sizes=(2, 100),
@@ -191,7 +181,7 @@ def lp_genes(
     **kwargs,
 ):
     """
-    Plot the pattern distribution of each gene in a RadViz plot. RadViz projects
+    Plot the pattern distribution of each group in a RadViz plot. RadViz projects
     an N-dimensional data set into a 2D space where the influence of each dimension
     can be interpreted as a balance between the influence of all dimensions.
 
@@ -199,6 +189,8 @@ def lp_genes(
     ----------
     data : AnnData
         Spatial formatted AnnData
+    groupby : str
+        Grouping variable, default "gene"
     kind : str
         'Scatter' for scatter plot, 'hex' for hex plot, default "scatter"
     hue : str
@@ -212,7 +204,7 @@ def lp_genes(
     **kwargs
         Options to pass to matplotlib plotting method.
     """
-    lp_stats(data)
+    lp_stats(data, groupby)
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
 
@@ -222,22 +214,17 @@ def lp_genes(
         fig = plt.figure(figsize=figsize)
 
     # Use Plot the "circular" axis and labels, hide points
-    # TODO move "pattern" computation to lp_stats
-    col_names = [f"{p}_fraction" for p in PATTERN_NAMES]
-    gene_frac = data.var[col_names]
-    gene_frac.columns = PATTERN_NAMES
+    gene_frac = data.uns['lp_stats'][PATTERN_NAMES] / data.n_obs
+
     gene_frac["Pattern"] = gene_frac.idxmax(axis=1)
     gene_frac_copy = gene_frac.copy()
     gene_frac_copy["Pattern"] = ""
-
-    if hue and hue != "Pattern":
-        gene_frac = gene_frac.join(data.var[hue])
 
     if not ax:
         ax = radviz(gene_frac_copy, "Pattern", s=0)
     else:
         radviz(gene_frac_copy, "Pattern", s=0, ax=ax)
-    del gene_frac_copy
+            
     ax.get_legend().remove()
     circle = plt.Circle((0, 0), radius=1, color="black", fill=False)
     ax.add_patch(circle)
@@ -347,7 +334,7 @@ def cellplot(
     hue=None,
     kind="hist",
     col="batch",
-    legend=True,
+    legend_out=True,
     palette=None,
     hue_order=None,
     hue_norm=None,
@@ -430,7 +417,7 @@ def cellplot(
         points,
         col=col,
         hue=hue,
-        legend_out=legend,
+        legend_out=legend_out,
         palette=palette,
         hue_order=hue_order,
         col_wrap=col_wrap,
@@ -440,17 +427,17 @@ def cellplot(
         margin_titles=False,
         **kws,
     )
-
+    
     if kind == "scatter":
-        scatter_kws = dict(linewidth=0, s=5)
+        scatter_kws = dict(linewidths=0, s=5, legend=False)
         scatter_kws.update(**kwargs)
         g.map_dataframe(sns.scatterplot, x="x", y="y", **scatter_kws)
     elif kind == "hist":
-        hist_kws = dict(cmap="viridis", binwidth=15)
+        hist_kws = dict(cmap=blue_dark, binwidth=15)
         hist_kws.update(**kwargs)
         g.map_dataframe(sns.histplot, x="x", y="y", **hist_kws)
     elif kind == "hex":
-        hex_kws = dict(cmap="viridis", mincnt=1, linewidth=0, gridsize=100)
+        hex_kws = dict(cmap=blue_dark, mincnt=1, linewidth=0, gridsize=100)
         hex_kws.update(**kwargs)
         g.map_dataframe(plt.hexbin, x="x", y="y", **hex_kws)
 
@@ -477,12 +464,6 @@ def cellplot(
 
         else:
             shape_subplot(shapes, shape_names, lw, dx, units, ax=g.ax)
-
-    if legend:
-        g.add_legend()
-        for lh in g._legend.legendHandles:
-            lh.set_alpha(1)
-            lh._sizes = [40]
 
     g.set_titles(template="")
 
