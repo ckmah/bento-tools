@@ -12,12 +12,14 @@ from matplotlib_scalebar.scalebar import ScaleBar
 from pandas.plotting import radviz
 from tqdm.auto import tqdm
 from upsetplot import UpSet, from_indicators
+from adjustText import adjust_text
 
 from .._utils import PATTERN_COLORS, PATTERN_NAMES
 from ..preprocessing import get_points
 from ..tools._lp import lp_stats
 from ._utils import savefig
 from ._colors import red_dark, blue_dark
+
 
 @savefig
 def qc_metrics(adata, fname=None):
@@ -110,9 +112,9 @@ def lp_dist(data, percentage=False, scale=1, fname=None):
     fname : str, optional
         Save the figure to specified filename, by default None
     """
-    sample_labels = data.uns['lp']
+    sample_labels = data.uns["lp"]
     sample_labels = sample_labels == 1
-    
+
     # Sort by degree, then pattern name
     sample_labels["degree"] = -sample_labels[PATTERN_NAMES].sum(axis=1)
     sample_labels = (
@@ -171,11 +173,11 @@ def lp_gene_dist(data, fname=None):
 def lp_genes(
     data,
     groupby="gene",
+    highlight_groups=None,
     kind="scatter",
     hue="Pattern",
     sizes=(2, 100),
     gridsize=20,
-    random_state=4,
     ax=None,
     fname=None,
     **kwargs,
@@ -208,79 +210,110 @@ def lp_genes(
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
 
-    # RADVIZ plot
-    if not ax:
-        figsize = (6, 6)
-        fig = plt.figure(figsize=figsize)
+    with plt.rc_context({'font.size': 14}):
+    
+        # RADVIZ plot
+        if not ax:
+            figsize = (6, 6)
+            fig = plt.figure(figsize=figsize)
 
-    # Use Plot the "circular" axis and labels, hide points
-    gene_frac = data.uns['lp_stats'][PATTERN_NAMES] / data.n_obs
+        # Use Plot the "circular" axis and labels, hide points
+        gene_frac = data.uns["lp_stats"][PATTERN_NAMES] / data.n_obs
 
-    gene_frac["Pattern"] = gene_frac.idxmax(axis=1)
-    gene_frac_copy = gene_frac.copy()
-    gene_frac_copy["Pattern"] = ""
+        gene_frac["Pattern"] = gene_frac.idxmax(axis=1)
+        gene_frac_copy = gene_frac.copy()
+        gene_frac_copy["Pattern"] = ""
 
-    if not ax:
-        ax = radviz(gene_frac_copy, "Pattern", s=0)
-    else:
-        radviz(gene_frac_copy, "Pattern", s=0, ax=ax)
-            
-    ax.get_legend().remove()
-    circle = plt.Circle((0, 0), radius=1, color="black", fill=False)
-    ax.add_patch(circle)
+        if not ax:
+            ax = radviz(gene_frac_copy, "Pattern", s=0)
+        else:
+            radviz(gene_frac_copy, "Pattern", s=0, ax=ax)
 
-    # Hide 2D axes
-    ax.axis(False)
+        ax.get_legend().remove()
+        circle = plt.Circle((0, 0), radius=1, color="black", fill=False)
+        ax.add_patch(circle)
 
-    # Get points
-    pts = []
-    for c in ax.collections:
-        pts.extend(c.get_offsets().data)
+        # Hide 2D axes
+        ax.axis(False)
 
-    pts = np.array(pts).reshape(-1, 2)
-    xy = pd.DataFrame(pts, index=gene_frac.index)
-    xy["Pattern"] = gene_frac["Pattern"]
+        # Get points
+        pts = []
+        for c in ax.collections:
+            pts.extend(c.get_offsets().data)
 
-    # Plot points as scatter or hex
-    if kind == "scatter":
-
-        del ax.collections[0]
+        pts = np.array(pts).reshape(-1, 2)
+        xy = pd.DataFrame(pts, index=gene_frac.index)
+        xy["Pattern"] = gene_frac["Pattern"]
 
         # Scale point size by max
         xy["Fraction of cells"] = gene_frac.iloc[:, :5].max(axis=1)
+        size_norm=(0,1)
 
-        # Plot points
-        sns.scatterplot(
-            data=xy.sample(frac=1, random_state=random_state),
-            x=0,
-            y=1,
-            size="Fraction of cells",
-            hue=hue,
-            sizes=sizes,
-            linewidth=0,
-            palette=palette,
-            ax=ax,
-            **kwargs,
-        )
-        plt.legend(bbox_to_anchor=(1.05, 0.5), loc="center left", frameon=False)
+        # Plot points as scatter or hex
+        if kind == "scatter":
 
-    elif kind == "hex":
-        # Hexbin
-        xy.plot.hexbin(
-            x=0,
-            y=1,
-            gridsize=gridsize,
-            extent=(-1, 1, -1, 1),
-            cmap=sns.light_palette("lightseagreen", as_cmap=True),
-            mincnt=1,
-            colorbar=False,
-            ax=ax,
-            **kwargs,
-        )
-        # [left, bottom, width, height]
-        plt.colorbar(
-            ax.collections[-1], cax=fig.add_axes([1, 0.4, 0.05, 0.3]), label="genes"
-        )
+            del ax.collections[0]
+
+            # Plot points
+            sns.scatterplot(
+                data=xy,
+                x=0,
+                y=1,
+                size="Fraction of cells",
+                hue=hue,
+                sizes=sizes,
+                size_norm=size_norm,
+                linewidth=0,
+                palette=palette,
+                ax=ax,
+                **kwargs,
+            )
+            plt.legend(
+                bbox_to_anchor=(1.05, 0.5), loc="center left", frameon=False
+            )
+
+        elif kind == "hex":
+            # Hexbin
+            xy.plot.hexbin(
+                x=0,
+                y=1,
+                gridsize=gridsize,
+                extent=(-1, 1, -1, 1),
+                cmap=sns.light_palette("gray", as_cmap=True),
+                mincnt=1,
+                colorbar=False,
+                ax=ax,
+                **kwargs,
+            )
+            # [left, bottom, width, height]
+            plt.colorbar(
+                ax.collections[-1],
+                cax=fig.add_axes([1, 0.4, 0.05, 0.3]),
+                label="genes",
+            )
+
+        if isinstance(highlight_groups, list):
+            sns.scatterplot(
+                data=xy.loc[highlight_groups],
+                x=0,
+                y=1,
+                hue=hue,
+                size="Fraction of cells",
+                sizes=sizes,
+                size_norm=size_norm,
+                linewidth=2,
+                palette=palette,
+                edgecolor="gray",
+                legend=False,
+                ax=ax,
+            )
+            # plt.legend(
+            #     bbox_to_anchor=(1.05, 0.5), loc="center left", frameon=False
+            # )
+            texts = [
+                ax.text(row[[0]]+.03, row[[1]]+0.03, group)
+                for group, row in xy.loc[highlight_groups].iterrows()
+            ]
 
 
 @savefig
@@ -334,7 +367,7 @@ def cellplot(
     hue=None,
     kind="hist",
     col="batch",
-    legend_out=True,
+    legend=True,
     palette=None,
     hue_order=None,
     hue_norm=None,
@@ -354,16 +387,22 @@ def cellplot(
 
     # Add all shape_names if None
     if shape_names is None:
-        shape_names = adata.obs.columns[adata.obs.columns.str.endswith("_shape")]
+        shape_names = adata.obs.columns[
+            adata.obs.columns.str.endswith("_shape")
+        ]
 
     # Convert shape_names to list
-    shape_names = [shape_names] if isinstance(shape_names, str) else shape_names
+    shape_names = (
+        [shape_names] if isinstance(shape_names, str) else shape_names
+    )
 
     # Get obs attributes starting with shapes
     obs_attrs = list(shape_names)
 
     # Include col if exists
-    if col and (col == "cell" or (col in adata.obs.columns or col in points.columns)):
+    if col and (
+        col == "cell" or (col in adata.obs.columns or col in points.columns)
+    ):
         obs_attrs.append(col)
 
         if col not in points.columns:
@@ -417,7 +456,7 @@ def cellplot(
         points,
         col=col,
         hue=hue,
-        legend_out=legend_out,
+        legend_out=True,
         palette=palette,
         hue_order=hue_order,
         col_wrap=col_wrap,
@@ -427,7 +466,7 @@ def cellplot(
         margin_titles=False,
         **kws,
     )
-    
+
     if kind == "scatter":
         scatter_kws = dict(linewidths=0, s=5, legend=False)
         scatter_kws.update(**kwargs)
@@ -451,8 +490,12 @@ def cellplot(
                 s = shapes.get_group(k)
                 # Determine fixed radius of each subplot
                 cell_bounds = s.bounds
-                cell_maxw = cell_bounds["maxx"].max() - cell_bounds["minx"].min()
-                cell_maxh = cell_bounds["maxy"].max() - cell_bounds["miny"].min()
+                cell_maxw = (
+                    cell_bounds["maxx"].max() - cell_bounds["minx"].min()
+                )
+                cell_maxh = (
+                    cell_bounds["maxy"].max() - cell_bounds["miny"].min()
+                )
                 ax_radius = 1.1 * (max(cell_maxw, cell_maxh) / 2)
                 ax_radii.append(ax_radius)
 
@@ -460,11 +503,18 @@ def cellplot(
 
             for k, ax in tqdm(g.axes_dict.items()):
                 s = shapes.get_group(k)
-                shape_subplot(s, shape_names, lw, dx, units, ax_radius=ax_radius, ax=ax)
+                shape_subplot(
+                    s, shape_names, lw, dx, units, ax_radius=ax_radius, ax=ax
+                )
 
         else:
             shape_subplot(shapes, shape_names, lw, dx, units, ax=g.ax)
 
+    # Remove legend if disabled (and present)
+    if not legend and g.legend:
+        g.legend.remove()
+            
+    # Remove titles
     g.set_titles(template="")
 
     # box_aspect for Axes, aspect for data
@@ -502,7 +552,12 @@ def shape_subplot(data, shape_names, lw, dx, units, ax, ax_radius=None):
 
     # Create scale bar
     scalebar = ScaleBar(
-        dx, units, location="lower right", color="white", box_alpha=0, scale_loc="top"
+        dx,
+        units,
+        location="lower right",
+        color="white",
+        box_alpha=0,
+        scale_loc="top",
     )
     ax.add_artist(scalebar)
 
