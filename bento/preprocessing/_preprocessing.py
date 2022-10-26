@@ -2,6 +2,19 @@ import geopandas as gpd
 
 from .._utils import track
 
+# from ..tools import analyze_shapes
+# import scanpy as sc
+
+# TODO resolve circular import
+# def qc_metrics(data, copy=False):
+
+#     adata = data.copy() if copy else data
+
+#     sc.pp.calculate_qc_metrics(adata, percent_top=None, inplace=True)
+#     analyze_shapes(adata, "cell_shape", ["area", "density"])
+
+#     return adata if copy else None
+
 
 def get_points(data, asgeo=False):
     """Get points DataFrame.

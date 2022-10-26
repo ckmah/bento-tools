@@ -1,21 +1,26 @@
+import decoupler as dc
 import numpy as np
 import pandas as pd
-from dask import dataframe as dd
-from tqdm.dask import TqdmCallback
-from tqdm.auto import tqdm
+import pkg_resources
+import scanpy as sc
+from anndata import AnnData
+from matplotlib.colors import to_hex
 from scipy.sparse import csr_matrix, vstack
-
 from sklearn.neighbors import NearestNeighbors
+from sklearn.preprocessing import quantile_transform
+from tqdm.auto import tqdm
 
+from .._utils import track
 from ..preprocessing import get_points
 
 
-def nn_embed(
+@track
+def pt_embed(
     data,
     n_neighbors=None,
     radius=None,
-    agg=False,
-    relative=False,
+    normalization=None,
+    reduce=None,
     copy=False,
 ):
     """
@@ -24,19 +29,17 @@ def nn_embed(
     Parameters
     ----------
     data : AnnData
-         Anndata formatted spatial data.
+        Spatial formatted AnnData object.
     n_neighbors : int
         Number of nearest neighbors to consider per point.
     radius : float
         Radius to consider for nearest neighbors.
-    agg : bool
-        Whether to aggregate nearest neighbors counts at the gene-level or for each point. Default False.
-    relative : bool, optional
-        Whether to normalize counts by number of neighbors. Default False.
+    normalization : str, optional
+        Whether to normalize embeddings. Options include "log" and "total". Default False.
+    reduce : str
+        Dimensionality reduction method to use. Options include "pca" and "umap". Default None.
     copy : bool, optional
         Return a copy of `data` instead of writing to data, by default False.
-
-
     """
     adata = data.copy() if copy else data
 
@@ -52,8 +55,6 @@ def nn_embed(
     # Factorize for more efficient computation
     points["gene"] = gene_codes.values
 
-    ddf = dd.from_pandas(points, npartitions=1)
-
     # Process points of each cell separately
     cells, group_loc = np.unique(
         points["cell"],
@@ -62,30 +63,58 @@ def nn_embed(
 
     end_loc = np.append(group_loc[1:], points.shape[0])
 
+    # Embed each cell neighborhood independently
     cell_metrics = []
     for start, end in tqdm(zip(group_loc, end_loc), total=len(cells)):
         cell_points = points.iloc[start:end]
         cell_metrics.append(
             _count_neighbors(
-                cell_points,
-                n_genes,
-                n_neighbors=n_neighbors,
-                radius=radius,
-                relative=relative,
-                agg=agg,
+                cell_points, n_genes, n_neighbors=n_neighbors, radius=radius, agg=False
             )
         )
     cell_metrics = vstack(cell_metrics)
 
-    adata.uns["nn_genes"] = gene_names
-    adata.uns["nn_embed"] = cell_metrics
+    # Use scanpy for post-processing
+    ndata = AnnData(cell_metrics)
+
+    if normalization:
+        print("Normalizing embedding...")
+        sc.pp.highly_variable_genes(adata, min_mean=0.0125, max_mean=3, min_disp=0.5)
+
+    if normalization == "log":
+        sc.pp.log1p(ndata, base=2)
+    elif normalization == "total":
+        sc.pp.normalize_total(adata, target_sum=1)
+
+    if reduce:
+        print("Reducing dimensionality...")
+
+        if reduce == "pca":
+            sc.pp.pca(ndata)
+        elif reduce == "umap":
+            sc.pp.neighbors(ndata, n_neighbors=30)
+            sc.tl.umap(ndata, n_components=3)
+
+        colors_rgb = quantile_transform(
+            ndata.obsm[f"X_{reduce}"][:, :3]
+        )  # TODO: move this to plotting
+        colors = [to_hex(c) for c in colors_rgb]
+
+    # Save embeddings
+    adata.uns["pt_genes"] = gene_names
+    adata.uns["pt_embed"] = cell_metrics
+
+    if reduce:
+        adata.uns[f"pt_{reduce}"] = ndata.obsm[f"X_{reduce}"]
+        adata.uns["points"][
+            ["red_channel", "green_channel", "blue_channel"]
+        ] = colors_rgb
+        adata.uns["points"]["embed_color"] = colors
 
     return adata if copy else None
 
 
-def _count_neighbors(
-    points_df, n_genes, n_neighbors=None, radius=None, relative=False, agg=True
-):
+def _count_neighbors(points_df, n_genes, n_neighbors=None, radius=None, agg=True):
     """Build nearest neighbor index for points.
 
     Parameters
@@ -165,11 +194,125 @@ def _count_neighbors(
             cur_pos = cur_pos + s
 
         point_ncounts = np.array(point_ncounts)
-
-        # Normalize by # neighbors
-        if relative:
-            point_ncounts = point_ncounts / neighborhood_sizes.reshape(-1, 1)
-
         point_ncounts = csr_matrix(point_ncounts)
 
         return point_ncounts
+
+
+def fazal2019_loc_scores(data, batch_size=10000, min_n=5, copy=False):
+    """Compute enrichment scores from subcellular compartment gene sets from Fazal et al. 2019 (APEX-seq). Wrapper for `bento.tl.spatial_enrichment`.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object.
+    batch_size : int
+        Number of points to process in each batch. Default 10000.
+    min_n : int
+        Minimum number of points required to compute enrichment score. Default 5.
+
+    Returns
+    -------
+    DataFrame
+        Enrichment scores for each gene set.
+    """
+    adata = data.copy() if copy else data
+
+    stream = pkg_resources.resource_stream(__name__, "gene_sets/fazal2019.csv")
+    gene_sets = pd.read_csv(stream)
+
+    # Compute enrichment scores
+    fe(adata, gene_sets, batch_size=batch_size, min_n=min_n)
+
+    return adata if copy else None
+
+
+@track
+def fe(
+    data,
+    net,
+    source="source",
+    target="target",
+    weight="weight",
+    batch_size=10000,
+    min_n=5,
+    copy=False,
+):
+    """
+    Perform functional enrichment on point embeddings.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object.
+    net : DataFrame
+        DataFrame with columns "source", "target", and "weight". See decoupler API for more details.
+
+    """
+
+    # 1. embed points with bento.tl.pt_embed without normalization
+    # 2. Run decoupler on embedding given net (see dc.run_* methods)
+    # 3. Save results to data.uns['pt_enrichment']
+    #     - columns are various pathways in net
+
+    adata = data.copy() if copy else data
+
+    # Make sure embedding is run first
+    if "pt_embed" not in data.uns:
+        print("Run bento.tl.pt_embed first.")
+        return
+
+    mat = adata.uns["pt_embed"]  # sparse matrix in csr format
+    samples = adata.uns["points"].index
+    features = adata.uns["pt_genes"]
+
+    enrichment = dc.run_wsum(
+        mat=[mat, samples, features],
+        net=net,
+        source=source,
+        target=target,
+        weight=weight,
+        batch_size=batch_size,
+        min_n=5,
+        verbose=True,
+    )
+
+    scores = enrichment[1]
+
+    adata.uns["fe"] = scores
+    # adata.uns["fe_genes"] = common_genes
+    _fe_stats(adata, net, source=source, target=target)
+
+    return adata if copy else None
+
+
+def _fe_stats(data, net, source="source", target="target", copy=False):
+
+    adata = data.copy() if copy else data
+
+    # rows = cells, columns = pathways, values = count of genes in pathway
+    expr_binary = adata.to_df() >= 5
+    # {cell : present gene list}
+    expr_genes = expr_binary.apply(lambda row: adata.var_names[row], axis=1)
+
+    # Count number of genes present in each pathway
+    net_ngenes = net.groupby(source).size()
+
+    sources = []
+    # common_genes = {}  # list of [cells: gene set overlaps]
+    common_ngenes = []  # list of [cells: overlap sizes]
+    for source, group in net.groupby(source):
+        sources.append(source)
+        common = expr_genes.apply(
+            lambda genes: set(genes).intersection(group[target])
+        )
+        # common_genes[sources] = np.array(common)
+        common_ngenes.append(common.apply(len))
+
+    fe_stats = pd.concat(common_ngenes, axis=1)
+    fe_stats.columns = sources
+
+    adata.uns["fe_stats"] = fe_stats
+    adata.uns["fe_size"] = net_ngenes
+
+    return adata if copy else None

@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "bento-tools"
 packages = [{ include = "bento" }]
-include = ["bento/datasets/datasets.csv", "bento/models/**/*"]
+include = ["bento/datasets/datasets.csv", "bento/models/**/*", "bento/tools/gene_sets/*"]
 version = "1.0.1"
 description = "A toolkit for subcellular analysis of spatial transcriptomics data"
 authors = ["Clarence Mah <ckmah@ucsd.edu>"]
@@ -39,6 +39,7 @@ tensorly = "^0.7.0"
 rasterio = "^1.3.0"
 ipywidgets = "^7.5.1"
 rich = {extras = ["jupyter"], version = "^12.5.1"}
+decoupler = "^1.2.0"
 
 [tool.poetry.extras]
 torch = ["torch"]

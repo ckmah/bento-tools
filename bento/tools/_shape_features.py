@@ -5,9 +5,7 @@ from scipy.spatial import distance, distance_matrix
 from shapely.geometry import Point
 from tqdm.auto import tqdm
 
-from ._utils import get_shape
-
-from .._utils import track
+from .._utils import get_shape, track
 from ..preprocessing import get_points, set_points
 
 

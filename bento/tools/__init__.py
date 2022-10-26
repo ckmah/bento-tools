@@ -12,5 +12,4 @@ from ._point_features import (
 )
 from ._shapes import inner_edge, outer_edge
 from ._signatures import to_tensor, signatures, lp_signatures
-from ._utils import get_shape
-from ._embeddings import nn_embed
+from ._embeddings import pt_embed, fe, fazal2019_loc_scores

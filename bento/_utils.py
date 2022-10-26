@@ -1,8 +1,9 @@
 import inspect
 from functools import wraps
 
+import geopandas as gpd
 from anndata import AnnData
-
+from shapely import wkt
 import seaborn as sns
 
 PATTERN_NAMES = ["cell_edge", "cytoplasmic", "none", "nuclear", "nuclear_edge"]
@@ -24,11 +25,12 @@ PATTERN_FEATURES = [
 ]
 
 # Colors correspond to order of PATTERN_NAMES: cyan, blue, gray, orange, red
-PATTERN_COLORS = ['#17becf', '#1f77b4', '#7f7f7f', '#ff7f0e', '#d62728']
+PATTERN_COLORS = ["#17becf", "#1f77b4", "#7f7f7f", "#ff7f0e", "#d62728"]
 
 # Colors to represent each dimension (features, cells, genes); Set2 palette n_colors=3
-DIM_COLORS = ['#66c2a5', '#fc8d62', '#8da0cb']
+DIM_COLORS = ["#66c2a5", "#fc8d62", "#8da0cb"]
 # ['#AD6A6C', '#f5b841', '#0cf2c9']
+
 
 def get_default_args(func):
     signature = inspect.signature(func)
@@ -42,7 +44,7 @@ def get_default_args(func):
 def track(func):
     """
     Track changes in AnnData object after applying function.
-    
+
     1. First remembers a shallow list of AnnData attributes by listing keys from obs, var, etc.
     2. Perform arbitrary task
     3. List attributes again, perform simple diff between list of old and new attributes
@@ -137,6 +139,23 @@ def list_attributes(adata):
     return found_attr
 
 
+def get_shape(adata, shape_name):
+    """Get a GeoSeries of Polygon objects from an AnnData object."""
+    if shape_name not in adata.obs.columns:
+        raise ValueError(f"Shape {shape_name} not found in adata.obs.")
+
+    if adata.obs[shape_name].astype(str).str.startswith("POLYGON").any():
+        return gpd.GeoSeries(
+            adata.obs[shape_name]
+            .astype(str)
+            .apply(lambda val: wkt.loads(val) if val != "None" else None)
+        )
+
+    else:
+        return gpd.GeoSeries(adata.obs[shape_name])
+
+
+
 def pheno_to_color(pheno, palette):
     """
     Maps list of categorical labels to a color palette.
@@ -160,12 +179,8 @@ def pheno_to_color(pheno, palette):
         List of converted colors for each sample, formatted as RGBA tuples.
 
     """
-    import seaborn as sns
-
-    if type(palette) is str:
+    if isinstance(palette, str):
         palette = sns.color_palette(palette)
-    else:
-        palette = palette
 
     values = list(set(pheno))
     values.sort()
