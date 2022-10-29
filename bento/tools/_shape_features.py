@@ -64,7 +64,7 @@ def _aspect_ratio(data, shape_name):
             Ratio of long / short axis for each polygon in `obs['{shape_name}']`
     """
 
-    ar = get_shape(data, shape_name).apply(lambda poly: _poly_aspect_ratio(poly))
+    ar = get_shape(data, shape_name).apply(_poly_aspect_ratio)
     shape_prefix = shape_name.split("_")[0]
     data.obs[f"{shape_prefix}_aspect_ratio"] = ar
 
@@ -99,8 +99,6 @@ def _bounds(data, shape_name):
     data.obs[f"{shape_prefix}_miny"] = bounds["miny"]
     data.obs[f"{shape_prefix}_maxx"] = bounds["maxx"]
     data.obs[f"{shape_prefix}_maxy"] = bounds["maxy"]
-
-
 
 
 # TODO move to point_features
@@ -203,15 +201,15 @@ def _second_moment(data, shape_name):
     data.obs[f"{shape_prefix}_moment"] = moments
 
 
-def _raster_polygon(poly):
+def _raster_polygon(poly, step=1):
     """
     Generate a grid of points contained within the poly. The points lie on
     a 2D grid, with vertices spaced 1 unit apart.
     """
     minx, miny, maxx, maxy = poly.bounds
     x, y = np.meshgrid(
-        np.arange(minx, maxx, step=float(1)),
-        np.arange(miny, maxy, step=float(1)),
+        np.arange(minx, maxx + step, step=step),
+        np.arange(miny, maxy + step, step=step),
     )
     x = x.flatten()
     y = y.flatten()

@@ -4,48 +4,44 @@ import pandas as pd
 import pkg_resources
 import scanpy as sc
 from anndata import AnnData
-from matplotlib.colors import to_hex
 from scipy.sparse import csr_matrix, vstack
 from sklearn.neighbors import NearestNeighbors
-from sklearn.preprocessing import quantile_transform
 from tqdm.auto import tqdm
 
 from .._utils import track
 from ..preprocessing import get_points
+from ..tools._shape_features import analyze_shapes
 
 
 @track
-def pt_embed(
+def flow(
     data,
+    mode="point",
     n_neighbors=None,
     radius=None,
     normalization=None,
-    reduce=None,
+    reduce=True,
     copy=False,
 ):
     """
-    Generate local gene neighborhood embeddings within each cell. Specify either n_neighbors or radius, not both.
+    RNAFlow: Method for embedding spatial data with local gene expression neighborhoods.
 
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData object.
-    n_neighbors : int
-        Number of nearest neighbors to consider per point.
-    radius : float
-        Radius to consider for nearest neighbors.
-    normalization : str, optional
-        Whether to normalize embeddings. Options include "log" and "total". Default False.
-    reduce : str
-        Dimensionality reduction method to use. Options include "pca" and "umap". Default None.
-    copy : bool, optional
-        Return a copy of `data` instead of writing to data, by default False.
     """
     adata = data.copy() if copy else data
 
     adata.uns["points"] = get_points(adata).sort_values("cell")
 
     points = get_points(adata)[["cell", "gene", "x", "y"]]
+
+    if mode == "point":
+        query_points = zip(points["cell"].unique(), [None] * points["cell"].nunique())
+    elif mode == "cell":
+        analyze_shapes(adata, "cell_shape", "raster")
+        rasters = adata.obs["cell_raster"]
+        query_points = dict()
+        # Flatten to long dataframe
+        for c, pt_vals in rasters.items():
+            query_points[c] = pd.DataFrame(pt_vals, columns=["x", "y"])
 
     # Extract gene names and codes
     gene_names = points["gene"].cat.categories.tolist()
@@ -64,63 +60,69 @@ def pt_embed(
     end_loc = np.append(group_loc[1:], points.shape[0])
 
     # Embed each cell neighborhood independently
-    cell_metrics = []
-    for start, end in tqdm(zip(group_loc, end_loc), total=len(cells)):
+    cell_flows = []
+    for cell, start, end in tqdm(zip(cells, group_loc, end_loc), total=len(cells)):
         cell_points = points.iloc[start:end]
-        cell_metrics.append(
-            _count_neighbors(
-                cell_points, n_genes, n_neighbors=n_neighbors, radius=radius, agg=False
-            )
+        fl = _count_neighbors(
+            cell_points,
+            n_genes,
+            query_points[cell],
+            radius=radius,
+            n_neighbors=n_neighbors,
+            agg=False,
         )
-    cell_metrics = vstack(cell_metrics)
+        cell_flows.append(fl)
+
+    cell_flows = vstack(cell_flows)
 
     # Use scanpy for post-processing
-    ndata = AnnData(cell_metrics)
+    flow_data = AnnData(cell_flows)
 
     if normalization:
         print("Normalizing embedding...")
-        sc.pp.highly_variable_genes(adata, min_mean=0.0125, max_mean=3, min_disp=0.5)
 
     if normalization == "log":
-        sc.pp.log1p(ndata, base=2)
+        sc.pp.log1p(flow_data, base=2)
     elif normalization == "total":
         sc.pp.normalize_total(adata, target_sum=1)
 
+    # TODO: subsample fit transform to reduce memory usage
     if reduce:
         print("Reducing dimensionality...")
+        sc.pp.pca(flow_data)
 
-        if reduce == "pca":
-            sc.pp.pca(ndata)
-        elif reduce == "umap":
-            sc.pp.neighbors(ndata, n_neighbors=30)
-            sc.tl.umap(ndata, n_components=3)
-
-        colors_rgb = quantile_transform(
-            ndata.obsm[f"X_{reduce}"][:, :3]
-        )  # TODO: move this to plotting
-        colors = [to_hex(c) for c in colors_rgb]
-
-    # Save embeddings
-    adata.uns["pt_genes"] = gene_names
-    adata.uns["pt_embed"] = cell_metrics
+    # Save flow embeddings
+    adata.uns["flow_genes"] = gene_names
+    adata.uns["flow"] = cell_flows
 
     if reduce:
-        adata.uns[f"pt_{reduce}"] = ndata.obsm[f"X_{reduce}"]
-        adata.uns["points"][
-            ["red_channel", "green_channel", "blue_channel"]
-        ] = colors_rgb
-        adata.uns["points"]["embed_color"] = colors
+        adata.uns[f"flow_pca"] = flow_data.obsm["X_pca"]
+
+    # Save downsampled flow point coordinates
+    if mode == "cell":
+        flow_points = []
+        # Format as long dataframe
+        for c, pt_vals in query_points.items():
+            pt_vals["cell"] = c
+            flow_points.append(pt_vals)
+        adata.uns["flow_points"] = pd.concat(flow_points)
 
     return adata if copy else None
 
 
-def _count_neighbors(points_df, n_genes, n_neighbors=None, radius=None, agg=True):
+def _count_neighbors(
+    points, n_genes, query_points=None, n_neighbors=None, radius=None, agg=True
+):
     """Build nearest neighbor index for points.
 
     Parameters
     ----------
-    points_df : pd.DataFrame
+    points : pd.DataFrame
         Points dataframe. Must have columns "x", "y", and "gene".
+    n_genes : int
+        Number of genes in overall dataset. Used to initialize unique gene counts.
+    query_points : pd.DataFrame, optional
+        Points to query. If None, use points_df. Default None.
     n_neighbors : int
         Number of nearest neighbors to consider per gene.
     agg : bool
@@ -137,25 +139,31 @@ def _count_neighbors(points_df, n_genes, n_neighbors=None, radius=None, agg=True
     if not n_neighbors and not radius:
         raise ValueError("Neither n_neighbors or radius is specified, one required.")
 
+    if query_points is None:
+        query_points = points
+
     # Build knn index
     if n_neighbors:
         # Can't find more neighbors than total points
-        n_neighbors = min(n_neighbors, points_df.shape[0])
-        neighbor_index = (
-            NearestNeighbors(n_neighbors=n_neighbors, n_jobs=-1)
-            .fit(points_df[["x", "y"]])
-            .kneighbors(points_df[["x", "y"]], return_distance=False)
-        )
+        try:
+            n_neighbors = min(n_neighbors, points.shape[0])
+            neighbor_index = (
+                NearestNeighbors(n_neighbors=n_neighbors, n_jobs=-1)
+                .fit(points[["x", "y"]])
+                .kneighbors(query_points[["x", "y"]], return_distance=False)
+            )
+        except ValueError as e:
+            raise ValueError(e)
     elif radius:
         neighbor_index = (
             NearestNeighbors(radius=radius, n_jobs=-1)
-            .fit(points_df[["x", "y"]])
-            .radius_neighbors(points_df[["x", "y"]], return_distance=False)
+            .fit(points[["x", "y"]])
+            .radius_neighbors(query_points[["x", "y"]], return_distance=False)
         )
 
     # Get gene-level neighbor counts for each gene
     if agg:
-        gene_code = points_df["gene"].values
+        gene_code = points["gene"].values
         source_genes, source_indices = np.unique(gene_code, return_index=True)
 
         gene_index = []
@@ -177,30 +185,30 @@ def _count_neighbors(points_df, n_genes, n_neighbors=None, radius=None, agg=True
         return gene_index
 
     # Get gene-level neighbor counts for each point
-    else:
-        gene_code = points_df["gene"].values
-        neighborhood_sizes = np.array([len(n) for n in neighbor_index])
-        flat_nindex = np.concatenate(neighbor_index)
+    gene_code = points["gene"].values
+    neighborhood_sizes = np.array([len(n) for n in neighbor_index])
+    flat_nindex = np.concatenate(neighbor_index)
 
-        # Count number of times each gene is a neighbor of a given point
-        flat_ncodes = gene_code[flat_nindex]
-        point_ncounts = []
-        cur_pos = 0
-        # np.bincount only works on ints but much faster than np.unique
-        # https://stackoverflow.com/questions/66037744/2d-vectorization-of-unique-values-per-row-with-condition
-        for s in neighborhood_sizes:
-            cur_codes = flat_ncodes[cur_pos : cur_pos + s]
-            point_ncounts.append(np.bincount(cur_codes, minlength=n_genes))
-            cur_pos = cur_pos + s
+    # Count number of times each gene is a neighbor of a given point
+    flat_ncodes = gene_code[flat_nindex]
+    point_ncounts = []
+    cur_pos = 0
+    # np.bincount only works on ints but much faster than np.unique
+    # https://stackoverflow.com/questions/66037744/2d-vectorization-of-unique-values-per-row-with-condition
+    for s in neighborhood_sizes:
+        cur_codes = flat_ncodes[cur_pos : cur_pos + s]
+        point_ncounts.append(np.bincount(cur_codes, minlength=n_genes))
+        cur_pos = cur_pos + s
 
-        point_ncounts = np.array(point_ncounts)
-        point_ncounts = csr_matrix(point_ncounts)
+    point_ncounts = np.array(point_ncounts)
+    point_ncounts = csr_matrix(point_ncounts)
 
-        return point_ncounts
+    return point_ncounts
 
 
 def fazal2019_loc_scores(data, batch_size=10000, min_n=5, copy=False):
-    """Compute enrichment scores from subcellular compartment gene sets from Fazal et al. 2019 (APEX-seq). Wrapper for `bento.tl.spatial_enrichment`.
+    """Compute enrichment scores from subcellular compartment gene sets from Fazal et al. 2019 (APEX-seq).
+    Wrapper for `bento.tl.spatial_enrichment`.
 
     Parameters
     ----------
@@ -303,9 +311,7 @@ def _fe_stats(data, net, source="source", target="target", copy=False):
     common_ngenes = []  # list of [cells: overlap sizes]
     for source, group in net.groupby(source):
         sources.append(source)
-        common = expr_genes.apply(
-            lambda genes: set(genes).intersection(group[target])
-        )
+        common = expr_genes.apply(lambda genes: set(genes).intersection(group[target]))
         # common_genes[sources] = np.array(common)
         common_ngenes.append(common.apply(len))
 
