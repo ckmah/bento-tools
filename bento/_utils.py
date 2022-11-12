@@ -155,7 +155,6 @@ def get_shape(adata, shape_name):
         return gpd.GeoSeries(adata.obs[shape_name])
 
 
-
 def pheno_to_color(pheno, palette):
     """
     Maps list of categorical labels to a color palette.

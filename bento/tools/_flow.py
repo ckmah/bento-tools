@@ -4,13 +4,13 @@ import pandas as pd
 import pkg_resources
 import scanpy as sc
 from anndata import AnnData
-from scipy.sparse import csr_matrix, vstack
-from sklearn.neighbors import NearestNeighbors
+from scipy.sparse import vstack
 from tqdm.auto import tqdm
 
 from .._utils import track
 from ..preprocessing import get_points
-from ..tools._shape_features import analyze_shapes
+from ._neighborhoods import _count_neighbors
+from ._shape_features import analyze_shapes
 
 
 @track
@@ -21,11 +21,32 @@ def flow(
     radius=None,
     normalization=None,
     reduce=True,
+    render_resolution=0.01,
     copy=False,
 ):
     """
     RNAFlow: Method for embedding spatial data with local gene expression neighborhoods.
+    Must specify one of `n_neighbors` or `radius`.
 
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object.
+    mode : str
+        Mode to compute embeddings. "Point" will embed every point while "cell" performs
+        embedding for set of points on a uniform grid across the entire cell. Default "point".
+    n_neighbors : int
+        Number of neighbors to use for local neighborhood.
+    radius : float
+        Radius to use for local neighborhood.
+    normalization : str, None
+        Normalization to use for local neighborhood. Options include `log`, `total` and None. Default None.
+    reduce : bool
+        Whether to use PCA for dimensional reduction of embedding. Default True.
+    render_resolution : float
+        Resolution to use for rendering embedding (for mode=cell). Default 0.01.
+    copy : bool
+        Whether to return a copy the AnnData object. Default False.
     """
     adata = data.copy() if copy else data
 
@@ -34,12 +55,23 @@ def flow(
     points = get_points(adata)[["cell", "gene", "x", "y"]]
 
     if mode == "point":
-        query_points = zip(points["cell"].unique(), [None] * points["cell"].nunique())
+        query_points = dict(
+            zip(points["cell"].unique(), [None] * points["cell"].nunique())
+        )
     elif mode == "cell":
-        analyze_shapes(adata, "cell_shape", "raster")
+        print(f"Embedding at {100*render_resolution}% resolution...")
+        step = 1 / render_resolution
+        # Get grid rasters
+        analyze_shapes(
+            adata,
+            "cell_shape",
+            "raster",
+            feature_kws=dict(raster={"step": step}, progress=False),
+        )
         rasters = adata.obs["cell_raster"]
+
+        # Cell to raster mapping for easy lookup
         query_points = dict()
-        # Flatten to long dataframe
         for c, pt_vals in rasters.items():
             query_points[c] = pd.DataFrame(pt_vals, columns=["x", "y"])
 
@@ -56,7 +88,6 @@ def flow(
         points["cell"],
         return_index=True,
     )
-
     end_loc = np.append(group_loc[1:], points.shape[0])
 
     # Embed each cell neighborhood independently
@@ -84,7 +115,7 @@ def flow(
     if normalization == "log":
         sc.pp.log1p(flow_data, base=2)
     elif normalization == "total":
-        sc.pp.normalize_total(adata, target_sum=1)
+        sc.pp.normalize_total(flow_data, target_sum=1)
 
     # TODO: subsample fit transform to reduce memory usage
     if reduce:
@@ -107,103 +138,9 @@ def flow(
             flow_points.append(pt_vals)
         adata.uns["flow_points"] = pd.concat(flow_points)
 
+    print("Done.")
+
     return adata if copy else None
-
-
-def _count_neighbors(
-    points, n_genes, query_points=None, n_neighbors=None, radius=None, agg=True
-):
-    """Build nearest neighbor index for points.
-
-    Parameters
-    ----------
-    points : pd.DataFrame
-        Points dataframe. Must have columns "x", "y", and "gene".
-    n_genes : int
-        Number of genes in overall dataset. Used to initialize unique gene counts.
-    query_points : pd.DataFrame, optional
-        Points to query. If None, use points_df. Default None.
-    n_neighbors : int
-        Number of nearest neighbors to consider per gene.
-    agg : bool
-        Whether to aggregate nearest neighbors counts at the gene-level or for each point. Default True.
-    Returns
-    -------
-    DataFrame or dict of dicts
-        If agg is True, returns a DataFrame with columns "gene", "neighbor", and "count".
-        If agg is False, returns a list of dicts, one for each point. Dict keys are gene names, values are counts.
-
-    """
-    if n_neighbors and radius:
-        raise ValueError("Only specify one of n_neighbors or radius, not both.")
-    if not n_neighbors and not radius:
-        raise ValueError("Neither n_neighbors or radius is specified, one required.")
-
-    if query_points is None:
-        query_points = points
-
-    # Build knn index
-    if n_neighbors:
-        # Can't find more neighbors than total points
-        try:
-            n_neighbors = min(n_neighbors, points.shape[0])
-            neighbor_index = (
-                NearestNeighbors(n_neighbors=n_neighbors, n_jobs=-1)
-                .fit(points[["x", "y"]])
-                .kneighbors(query_points[["x", "y"]], return_distance=False)
-            )
-        except ValueError as e:
-            raise ValueError(e)
-    elif radius:
-        neighbor_index = (
-            NearestNeighbors(radius=radius, n_jobs=-1)
-            .fit(points[["x", "y"]])
-            .radius_neighbors(query_points[["x", "y"]], return_distance=False)
-        )
-
-    # Get gene-level neighbor counts for each gene
-    if agg:
-        gene_code = points["gene"].values
-        source_genes, source_indices = np.unique(gene_code, return_index=True)
-
-        gene_index = []
-
-        for g, gi in zip(source_genes, source_indices):
-            # First get all points for this gene
-            g_neighbors = np.unique(neighbor_index[gi].flatten())
-            # get unique neighbor points
-            g_neighbors = gene_code[g_neighbors]  # Get point gene names
-            neighbor_names, neighbor_counts = np.unique(
-                g_neighbors, return_counts=True
-            )  # aggregate neighbor gene counts
-
-            for neighbor, count in zip(neighbor_names, neighbor_counts):
-                gene_index.append([g, neighbor, count])
-
-        gene_index = pd.DataFrame(gene_index, columns=["gene", "neighbor", "count"])
-
-        return gene_index
-
-    # Get gene-level neighbor counts for each point
-    gene_code = points["gene"].values
-    neighborhood_sizes = np.array([len(n) for n in neighbor_index])
-    flat_nindex = np.concatenate(neighbor_index)
-
-    # Count number of times each gene is a neighbor of a given point
-    flat_ncodes = gene_code[flat_nindex]
-    point_ncounts = []
-    cur_pos = 0
-    # np.bincount only works on ints but much faster than np.unique
-    # https://stackoverflow.com/questions/66037744/2d-vectorization-of-unique-values-per-row-with-condition
-    for s in neighborhood_sizes:
-        cur_codes = flat_ncodes[cur_pos : cur_pos + s]
-        point_ncounts.append(np.bincount(cur_codes, minlength=n_genes))
-        cur_pos = cur_pos + s
-
-    point_ncounts = np.array(point_ncounts)
-    point_ncounts = csr_matrix(point_ncounts)
-
-    return point_ncounts
 
 
 def fazal2019_loc_scores(data, batch_size=10000, min_n=5, copy=False):

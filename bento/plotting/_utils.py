@@ -24,14 +24,13 @@ def savefig(plot_fn):
         kwargs.update(kwds)
 
         plot_fn(*args, **kwds)
-        
-        fname = kwargs['fname']
-        rc = {'svg.fonttype': 'none', 'font.family':'Arial'}
+
+        fname = kwargs["fname"]
+        rc = {"svg.fonttype": "none", "font.family": "Arial"}
         if fname:
             with plt.rc_context(rc):
                 plt.savefig(fname, dpi=400)
 
-                
-            print(f'Saved to {fname}')
-        
+            print(f"Saved to {fname}")
+
     return wrapper

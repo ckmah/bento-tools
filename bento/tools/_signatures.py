@@ -8,6 +8,73 @@ from tqdm.auto import tqdm
 from .._utils import track, PATTERN_PROBS
 
 
+def decompose(
+    tensor,
+    ranks,
+    iterations=3,
+    device="auto",
+    random_state=888,
+):
+    # Replace nans with 0 for decomposition
+    tensor_mask = ~np.isnan(tensor)
+    tensor[~tensor_mask] = 0
+
+    if isinstance(ranks, int):
+        ranks = [ranks]
+
+    # Use gpu if available
+    tensor = tl.tensor(tensor)
+    try:
+        import torch
+
+        tl.set_backend("pytorch")
+        tensor = tl.tensor(tensor)
+
+        if ((device == "auto") or (device == "cuda")) and torch.cuda.is_available():
+            device = "cuda"
+            tensor = tensor.to("cuda")
+        else:
+            device = "cpu"
+
+    except ImportError:
+        device = "cpu"
+
+    factors_per_rank = dict()
+    errors = []
+    for rank in tqdm(ranks, desc=f"Device {device}"):
+        best_factor = None
+        best_error = np.inf
+        for i in range(iterations):
+            # non-negative parafac decomposition
+
+            weights, factors = non_negative_parafac_hals(tensor, rank, init="random")
+
+            if device == "cuda":
+                weights = weights.cpu()
+                factors = [f.cpu() for f in factors]
+                tensor = tensor.cpu()
+
+            # calculate error ignoring missing values
+            tensor_mu = tl.cp_to_tensor((weights, factors))
+            error = (
+                np.sqrt((tensor[tensor != 0] - tensor_mu[tensor != 0]) ** 2)
+                .mean()
+                .numpy()
+            )
+
+            if error < best_error:
+                best_error = error
+                best_factor = [f.numpy() for f in factors]
+
+        factors_per_rank[rank] = best_factor
+        errors.append([best_error, rank])
+
+    errors = pd.DataFrame(errors, columns=["rmse", "rank"])
+    errors["rmse"] = errors["rmse"].astype(float)
+
+    return factors_per_rank, errors
+
+
 @track
 def to_tensor(data, layers, scale=False, copy=False):
     """
@@ -98,9 +165,7 @@ def signatures(
         tl.set_backend("pytorch")
         tensor = tl.tensor(tensor)
 
-        if (
-            (device == "auto") or (device == "cuda")
-        ) and torch.cuda.is_available():
+        if ((device == "auto") or (device == "cuda")) and torch.cuda.is_available():
             device = "cuda"
             tensor = tensor.to("cuda")
         else:
@@ -114,10 +179,8 @@ def signatures(
         for i in range(nruns):
             # non-negative parafac decomposition
 
-            weights, factors = non_negative_parafac_hals(
-                tensor, rank, init="random"
-            )
-            
+            weights, factors = non_negative_parafac_hals(tensor, rank, init="random")
+
             if device == "cuda":
                 weights = weights.cpu()
                 factors = [f.cpu() for f in factors]
@@ -125,9 +188,11 @@ def signatures(
 
             # calculate error ignoring missing values
             tensor_mu = tl.cp_to_tensor((weights, factors))
-            error = np.sqrt(
-                (tensor[tensor != 0] - tensor_mu[tensor != 0]) ** 2
-            ).mean().numpy()
+            error = (
+                np.sqrt((tensor[tensor != 0] - tensor_mu[tensor != 0]) ** 2)
+                .mean()
+                .numpy()
+            )
             errors.append([error, rank])
 
         # Save loadings from last decomposition run to adata
@@ -142,9 +207,7 @@ def signatures(
             factors[2].numpy(), index=adata.var_names, columns=sig_names
         )
 
-    errors = pd.DataFrame(
-        errors, columns=["rmse", "rank"]
-    )
+    errors = pd.DataFrame(errors, columns=["rmse", "rank"])
     errors["rmse"] = errors["rmse"].astype(float)
     adata.uns["signatures_error"] = errors
 

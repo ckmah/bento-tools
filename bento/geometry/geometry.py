@@ -1,19 +1,41 @@
 import geopandas as gpd
 
-from .._utils import track
+from shapely import wkt
+from shapely.geometry import Polygon
 
-# from ..tools import analyze_shapes
-# import scanpy as sc
 
-# TODO resolve circular import
-# def qc_metrics(data, copy=False):
+def crop(data, xlims=None, ylims=None):
+    """Returns a view of data within specified coordinates.
+    """
+    if len(xlims) < 1 and len(xlims) > 2:
+        return ValueError("Invalid xlims")
+    
+    if len(ylims) < 1 and len(ylims) > 2:
+        return ValueError("Invalid ylims")
+    
+    xmin, xmax = xlims[0], xlims[1]
+    ymin, ymax = ylims[0], ylims[1]
+    box = Polygon([[xmin, ymin],[xmin, ymax],[xmax, ymax],[xmax, ymin]])
+    in_crop = get_shape(data, "cell_shape").within(box)
+    
+    adata = data[in_crop,:]
+    return adata
 
-#     adata = data.copy() if copy else data
 
-#     sc.pp.calculate_qc_metrics(adata, percent_top=None, inplace=True)
-#     analyze_shapes(adata, "cell_shape", ["area", "density"])
+def get_shape(adata, shape_name):
+    """Get a GeoSeries of Polygon objects from an AnnData object."""
+    if shape_name not in adata.obs.columns:
+        raise ValueError(f"Shape {shape_name} not found in adata.obs.")
 
-#     return adata if copy else None
+    if adata.obs[shape_name].astype(str).str.startswith("POLYGON").any():
+        return gpd.GeoSeries(
+            adata.obs[shape_name]
+            .astype(str)
+            .apply(lambda val: wkt.loads(val) if val != "None" else None)
+        )
+
+    else:
+        return gpd.GeoSeries(adata.obs[shape_name])
 
 
 def get_points(data, asgeo=False):
@@ -76,45 +98,3 @@ def set_points(data, copy=False):
     points = get_points(adata)
     adata.uns["points"] = points
     return adata if copy else None
-
-
-def get_layers(data, layers, min_count=None):
-    """Get values of layers reformatted as a long-form dataframe.
-
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData object
-    layers : list of str
-        all values must to be keys in data.layers
-    min_count : int, default None
-        minimum number of molecules (count) required to include in output
-    Returns
-    -------
-    DataFrame
-        rows are samples indexed as (cell, gene) and columns are features
-    """
-    sample_index = (
-        data.to_df()
-        .reset_index()
-        .melt(id_vars="cell")
-        .dropna()
-        .set_index(["cell", "gene"])
-    )
-
-    if min_count:
-        sample_index = sample_index[sample_index["value"] >= min_count].drop(
-            "value", axis=1
-        )
-
-    for layer in layers:
-        values = (
-            data.to_df(layer)
-            .reset_index()
-            .melt(id_vars="cell")
-            .set_index(["cell", "gene"])
-        )
-        values.columns = [layer]
-        sample_index = sample_index.join(values)
-
-    return sample_index[layers]

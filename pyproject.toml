@@ -22,7 +22,7 @@ pandas = "<=1.2.5"
 pygeos = "^0.12.0"
 scanpy = "^1.9.1"
 scipy = "^1.7.0"
-seaborn = "^0.11.0"
+seaborn = "^0.12.1"
 Shapely = "^1.8.2"
 Sphinx = { version = "^4.1.2", optional = true }
 sphinx-autobuild = { version = "^2021.3.14", optional = true }

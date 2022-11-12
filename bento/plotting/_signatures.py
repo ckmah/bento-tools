@@ -4,10 +4,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import pandas as pd
+from scipy.stats import zscore
 
 from .._utils import PATTERN_PROBS, PATTERN_COLORS, pheno_to_color
 from ._utils import savefig
-from ._colors import red_light
+from ._colors import red_light, red2blue
 
 
 @savefig
@@ -66,6 +67,7 @@ def signatures(adata, rank, fname=None):
     plt.suptitle("Cells")
 
 
+@savefig
 def signatures_error(adata, fname=None):
     """Plot error for each rank.
 
@@ -83,3 +85,84 @@ def signatures_error(adata, fname=None):
     sns.despine()
 
     return errors
+
+
+@savefig
+def factor(
+    factors, labels, names, n_top=[None, None, 5], z_score=None, fname=None
+):
+    """ """
+    n_factors = len(factors)
+    fig, axes = plt.subplots(
+        2,
+        n_factors,
+        figsize=(8, 10),
+        gridspec_kw=dict(
+            width_ratios=[1] + [4] * (n_factors - 1), height_ratios=[20, 1]
+        ),
+    )
+
+    for i in range(n_factors):
+        factor = factors[i]
+        feature_labels = labels[i]
+        name = names[i]
+
+        if isinstance(n_top, list):
+            n = n_top[i]
+        else:
+            n = n_top
+
+        if isinstance(z_score, list):
+            z = z_score[i]
+        else:
+            z = z_score
+
+        _plot_loading(
+            factor, feature_labels, name, n, z_score, axes[0][i], axes[1][i]
+        )
+
+    plt.tight_layout()
+
+
+def _plot_loading(mtx, feature_labels, name, n_top, z_score, ax, cbar_ax):
+    """
+    Plot a heatmap representation of a loadings matrix, optionally z-scored and subsetted to the n_top rows of each factor.
+    """
+    mtx = pd.DataFrame(mtx, index=feature_labels)
+
+    # Optionally z-score each column
+    if z_score:
+        mtx = mtx.apply(zscore, axis=0)
+        center = 0
+    else:
+        center = None
+
+    # Subset to factor
+    if n_top:
+        top_indices = []
+        for col in mtx.columns:
+            top_indices.extend(
+                mtx.sort_values(col, ascending=False)
+                .head(n_top)
+                .index.tolist()
+            )
+        mtx = mtx.loc[top_indices]
+
+    # Get hierarchical clustering row order
+    row_order = sns.clustermap(
+        mtx, col_cluster=False
+    ).dendrogram_row.reordered_ind
+    plt.close()
+
+    # Plot heatmap
+    sns.heatmap(
+        mtx.iloc[row_order],
+        center=center,
+        cmap=red2blue,
+        cbar_kws=dict(orientation="horizontal"),
+        cbar_ax=cbar_ax,
+        ax=ax,
+    )
+    ax.set_xlabel("Factors")
+    ax.set_title(f"{name} [{mtx.shape[0]} x {mtx.shape[1]}]")
+    sns.despine(ax=ax, right=False, top=False)

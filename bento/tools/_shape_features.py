@@ -204,7 +204,7 @@ def _second_moment(data, shape_name):
 def _raster_polygon(poly, step=1):
     """
     Generate a grid of points contained within the poly. The points lie on
-    a 2D grid, with vertices spaced 1 unit apart.
+    a 2D grid, with vertices spaced step distance apart.
     """
     minx, miny, maxx, maxy = poly.bounds
     x, y = np.meshgrid(
@@ -217,10 +217,14 @@ def _raster_polygon(poly, step=1):
     poly_path = mplPath.Path(np.array(poly.exterior.xy).T)
     poly_cell_mask = poly_path.contains_points(xy)
     xy = xy[poly_cell_mask]
+    
+    # Make sure at least a single point is returned
+    if xy.shape[0] == 0:
+        return np.array(poly.centroid.xy).reshape(1,2)
     return xy
 
 
-def _raster(data, shape_name):
+def _raster(data, shape_name, step=1):
     """Generate a grid of points contained within each shape. The points lie on
     a 2D grid, with vertices spaced 1 unit apart.
 
@@ -238,7 +242,9 @@ def _raster(data, shape_name):
             2D array of grid points for each polygon in `obs['{shape_name}']`
     """
 
-    raster = data.obs[f"{shape_name}"].apply(_raster_polygon)
+    raster = data.obs[f"{shape_name}"].apply(
+        lambda poly: _raster_polygon(poly, step=step)
+    )
     shape_prefix = shape_name.split("_")[0]
     data.obs[f"{shape_prefix}_raster"] = raster
 
@@ -375,7 +381,9 @@ shape_features = dict(
 
 
 @track
-def analyze_shapes(data, shape_names, feature_names, progress=True, copy=False):
+def analyze_shapes(
+    data, shape_names, feature_names, feature_kws=None, progress=True, copy=False
+):
     """Analyze features of shapes.
 
     Parameters
@@ -386,6 +394,8 @@ def analyze_shapes(data, shape_names, feature_names, progress=True, copy=False):
         List of shapes to analyze.
     feature_names : list of str
         List of features to analyze.
+    feature_kws : dict, optional (default: None)
+        Keyword arguments for each feature.
     copy : bool, optional
         Return a copy of `data` instead of writing to data, by default False.
 
@@ -414,7 +424,10 @@ def analyze_shapes(data, shape_names, feature_names, progress=True, copy=False):
 
     # Analyze each feature x shape combination
     for feature, shape in combos:
-        shape_features[feature](adata, shape)
+        if feature_kws and feature in feature_kws:
+            shape_features[feature](adata, shape, **feature_kws[feature])
+        else:
+            shape_features[feature](adata, shape)
 
     return adata if copy else None
 
