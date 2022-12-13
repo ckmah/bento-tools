@@ -2,94 +2,90 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 import seaborn as sns
+from scipy.stats import zscore
+from kneed import KneeLocator
+import sparse
+import emoji
 
-from ..preprocessing import get_points
+
+from ..geometry import get_points
 from ._neighborhoods import _count_neighbors
 from ._signatures import decompose
 from .._utils import track
 
 
+@track
 def colocation(
     data,
     ranks,
-    shapes,
     iterations=3,
-    self_pairs=False,
-    radius=20,
-    min_count=20,
+    log=True,
     plot_error=True,
     copy=False,
 ):
     adata = data.copy() if copy else data
 
-    coloc_quotient(data, shapes, radius=radius, min_count=min_count)
+    print("Preparing tensor...")
+    _colocation_tensor(adata, copy=copy)
 
-    compartment_names = ["_".join(str(shape).split("_")[:-1]) for shape in shapes]
+    tensor = adata.uns["tensor"]
+    if log:
+        tensor = np.log2(tensor + 1)
 
-    tensor, labels, label_names = _colocation_tensor(
-        list(data.uns["clq"].values()),
-        compartment_names=compartment_names,
-        self_pairs=self_pairs,
-    )
-
+    print(emoji.emojize(":running: Decomposing tensor..."))
     factors, errors = decompose(tensor, ranks, iterations=iterations)
 
-    if plot_error:
+    if plot_error and errors.shape[0] > 1:
+        kl = KneeLocator(
+            errors["rank"], errors["rmse"], direction="decreasing", curve="convex"
+        )
+        kl.plot_knee()
         sns.lineplot(data=errors, x="rank", y="rmse", ci=95, marker="o")
 
-    return factors, labels, label_names
+    adata.uns["factors"] = factors
+    adata.uns["factors_error"] = errors
+
+    print(emoji.emojize(":heavy_check_mark: Done."))
+    return adata if copy else None
 
 
-def _to_dense(clq, min_fraction_cells=0.1, self_pairs=True, log=True):
-    clq_df = clq.copy()
+def _colocation_tensor(data, copy=False):
+    """
+    Convert a dictionary of colocation quotient values in long format to a dense tensor.
+    """
+    adata = data.copy() if copy else data
 
-    # Remove self pairs as specified
-    if not self_pairs:
-        clq_df[["gene", "neighbor"]] = clq_df[["gene", "neighbor"]].astype(str)
-        clq_df = clq_df.query("gene != neighbor")
+    clqs = adata.uns["clq"]
 
-    # scale by log2(clq+1)
-    if log:
-        clq_df["clq"] = np.log2(clq_df["clq"] + 1)
+    clq_long = []
+    for shape, clq in clqs.items():
+        clq["compartment"] = shape
+        clq_long.append(clq)
 
-    clq_df["pair"] = clq_df["gene"].astype(str) + "_" + clq_df["neighbor"].astype(str)
+    clq_long = pd.concat(clq_long, axis=0)
+    clq_long["pair"] = (
+        clq_long["gene"].astype(str) + "_" + clq_long["neighbor"].astype(str)
+    )
 
-    # Keep pairs expressed >= min_fraction_Cells
-    pair_counts = clq_df["pair"].value_counts()
-    min_ncells = int(clq_df["cell"].nunique() * min_fraction_cells)
-    valid_pairs = pair_counts.index[pair_counts >= min_ncells].tolist()
-    clq_df = clq_df[clq_df["pair"].isin(valid_pairs)]
+    label_names = ["compartment", "cell", "pair"]
+    labels = []
+    label_orders = []
+    for name in label_names:
+        label, order = np.unique(clq_long[name], return_inverse=True)
+        labels.append(label)
+        label_orders.append(order)
 
-    # Dense
-    clq_dense = clq_df.pivot(index="cell", columns="pair", values="clq")
+    label_orders = np.array(label_orders)
 
-    return clq_dense
-
-
-def _colocation_tensor(clqs, compartment_names, self_pairs):
-    mtxs = []
-    cell_names = []
-    pair_names = []
-    for clq in clqs:
-        mtx = _to_dense(clq, self_pairs=self_pairs)
-        mtxs.append(mtx)
-        cell_names.extend(mtx.index.tolist())
-        pair_names.extend(mtx.columns.tolist())
-
-    pair_names = list(set(pair_names))
-    cell_names = list(set(cell_names))
-
-    slices = []
-    for mtx in mtxs:
-        slices.append(mtx.reindex(index=cell_names, columns=pair_names).to_numpy())
-
-    tensor = np.stack(slices)
+    s = sparse.COO(label_orders, data=clq_long["clq"].values)
+    tensor = s.todense()
     print(tensor.shape)
 
-    labels = [compartment_names, cell_names, pair_names]
-    label_names = ["compartments", "cells", "pairs"]
+    adata.uns["tensor"] = tensor
+    adata.uns["tensor_labels"] = labels
+    adata.uns["tensor_names"] = label_names
 
-    return tensor, labels, label_names
+    return adata
 
 
 @track
@@ -97,7 +93,8 @@ def coloc_quotient(
     data,
     shapes=["cell_shape"],
     radius=20,
-    min_count=20,
+    min_points=10,
+    min_cells=10,
     copy=False,
 ):
     """Calculate pairwise gene colocalization quotient in each cell.
@@ -110,10 +107,8 @@ def coloc_quotient(
         Specify which shapes to compute colocalization separately.
     radius : int
         Unit distance to count neighbors, default 20
-    min_count : int
-        Minimum number of points for a given gene in a cell to be considered, default 20
-    chunksize : int
-        Number of cells per processing chunk. Default 64.
+    copy : bool
+        Whether to copy the AnnData object. Default False.
     Returns
     -------
     adata : AnnData
@@ -126,12 +121,17 @@ def coloc_quotient(
     for shape in shapes:
         shape_col = "_".join(str(shape).split("_")[:-1])
         points = get_points(adata, asgeo=False)
-        points[shape_col] = points[shape_col].astype(int)
+        points[shape_col] = points[shape_col].astype(str)
         points = (
-            points.query(f"{shape_col} != -1")
+            points.query(f"{shape_col} != '-1'")
             .sort_values("cell")[["cell", "gene", "x", "y"]]
             .reset_index(drop=True)
         )
+
+        # Keep genes expressed in at least min_cells cells
+        gene_counts = points.groupby("gene").size()
+        valid_genes = gene_counts[gene_counts >= min_cells].index
+        points = points[points["gene"].isin(valid_genes)]
 
         # Partition so {chunksize} cells per partition
         cells, group_loc = np.unique(
@@ -142,9 +142,11 @@ def coloc_quotient(
         end_loc = np.append(group_loc[1:], points.shape[0])
 
         cell_clqs = []
-        for cell, start, end in tqdm(zip(cells, group_loc, end_loc), total=len(cells)):
+        for cell, start, end in tqdm(
+            zip(cells, group_loc, end_loc), desc="shape", total=len(cells)
+        ):
             cell_points = points.iloc[start:end]
-            cell_clq = _cell_clq(cell_points, adata.n_vars, radius, min_count)
+            cell_clq = _cell_clq(cell_points, adata.n_vars, radius, min_points)
             cell_clq["cell"] = cell
             cell_clqs.append(cell_clq)
 
@@ -161,21 +163,19 @@ def coloc_quotient(
     return adata if copy else None
 
 
-def _cell_clq(cell_points, n_genes, radius, min_count):
+def _cell_clq(cell_points, n_genes, radius, min_points):
 
     # Count number of points for each gene
     counts = cell_points["gene"].value_counts()
 
-    # Only keep genes >= min_count
-    counts = counts[counts >= min_count]
-    valid_genes = counts.sort_index().index.tolist()
-    counts = counts[valid_genes]
+    # Keep genes with at least min_count
+    counts = counts[counts >= min_points]
 
-    if len(valid_genes) < 2:
+    if len(counts) < 2:
         return pd.DataFrame()
 
     # Get points
-    valid_points = cell_points[cell_points["gene"].isin(valid_genes)]
+    valid_points = cell_points[cell_points["gene"].isin(counts.index)]
 
     # Cleanup gene categories
     valid_points["gene"] = valid_points["gene"].cat.remove_unused_categories()

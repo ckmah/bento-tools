@@ -3,12 +3,15 @@ import numpy as np
 import pandas as pd
 import pkg_resources
 import scanpy as sc
+import anndata
 from anndata import AnnData
 from scipy.sparse import vstack
 from tqdm.auto import tqdm
+from sklearn.preprocessing import quantile_transform
+
 
 from .._utils import track
-from ..preprocessing import get_points
+from ..geometry import get_points
 from ._neighborhoods import _count_neighbors
 from ._shape_features import analyze_shapes
 
@@ -19,8 +22,6 @@ def flow(
     mode="point",
     n_neighbors=None,
     radius=None,
-    normalization=None,
-    reduce=True,
     render_resolution=0.01,
     copy=False,
 ):
@@ -39,10 +40,6 @@ def flow(
         Number of neighbors to use for local neighborhood.
     radius : float
         Radius to use for local neighborhood.
-    normalization : str, None
-        Normalization to use for local neighborhood. Options include `log`, `total` and None. Default None.
-    reduce : bool
-        Whether to use PCA for dimensional reduction of embedding. Default True.
     render_resolution : float
         Resolution to use for rendering embedding (for mode=cell). Default 0.01.
     copy : bool
@@ -54,7 +51,9 @@ def flow(
 
     points = get_points(adata)[["cell", "gene", "x", "y"]]
 
+    # "point" mode embeds every point while "cell" mode embeds points on a uniform grid
     if mode == "point":
+        step = None
         query_points = dict(
             zip(points["cell"].unique(), [None] * points["cell"].nunique())
         )
@@ -84,7 +83,7 @@ def flow(
     points["gene"] = gene_codes.values
 
     # Process points of each cell separately
-    cells, group_loc = np.unique(
+    cells_ordered, group_loc = np.unique(
         points["cell"],
         return_index=True,
     )
@@ -92,7 +91,9 @@ def flow(
 
     # Embed each cell neighborhood independently
     cell_flows = []
-    for cell, start, end in tqdm(zip(cells, group_loc, end_loc), total=len(cells)):
+    for cell, start, end in tqdm(
+        zip(cells_ordered, group_loc, end_loc), total=len(cells_ordered)
+    ):
         cell_points = points.iloc[start:end]
         fl = _count_neighbors(
             cell_points,
@@ -102,41 +103,41 @@ def flow(
             n_neighbors=n_neighbors,
             agg=False,
         )
+
+        # log2 fold change wrt cell
+        fl = np.log2((fl.todense() + 1) / (adata[cell].X.toarray() + 1))
+
         cell_flows.append(fl)
 
-    cell_flows = vstack(cell_flows)
-
-    # Use scanpy for post-processing
+    cell_flows = vstack(cell_flows).todense()
+    cell_flows = np.nan_to_num(cell_flows)
     flow_data = AnnData(cell_flows)
 
-    if normalization:
-        print("Normalizing embedding...")
+    print("Reducing dimensionality...")
+    sc.tl.pca(flow_data)
 
-    if normalization == "log":
-        sc.pp.log1p(flow_data, base=2)
-    elif normalization == "total":
-        sc.pp.normalize_total(flow_data, target_sum=1)
+    embed = flow_data.obsm["X_pca"]
 
-    # TODO: subsample fit transform to reduce memory usage
-    if reduce:
-        print("Reducing dimensionality...")
-        sc.pp.pca(flow_data)
+    print("Quantile transforming...")
+    embed = quantile_transform(embed)
 
-    # Save flow embeddings
+    # Save flow embeddings; if "point" mode, size of cell_flows is same as points. if "cell" mode, size of cell_flows is same as rasters
     adata.uns["flow_genes"] = gene_names
-    adata.uns["flow"] = cell_flows
-
-    if reduce:
-        adata.uns[f"flow_pca"] = flow_data.obsm["X_pca"]
+    adata.uns["flow"] = flow_data.X
+    adata.uns["flow_embed"] = embed
+    adata.uns["flow_variance_ratio"] = flow_data.uns["pca"]["variance_ratio"]
 
     # Save downsampled flow point coordinates
     if mode == "cell":
         flow_points = []
         # Format as long dataframe
-        for c, pt_vals in query_points.items():
+        for c in cells_ordered:
+            pt_vals = query_points[c].copy()
             pt_vals["cell"] = c
             flow_points.append(pt_vals)
         adata.uns["flow_points"] = pd.concat(flow_points)
+    elif mode == "point" and "flow_points" in adata.uns:
+        del adata.uns["flow_points"]
 
     print("Done.")
 
@@ -195,21 +196,20 @@ def fe(
 
     """
 
-    # 1. embed points with bento.tl.pt_embed without normalization
-    # 2. Run decoupler on embedding given net (see dc.run_* methods)
-    # 3. Save results to data.uns['pt_enrichment']
-    #     - columns are various pathways in net
-
     adata = data.copy() if copy else data
 
     # Make sure embedding is run first
-    if "pt_embed" not in data.uns:
-        print("Run bento.tl.pt_embed first.")
+    if "flow" not in data.uns:
+        print("Run bento.tl.flow first.")
         return
 
-    mat = adata.uns["pt_embed"]  # sparse matrix in csr format
-    samples = adata.uns["points"].index
-    features = adata.uns["pt_genes"]
+    mat = adata.uns["flow"]  # sparse matrix in csr format
+
+    if "flow_points" in adata.uns:
+        samples = adata.uns["flow_points"].index
+    else:
+        samples = adata.uns["points"].index
+    features = adata.uns["flow_genes"]
 
     enrichment = dc.run_wsum(
         mat=[mat, samples, features],
@@ -225,8 +225,7 @@ def fe(
     scores = enrichment[1]
 
     adata.uns["fe"] = scores
-    # adata.uns["fe_genes"] = common_genes
-    _fe_stats(adata, net, source=source, target=target)
+    _fe_stats(adata, net, source=source, target=target, copy=copy)
 
     return adata if copy else None
 
@@ -241,7 +240,7 @@ def _fe_stats(data, net, source="source", target="target", copy=False):
     expr_genes = expr_binary.apply(lambda row: adata.var_names[row], axis=1)
 
     # Count number of genes present in each pathway
-    net_ngenes = net.groupby(source).size()
+    net_ngenes = net.groupby(source).size().to_frame().T.rename(index={0: "n_genes"})
 
     sources = []
     # common_genes = {}  # list of [cells: gene set overlaps]
@@ -249,13 +248,14 @@ def _fe_stats(data, net, source="source", target="target", copy=False):
     for source, group in net.groupby(source):
         sources.append(source)
         common = expr_genes.apply(lambda genes: set(genes).intersection(group[target]))
-        # common_genes[sources] = np.array(common)
+        # common_genes[source] = np.array(common)
         common_ngenes.append(common.apply(len))
 
     fe_stats = pd.concat(common_ngenes, axis=1)
     fe_stats.columns = sources
 
     adata.uns["fe_stats"] = fe_stats
-    adata.uns["fe_size"] = net_ngenes
+    # adata.uns["fe_genes"] = common_genes
+    adata.uns["fe_ngenes"] = net_ngenes
 
     return adata if copy else None

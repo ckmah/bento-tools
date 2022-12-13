@@ -6,7 +6,7 @@ from joblib import Parallel, delayed
 from sklearn.neighbors import NearestNeighbors
 from tqdm.auto import tqdm
 
-from ..preprocessing import get_points
+from ..geometry import get_points
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -97,7 +97,9 @@ def coloc_sim(data, radius=3, min_count=5, n_cores=1, copy=False):
     # TODO dask
     cell_metrics = Parallel(n_jobs=n_cores)(
         delayed(cell_coloc_sim)(
-            get_points(adata, cells=g_density.name, genes=g_density.index.tolist(), asgeo=True),
+            get_points(
+                adata, cells=g_density.name, genes=g_density.index.tolist(), asgeo=True
+            ),
             g_density,
             g_density.name,
         )

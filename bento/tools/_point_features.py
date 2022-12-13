@@ -12,7 +12,7 @@ from tqdm.auto import tqdm
 from tqdm.dask import TqdmCallback
 
 from .. import tools as tl
-from ..preprocessing import get_points
+from ..geometry import get_points
 from .._utils import track
 
 
@@ -75,9 +75,7 @@ def analyze_points(
             raise ValueError(f"Groupby key {g} not found in point columns.")
 
     # Generate feature x shape combinations
-    feature_combos = [
-        point_features[f](s) for f in feature_names for s in shape_names
-    ]
+    feature_combos = [point_features[f](s) for f in feature_names for s in shape_names]
 
     # Compile dependency set of features and attributes
     cell_features = set()
@@ -105,16 +103,14 @@ def analyze_points(
         .reset_index()
     )
 
-    for g in groupby:   
+    for g in groupby:
         points_df[g] = points_df[g].astype("category")
     # Handle categories as strings to avoid ambiguous cat types
     # for col in points_df.loc[:, (points_df.dtypes == "category").values]:
     #     points_df[col] = points_df[col].astype(str)
 
     # Handle shape indexes as strings to avoid ambiguous types
-    for shape_name in adata.obs.columns[
-        adata.obs.columns.str.endswith("_shape")
-    ]:
+    for shape_name in adata.obs.columns[adata.obs.columns.str.endswith("_shape")]:
         shape_prefix = "_".join(shape_name.split("_")[:-1])
         if shape_prefix in points_df.columns:
             points_df[shape_prefix] = points_df[shape_prefix].astype(str)
@@ -129,9 +125,7 @@ def analyze_points(
     # Process all samples in a partition
     def process_partition(partition_df):
         # Groupby by cell and groupby keys and process each sample
-        out = partition_df.groupby(groupby, observed=True).apply(
-            process_sample
-        )
+        out = partition_df.groupby(groupby, observed=True).apply(process_sample)
         return pd.DataFrame.from_records(out.values, index=out.index)
 
     # Process points of each cell separately
@@ -146,9 +140,7 @@ def analyze_points(
     print("Processing point features...")
     for start, end in tqdm(zip(group_loc, end_loc), total=len(cells)):
         cell_points = points_df.iloc[start:end]
-        output.append(
-            process_partition(cell_points)
-        )
+        output.append(process_partition(cell_points))
     output = pd.concat(output)
 
     # Save and overwrite existing
@@ -310,14 +302,10 @@ class ShapeAsymmetry(PointFeature):
         outer_to_centroid = np.nan
 
         if inner.sum() > 0:
-            inner_to_centroid = (
-                points_geo[inner].distance(shape.centroid).mean()
-            )
+            inner_to_centroid = points_geo[inner].distance(shape.centroid).mean()
 
         if outer.sum() > 0:
-            outer_to_centroid = (
-                points_geo[outer].distance(shape.centroid).mean()
-            )
+            outer_to_centroid = points_geo[outer].distance(shape.centroid).mean()
 
         # Values [0, 1], where 1 is asymmetrical and 0 is symmetrical.
         cell_radius = df["cell_radius"].values[0]
@@ -417,8 +405,6 @@ class ShapeDispersionNorm(PointFeature):
 
         return {f"{self.shape_prefix}_dispersion_norm": norm_moment}
 
-    
-    
 
 class ShapeDistance(PointFeature):
     """For a set of points, computes the distance of points within `shape_name`
@@ -516,16 +502,12 @@ class ShapeOffset(PointFeature):
         outer = ~inner
 
         if inner.sum() > 0:
-            inner_to_centroid = (
-                points_geo[inner].distance(shape.centroid).mean()
-            )
+            inner_to_centroid = points_geo[inner].distance(shape.centroid).mean()
         else:
             inner_to_centroid = np.nan
 
         if outer.sum() > 0:
-            outer_to_centroid = (
-                points_geo[outer].distance(shape.centroid).mean()
-            )
+            outer_to_centroid = points_geo[outer].distance(shape.centroid).mean()
         else:
             outer_to_centroid = np.nan
 

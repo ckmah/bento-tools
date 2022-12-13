@@ -6,7 +6,7 @@ from shapely.geometry import Point
 from tqdm.auto import tqdm
 
 from .._utils import get_shape, track
-from ..preprocessing import get_points, set_points
+from ..geometry import get_points, set_points
 
 
 def _area(data, shape_name):
@@ -121,7 +121,7 @@ def _density(data, shape_name):
 
     shape_prefix = shape_name.split("_")[0]
     set_points(data)
-    count = get_points(data).query(f"{shape_prefix} != '-1'").groupby("cell").size()
+    count = get_points(data).query(f"{shape_prefix} != '-1'")["cell"].value_counts()
     _area(data, shape_name)
 
     data.obs[f"{shape_prefix}_density"] = count / data.obs[f"{shape_prefix}_area"]
@@ -217,10 +217,10 @@ def _raster_polygon(poly, step=1):
     poly_path = mplPath.Path(np.array(poly.exterior.xy).T)
     poly_cell_mask = poly_path.contains_points(xy)
     xy = xy[poly_cell_mask]
-    
+
     # Make sure at least a single point is returned
     if xy.shape[0] == 0:
-        return np.array(poly.centroid.xy).reshape(1,2)
+        return np.array(poly.centroid.xy).reshape(1, 2)
     return xy
 
 
@@ -378,6 +378,47 @@ shape_features = dict(
     second_moment=_second_moment,
     span=_span,
 )
+
+
+# For given shape, compute features in shape_features()
+def obs_stats(
+    data,
+    shape_name,
+    feature_names=["area", "aspect_ratio", "density"],
+    copy=False,
+):
+    """Compute features for each shape. See list of available features in `bento.tl.shape_features`.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    shape_name : str
+        Name of shape to compute features for
+    feature_names : list
+        List of features to compute. See list of available features in `bento.tl.shape_features`.
+    copy : bool, optional
+        Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    data : anndata.AnnData
+        Returns `data` if `copy=True`, otherwise adds fields to `data`:
+
+        `obs['{shape}_{feature}']` : np.array
+            Feature of each polygon in `obs['{shape_name}']`
+    """
+    adata = data.copy() if copy else data
+
+    if shape_name not in data.obs.columns:
+        raise ValueError(f"Shape {shape_name} not found in data.obs")
+
+    for feature in feature_names:
+        if feature not in shape_features:
+            raise ValueError(f"Feature {feature} not found in bento.tl.shape_features")
+        shape_features[feature](data, shape_name)
+
+    return adata if copy else None
 
 
 @track

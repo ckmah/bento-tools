@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import zscore
 import tensorly as tl
-from tensorly.decomposition import non_negative_parafac, non_negative_parafac_hals
+from tensorly.decomposition import non_negative_parafac
 from tqdm.auto import tqdm
 
 from .._utils import track, PATTERN_PROBS
@@ -47,7 +47,10 @@ def decompose(
         for i in range(iterations):
             # non-negative parafac decomposition
 
-            weights, factors = non_negative_parafac_hals(tensor, rank, init="random")
+            # TODO update to hals when random_state is supported
+            weights, factors = non_negative_parafac(
+                tensor, rank, init="random", random_state=random_state
+            )
 
             if device == "cuda":
                 weights = weights.cpu()
@@ -56,11 +59,7 @@ def decompose(
 
             # calculate error ignoring missing values
             tensor_mu = tl.cp_to_tensor((weights, factors))
-            error = (
-                np.sqrt((tensor[tensor != 0] - tensor_mu[tensor != 0]) ** 2)
-                .mean()
-                .numpy()
-            )
+            error = rmse(tensor, tensor_mu)
 
             if error < best_error:
                 best_error = error
@@ -73,6 +72,10 @@ def decompose(
     errors["rmse"] = errors["rmse"].astype(float)
 
     return factors_per_rank, errors
+
+
+def rmse(tensor, tensor_mu):
+    return np.sqrt((tensor[tensor != 0] - tensor_mu[tensor != 0]) ** 2).mean().numpy()
 
 
 @track
