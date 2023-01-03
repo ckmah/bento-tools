@@ -1,6 +1,7 @@
 import os
 
 import pandas as pd
+
 pkg_resources = None
 
 from ..io import read_h5ad
@@ -17,7 +18,6 @@ def get_dataset_info():
     global pkg_resources
     if pkg_resources is None:
         import pkg_resources
-
 
     stream = pkg_resources.resource_stream(__name__, "datasets.csv")
     return pd.read_csv(stream, index_col=0)
@@ -40,7 +40,6 @@ def load_dataset(name, cache=True, data_home="~/bento-data", **kws):
     if not os.path.exists(data_home):
         os.makedirs(data_home)
 
-
     # Try to load from local cache first, download as needed
     url = datainfo.loc[name, "url"]
     cache_path = os.path.join(data_home, os.path.basename(url))
@@ -53,6 +52,35 @@ def load_dataset(name, cache=True, data_home="~/bento-data", **kws):
     adata = read_h5ad(cache_path, **kws)
 
     return adata
+
+
+gene_sets = dict(
+    fazal2019="fazal2019.csv",
+)
+
+
+def load_gene_sets(name):
+    """Load a gene set from bento.
+
+    Parameters
+    ----------
+    name : str
+        Name of gene set to load.
+
+    Returns
+    -------
+    DataFrame
+        Gene set.
+    """
+    global pkg_resources
+    if pkg_resources is None:
+        import pkg_resources
+
+    fname = gene_sets[name]
+    stream = pkg_resources.resource_stream(__name__, f"gene_sets/{fname}")
+    gs = pd.read_csv(stream)
+
+    return gs
 
 
 # Taken from https://github.com/theislab/scanpy/blob/master/scanpy/readwrite.py
@@ -99,6 +127,6 @@ def sample_data():
     global pkg_resources
     if pkg_resources is None:
         import pkg_resources
-        
+
     stream = pkg_resources.resource_stream(__name__, "seqfish_sample.h5ad")
     return read_h5ad(stream)

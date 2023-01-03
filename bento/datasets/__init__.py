@@ -1,1 +1,7 @@
-from ._datasets import get_dataset_info, load_dataset, sample_data
+from ._datasets import (
+    get_dataset_info,
+    load_dataset,
+    gene_sets,
+    load_gene_sets,
+    sample_data,
+)

@@ -1,6 +1,7 @@
 import geopandas as gpd
 import matplotlib.path as mplPath
 import numpy as np
+import pandas as pd
 from scipy.spatial import distance, distance_matrix
 from shapely.geometry import Point
 from tqdm.auto import tqdm
@@ -206,7 +207,7 @@ def _raster_polygon(poly, step=1):
     Generate a grid of points contained within the poly. The points lie on
     a 2D grid, with vertices spaced step distance apart.
     """
-    minx, miny, maxx, maxy = poly.bounds
+    minx, miny, maxx, maxy = [int(i) for i in poly.bounds]
     x, y = np.meshgrid(
         np.arange(minx, maxx + step, step=step),
         np.arange(miny, maxy + step, step=step),
@@ -226,7 +227,7 @@ def _raster_polygon(poly, step=1):
 
 def _raster(data, shape_name, step=1):
     """Generate a grid of points contained within each shape. The points lie on
-    a 2D grid, with vertices spaced 1 unit apart.
+    a 2D grid, with vertices spaced `step` distance apart.
 
     Parameters
     ----------
@@ -238,15 +239,23 @@ def _raster(data, shape_name, step=1):
     data : anndata.AnnData
         Returns `data` if `copy=True`, otherwise adds fields to `data`:
 
-        `obs['{shape}_raster']` : np.array
-            2D array of grid points for each polygon in `obs['{shape_name}']`
+        `uns['{shape}_raster']` : np.array
+            Long DataFrame of points annotated by shape from `obs['{shape_name}']`
     """
 
     raster = data.obs[f"{shape_name}"].apply(
         lambda poly: _raster_polygon(poly, step=step)
     )
+
     shape_prefix = shape_name.split("_")[0]
-    data.obs[f"{shape_prefix}_raster"] = raster
+    raster_all = []
+    for s, r in raster.items():
+        raster_df = pd.DataFrame(r, columns=["x", "y"])
+        raster_df[shape_prefix] = s
+        raster_all.append(raster_df)
+
+    raster_all = pd.concat(raster_all).reset_index(drop=True)
+    data.uns[f"{shape_prefix}_raster"] = raster_all
 
 
 def _perimeter(data, shape_name):

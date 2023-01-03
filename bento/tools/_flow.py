@@ -2,27 +2,44 @@ import decoupler as dc
 import numpy as np
 import pandas as pd
 import pkg_resources
-import scanpy as sc
-import anndata
-from anndata import AnnData
-from scipy.sparse import vstack
+from scipy.sparse import vstack, csr_matrix
+from scipy.stats import mstats
 from tqdm.auto import tqdm
-from sklearn.preprocessing import quantile_transform
-
+from sklearn.preprocessing import quantile_transform, minmax_scale, StandardScaler
+from sklearn.decomposition import TruncatedSVD
+from minisom import MiniSom
+from skimage.transform import rescale
+import geopandas as gpd
+import rasterio
+from shapely.geometry import Polygon
+import emoji
 
 from .._utils import track
 from ..geometry import get_points
 from ._neighborhoods import _count_neighbors
 from ._shape_features import analyze_shapes
+from ..geometry import sindex_points
+
+
+def robust_clr(mtx):
+    """Robust CLR transform on 2d numpy array. Use geometric mean of nonzero values"""
+    mtx_ma = np.ma.masked_equal(mtx, 0)
+    gmeans = mstats.gmean(mtx_ma, axis=1).reshape(-1, 1)
+    # CLR transform
+    rclr = np.log(mtx_ma / gmeans)
+    rclr = np.ma.asarray(rclr)
+    return mtx
 
 
 @track
 def flow(
     data,
-    mode="point",
     n_neighbors=None,
-    radius=None,
+    radius=50,
     render_resolution=0.01,
+    n_clusters=5,
+    num_iterations=1000,
+    random_state=11,
     copy=False,
 ):
     """
@@ -33,9 +50,8 @@ def flow(
     ----------
     data : AnnData
         Spatial formatted AnnData object.
-    mode : str
-        Mode to compute embeddings. "Point" will embed every point while "cell" performs
-        embedding for set of points on a uniform grid across the entire cell. Default "point".
+    norm : bool
+        Whether to normalize embedding by cell specific expression. Default True.
     n_neighbors : int
         Number of neighbors to use for local neighborhood.
     radius : float
@@ -51,28 +67,21 @@ def flow(
 
     points = get_points(adata)[["cell", "gene", "x", "y"]]
 
-    # "point" mode embeds every point while "cell" mode embeds points on a uniform grid
-    if mode == "point":
-        step = None
-        query_points = dict(
-            zip(points["cell"].unique(), [None] * points["cell"].nunique())
-        )
-    elif mode == "cell":
-        print(f"Embedding at {100*render_resolution}% resolution...")
-        step = 1 / render_resolution
-        # Get grid rasters
-        analyze_shapes(
-            adata,
-            "cell_shape",
-            "raster",
-            feature_kws=dict(raster={"step": step}, progress=False),
-        )
-        rasters = adata.obs["cell_raster"]
-
-        # Cell to raster mapping for easy lookup
-        query_points = dict()
-        for c, pt_vals in rasters.items():
-            query_points[c] = pd.DataFrame(pt_vals, columns=["x", "y"])
+    # embeds points on a uniform grid
+    pbar = tqdm(total=5)
+    pbar.set_description(emoji.emojize(f"Embedding"))
+    step = 1 / render_resolution
+    # Get grid rasters
+    analyze_shapes(
+        adata,
+        "cell_shape",
+        "raster",
+        progress=False,
+        feature_kws=dict(raster={"step": step}),
+    )
+    # Long dataframe of raster points
+    adata.uns["cell_raster"] = adata.uns["cell_raster"].sort_values("cell")
+    raster_points = adata.uns["cell_raster"]
 
     # Extract gene names and codes
     gene_names = points["gene"].cat.categories.tolist()
@@ -82,69 +91,130 @@ def flow(
     # Factorize for more efficient computation
     points["gene"] = gene_codes.values
 
-    # Process points of each cell separately
-    cells_ordered, group_loc = np.unique(
-        points["cell"],
-        return_index=True,
-    )
-    end_loc = np.append(group_loc[1:], points.shape[0])
+    points_grouped = points.groupby("cell")
+    rpoints_grouped = raster_points.groupby("cell")
+    cells_ordered = list(points_grouped.groups.keys())
+
+    # Compute cell composition
+    cell_composition = adata[cells_ordered, gene_names].X.toarray()
+    cell_composition = cell_composition / (cell_composition.sum(axis=1).reshape(-1, 1))
+    cell_composition = robust_clr(cell_composition)
+    cell_composition = np.nan_to_num(cell_composition)
 
     # Embed each cell neighborhood independently
     cell_flows = []
-    for cell, start, end in tqdm(
-        zip(cells_ordered, group_loc, end_loc), total=len(cells_ordered)
-    ):
-        cell_points = points.iloc[start:end]
-        fl = _count_neighbors(
+    for i, cell in enumerate(cells_ordered):
+        cell_points = points_grouped.get_group(cell)
+        rpoints = rpoints_grouped.get_group(cell)
+        gene_count = _count_neighbors(
             cell_points,
             n_genes,
-            query_points[cell],
+            rpoints,
             radius=radius,
             n_neighbors=n_neighbors,
             agg=False,
         )
+        gene_count = gene_count.toarray()
 
-        # log2 fold change wrt cell
-        fl = np.log2((fl.todense() + 1) / (adata[cell].X.toarray() + 1))
+        # Compute flow: aitchison distance between cell and neighborhood composition
+        fl_composition = gene_count / (gene_count.sum(axis=1).reshape(-1, 1))
+        fl_composition = robust_clr(fl_composition)
+        cflow = fl_composition - cell_composition[i]
 
-        cell_flows.append(fl)
+        # Convert back to sparse matrix
+        cflow = csr_matrix(cflow)
 
-    cell_flows = vstack(cell_flows).todense()
-    cell_flows = np.nan_to_num(cell_flows)
-    flow_data = AnnData(cell_flows)
+        # Normalize within cell
+        cflow = StandardScaler(with_mean=False).fit_transform(cflow)
 
-    print("Reducing dimensionality...")
-    sc.tl.pca(flow_data)
+        cell_flows.append(cflow)
 
-    embed = flow_data.obsm["X_pca"]
+    cell_flows = vstack(cell_flows) if len(cell_flows) > 1 else cell_flows[0]
+    cell_flows.data = np.nan_to_num(cell_flows.data)
+    pbar.update()
 
-    print("Quantile transforming...")
-    embed = quantile_transform(embed)
+    pbar.set_description(emoji.emojize("Reducing"))
+    pca_model = TruncatedSVD(n_components=10).fit(cell_flows)
+    flow_embed = pca_model.transform(cell_flows)
+    variance_ratio = pca_model.explained_variance_ratio_
 
-    # Save flow embeddings; if "point" mode, size of cell_flows is same as points. if "cell" mode, size of cell_flows is same as rasters
-    adata.uns["flow_genes"] = gene_names
-    adata.uns["flow"] = flow_data.X
-    adata.uns["flow_embed"] = embed
-    adata.uns["flow_variance_ratio"] = flow_data.uns["pca"]["variance_ratio"]
+    # For color visualization of flow embeddings
+    flow_vis = quantile_transform(flow_embed)
+    flow_vis = minmax_scale(flow_vis, feature_range=(0.1, 0.9))
+    flow_vis = pd.DataFrame(flow_vis[:, :3], columns=["c1", "c2", "c3"])
+    pbar.update()
 
-    # Save downsampled flow point coordinates
-    if mode == "cell":
-        flow_points = []
-        # Format as long dataframe
-        for c in cells_ordered:
-            pt_vals = query_points[c].copy()
-            pt_vals["cell"] = c
-            flow_points.append(pt_vals)
-        adata.uns["flow_points"] = pd.concat(flow_points)
-    elif mode == "point" and "flow_points" in adata.uns:
-        del adata.uns["flow_points"]
+    pbar.set_description(emoji.emojize("Fitting SOM"))
+    som = MiniSom(1, n_clusters, flow_embed.shape[1], random_seed=random_state)
+    som.random_weights_init(flow_embed)
+    som.train(flow_embed, num_iterations, random_order=True, verbose=False)
+    winner_coordinates = np.array([som.winner(x) for x in flow_embed]).T
+    qnt_index = (
+        np.ravel_multi_index(winner_coordinates, (1, n_clusters)) + 1
+    )  # start clusters at 1
+    raster_points["flow"] = qnt_index
+    pbar.update()
 
-    print("Done.")
+    pbar.set_description(emoji.emojize("Clustering"))
+    flow_field_df = dict()
+    for cell in cells_ordered:
+        rpoints = rpoints_grouped.get_group(cell)
+        # Render to scaled image
+        rpoints[["x", "y"]] = rpoints[["x", "y"]] * render_resolution
+        max_x = int(rpoints["x"].max())
+        max_y = int(rpoints["y"].max())
+        image = np.zeros((max_y + 1, max_x + 1))
+        for x, y, val in rpoints[["x", "y", "flow"]].values.astype(int):
+            image[y, x] = val
+
+        # Scale back up to original
+        image = rescale(image, 1 / render_resolution, order=0)
+        image = image.astype("int32")
+
+        # Find all the contours
+        contours = rasterio.features.shapes(image)
+        polygons = np.array([(Polygon(p["coordinates"][0]), v) for p, v in contours])
+        shapes = gpd.GeoDataFrame(
+            polygons[:, 1],
+            geometry=gpd.GeoSeries(polygons[:, 0]).T,
+            columns=["flow"],
+        )
+
+        # Cast as int and remove background shape
+        shapes["flow"] = shapes["flow"].astype(int)
+        shapes = shapes[shapes["flow"] != 0]
+
+        # Group same fields as MultiPolygons
+        shapes = shapes.dissolve("flow")["geometry"]
+        shapes.index = "flow" + shapes.index.astype(str) + "_shape"
+
+        flow_field_df[cell] = shapes
+
+    flow_field_df = pd.DataFrame(flow_field_df).T
+    pbar.update()
+
+    pbar.set_description(emoji.emojize(":bento_box: Saving"))
+    adata.uns["flow"] = cell_flows  # sparse gene rclr
+    adata.uns["flow_genes"] = gene_names  # gene names
+    adata.uns["flow_embed"] = flow_embed
+    adata.uns["flow_variance_ratio"] = variance_ratio
+    adata.uns["flow_vis"] = flow_vis
+    adata.uns["cell_raster"] = raster_points
+
+    adata.obs = adata.obs.drop(flow_field_df.columns, axis=1, errors="ignore")
+    adata.obs = adata.obs.join(flow_field_df)
+
+    # TODO test this
+    sindex_points(adata, "points", flow_field_df.columns.tolist())
+
+    pbar.set_description(emoji.emojize(":bento_box: Done"))
+    pbar.update()
+    pbar.close()
 
     return adata if copy else None
 
 
-def fazal2019_loc_scores(data, batch_size=10000, min_n=5, copy=False):
+def fe_fazal2019(data, batch_size=10000, min_n=5, copy=False):
     """Compute enrichment scores from subcellular compartment gene sets from Fazal et al. 2019 (APEX-seq).
     Wrapper for `bento.tl.spatial_enrichment`.
 
@@ -177,15 +247,16 @@ def fazal2019_loc_scores(data, batch_size=10000, min_n=5, copy=False):
 def fe(
     data,
     net,
+    groupby=None,
     source="source",
     target="target",
     weight="weight",
     batch_size=10000,
-    min_n=5,
+    min_n=0,
     copy=False,
 ):
     """
-    Perform functional enrichment on point embeddings.
+    Perform functional enrichment on point embeddings. Wrapper for decoupler wsum function.
 
     Parameters
     ----------
@@ -204,11 +275,9 @@ def fe(
         return
 
     mat = adata.uns["flow"]  # sparse matrix in csr format
+    zero_rows = mat.getnnz(1) == 0
 
-    if "flow_points" in adata.uns:
-        samples = adata.uns["flow_points"].index
-    else:
-        samples = adata.uns["points"].index
+    samples = adata.uns["cell_raster"].index.astype(str)
     features = adata.uns["flow_genes"]
 
     enrichment = dc.run_wsum(
@@ -218,11 +287,19 @@ def fe(
         target=target,
         weight=weight,
         batch_size=batch_size,
-        min_n=5,
+        min_n=min_n,
         verbose=True,
     )
 
-    scores = enrichment[1]
+    scores = enrichment[1].reindex(index=samples)
+
+    if groupby:
+        scores = scores.groupby(
+            adata.uns["cell_raster"][groupby].reset_index(drop=True)
+        ).mean()
+        scores = adata.uns["cell_raster"].merge(
+            scores, left_on="flow", right_index=True, how="left"
+        )[scores.columns]
 
     adata.uns["fe"] = scores
     _fe_stats(adata, net, source=source, target=target, copy=copy)

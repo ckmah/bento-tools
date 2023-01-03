@@ -29,7 +29,7 @@ def savefig(plot_fn):
         rc = {"svg.fonttype": "none", "font.family": "Arial"}
         if fname:
             with plt.rc_context(rc):
-                plt.savefig(fname, dpi=400)
+                plt.savefig(fname, dpi=400, pad_inches=0, bbox_inches="tight")
 
             print(f"Saved to {fname}")
 

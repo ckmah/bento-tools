@@ -1,1 +1,1 @@
-from .geometry import crop, get_shape, get_points, set_points
+from ._geometry import crop, get_shape, get_points, set_points, sindex_points

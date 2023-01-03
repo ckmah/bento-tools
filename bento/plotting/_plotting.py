@@ -211,6 +211,7 @@ def plot(
     hue_order=None,
     col_wrap=None,
     col_order=None,
+    points_key="points",
     height=3,
     theme="dark",
     palette=None,
@@ -233,7 +234,7 @@ def plot(
     ----------
     adata : AnnData
         Spatial formatted AnnData
-    kind : {"hist", "scatter", "plot"}, optional
+    kind : {"hist", "scatter", "interpolate"}, optional
         Plotting method, by default "scatter"
 
     """
@@ -262,17 +263,15 @@ def plot(
     obs_attrs = list(shape_names)
 
     # Get points
-    if kind == "flow" and "flow_points" in adata.uns:
-        points = adata.uns["flow_points"]
-    else:
-        points = get_points(adata, asgeo=False)
+    points = get_points(adata, key=points_key, asgeo=False)
+
+    # Add functional enrichment if exists
+    if "fe" in adata.uns and adata.uns["fe"].shape[0] == points.shape[0]:
+        points[adata.uns["fe"].columns] = adata.uns["fe"].values
 
     # This feels weird here; refactor separate flow plotting?
-    if kind == "flow":
-        points[["flow1", "flow2", "flow3"]] = adata.uns["flow_embed"][:, :3]
-
-        if "fe" in adata.uns:
-            points[adata.uns["fe"].columns] = adata.uns["fe"].values
+    if kind == "interpolate":
+        points[adata.uns["flow_vis"].columns] = adata.uns["flow_vis"].values
 
     # Include col if exists
     if col and (col == "cell" or (col in adata.obs.columns or col in points.columns)):
@@ -340,26 +339,7 @@ def plot(
                 axes = list(axes.flat)
             group_names, pt_groups = zip(*points.groupby(col))
 
-        print("  + Transcripts")
-        for ax, pt_group in zip(axes, pt_groups):
-            if legend and ax == axes[-1]:
-                legend = True
-
-            _points(
-                kind, hue, hue_order, palette, cmap, legend, ax, pt_group, **point_kws
-            )
-
-            # plot graph layer
-            if kind == "graph":
-                print("  + Graphs")
-                default_kws = dict(
-                    radius=20, edge_color=edgecolor, width=0.5, alpha=0.3, node_size=0
-                )
-                default_kws.update(graph_kws)
-                _graphs(pt_group, ax, **default_kws)
-
         # Plot shapes if any
-
         if isinstance(shape_groups[0], gpd.GeoDataFrame):
             print("  + Shapes")
 
@@ -408,6 +388,24 @@ def plot(
                 rect_bound.overlay(shape_group, how="difference").plot(
                     facecolor=facecolor, edgecolor=None, zorder=2, ax=ax
                 )
+
+        print("  + Transcripts")
+        for ax, pt_group in zip(axes, pt_groups):
+            if legend and ax == axes[-1]:
+                legend = True
+
+            _plot_points(
+                kind, hue, hue_order, palette, cmap, legend, ax, pt_group, **point_kws
+            )
+
+            # plot graph layer
+            if kind == "graph":
+                print("  + Graphs")
+                default_kws = dict(
+                    radius=20, edge_color=edgecolor, width=0.5, alpha=0.3, node_size=0
+                )
+                default_kws.update(graph_kws)
+                _graphs(pt_group, ax, **default_kws)
 
         # Formatting subplots
         for ax, group_name in zip(axes, group_names):
@@ -463,41 +461,21 @@ def plot(
         print("Done.")
 
 
-def _graphs(pt_group, ax, **graph_kws):
-
-    # Convert points neighborhood adjacency list
-    neighbor_index = (
-        NearestNeighbors(radius=graph_kws["radius"], n_jobs=-1)
-        .fit(pt_group[["x", "y"]])
-        .radius_neighbors(pt_group[["x", "y"]], return_distance=False)
-    )
-
-    # Create networkx graph from adjacency list
-    pt_graph = nx.Graph(dict(zip(range(len(neighbor_index)), neighbor_index)))
-    pt_graph.remove_edges_from(nx.selfloop_edges(pt_graph))
-
-    positions = dict(zip(pt_graph.nodes, pt_group[["x", "y"]].values))
-
-    del graph_kws["radius"]
-    collection = nx.draw_networkx_edges(
-        pt_graph,
-        pos=positions,
-        ax=ax,
-        **graph_kws,
-    )
-    collection.set_zorder(0.99)
-
-
-def _points(kind, hue, hue_order, palette, cmap, legend, ax, pt_group, **point_kws):
+def _plot_points(
+    kind, hue, hue_order, palette, cmap, legend, ax, pt_group, **point_kws
+):
     if kind == "scatter" or kind == "graph":
         scatter_kws = dict(linewidth=0, s=1)
         scatter_kws.update(point_kws)
+
+        M = ax.transData.get_matrix()
+        xscale = M[0, 0]
+        yscale = M[1, 1]
+        # has desired_data_width of width
+        scatter_kws["s"] = (xscale * scatter_kws["s"]) ** 2
+
         # Matplotlib handle color
         if "c" in point_kws:
-            collection = ax.scatter(x=pt_group["x"], y=pt_group["y"], **scatter_kws)
-        # Convert hue hex colors to color column for matplotlib
-        elif hue and str(pt_group[hue].values[0]).startswith("#"):
-            scatter_kws["c"] = pt_group[hue]
             collection = ax.scatter(x=pt_group["x"], y=pt_group["y"], **scatter_kws)
         # Use seaborn for hue mapping
         else:
@@ -526,11 +504,10 @@ def _points(kind, hue, hue_order, palette, cmap, legend, ax, pt_group, **point_k
             **hist_kws,
         ).collections[0]
 
-    # TODO: currently only molecule points are passed to this function
-    elif kind == "flow":
+    elif kind == "interpolate":
         flow_kws = dict(method="linear")
         flow_kws.update(**point_kws)
-        _flow(
+        _interpolate(
             points=pt_group,
             hue=hue,
             cmap=cmap,
@@ -550,6 +527,31 @@ def _points(kind, hue, hue_order, palette, cmap, legend, ax, pt_group, **point_k
             ax.legend(loc="center left", bbox_to_anchor=(1, 0.5), frameon=False)
 
 
+def _graphs(pt_group, ax, **graph_kws):
+
+    # Convert points neighborhood adjacency list
+    neighbor_index = (
+        NearestNeighbors(radius=graph_kws["radius"], n_jobs=-1)
+        .fit(pt_group[["x", "y"]])
+        .radius_neighbors(pt_group[["x", "y"]], return_distance=False)
+    )
+
+    # Create networkx graph from adjacency list
+    pt_graph = nx.Graph(dict(zip(range(len(neighbor_index)), neighbor_index)))
+    pt_graph.remove_edges_from(nx.selfloop_edges(pt_graph))
+
+    positions = dict(zip(pt_graph.nodes, pt_group[["x", "y"]].values))
+
+    del graph_kws["radius"]
+    collection = nx.draw_networkx_edges(
+        pt_graph,
+        pos=positions,
+        ax=ax,
+        **graph_kws,
+    )
+    collection.set_zorder(0.99)
+
+
 def _plot_shapes(
     data,
     shape_names,
@@ -567,10 +569,10 @@ def _plot_shapes(
         )
 
 
-def _flow(points, hue, cmap, method, ax, **kwargs):
+def _interpolate(points, hue, cmap, method, ax, **kwargs):
 
     if hue is None:
-        components = points[["flow1", "flow2", "flow3"]].values
+        components = points[["c1", "c2", "c3"]].values
     else:
         components = points[hue].values.reshape(-1, 1)
 
@@ -610,8 +612,6 @@ def _flow(points, hue, cmap, method, ax, **kwargs):
         values, extent=(minx, maxx, miny, maxy), origin="lower", cmap=cmap, **kwargs
     )
     ax.autoscale(False)
-
-    plt.suptitle(hue, fontsize=12)
 
 
 def sig_samples(data, rank, n_genes=5, n_cells=4, col_wrap=4, **kwargs):

@@ -86,7 +86,6 @@ def lp_gene_dist(data, fname=None):
     sns.despine()
 
 
-@savefig
 def lp_genes(
     data,
     groupby="gene",
@@ -127,24 +126,39 @@ def lp_genes(
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
 
-    with plt.rc_context({"font.size": 14}):
+    gene_frac = data.uns["lp_stats"][PATTERN_NAMES] / data.n_obs
+    gene_frac["Pattern"] = gene_frac.idxmax(axis=1)
+    gene_frac_copy = gene_frac.copy()
+    gene_frac_copy["Pattern"] = ""
+    _radviz(
+        gene_frac, highlight_groups, kind, hue, sizes, gridsize, ax, kwargs, palette
+    )
 
+
+@savefig
+def _radviz(
+    df,
+    accent=None,
+    kind="scatter",
+    hue=None,
+    palette=None,
+    sizes=(2, 100),
+    gridsize=20,
+    ax=None,
+    fname=None,
+    **kwargs,
+):
+    with plt.rc_context({"font.size": 14}):
         # RADVIZ plot
         if not ax:
             figsize = (6, 6)
             fig = plt.figure(figsize=figsize)
 
-        # Use Plot the "circular" axis and labels, hide points
-        gene_frac = data.uns["lp_stats"][PATTERN_NAMES] / data.n_obs
-
-        gene_frac["Pattern"] = gene_frac.idxmax(axis=1)
-        gene_frac_copy = gene_frac.copy()
-        gene_frac_copy["Pattern"] = ""
-
+        # Plot the "circular" axis, labels and point positions
         if not ax:
-            ax = radviz(gene_frac_copy, "Pattern", s=0)
+            ax = radviz(df, hue, s=0)
         else:
-            radviz(gene_frac_copy, "Pattern", s=0, ax=ax)
+            radviz(df, hue, s=0, ax=ax)
 
         ax.get_legend().remove()
         circle = plt.Circle((0, 0), radius=1, color="black", fill=False)
@@ -159,16 +173,15 @@ def lp_genes(
             pts.extend(c.get_offsets().data)
 
         pts = np.array(pts).reshape(-1, 2)
-        xy = pd.DataFrame(pts, index=gene_frac.index)
-        xy["Pattern"] = gene_frac["Pattern"]
+        xy = pd.DataFrame(pts, index=df.index)
+        xy[hue] = df[hue]
 
-        # Scale point size by max
-        xy["Fraction of cells"] = gene_frac.iloc[:, :5].max(axis=1)
+        # Point size ~ row total
+        xy["Total"] = df.sum(axis=1)
         size_norm = (0, 1)
 
         # Plot points as scatter or hex
         if kind == "scatter":
-
             del ax.collections[0]
 
             # Plot points
@@ -176,7 +189,7 @@ def lp_genes(
                 data=xy,
                 x=0,
                 y=1,
-                size="Fraction of cells",
+                size="Total",
                 hue=hue,
                 sizes=sizes,
                 size_norm=size_norm,
@@ -207,13 +220,13 @@ def lp_genes(
                 label="genes",
             )
 
-        if isinstance(highlight_groups, list):
+        if isinstance(accent, list):
             sns.scatterplot(
-                data=xy.loc[highlight_groups],
+                data=xy.loc[accent],
                 x=0,
                 y=1,
                 hue=hue,
-                size="Fraction of cells",
+                size="Total",
                 sizes=sizes,
                 size_norm=size_norm,
                 linewidth=2,
@@ -227,7 +240,7 @@ def lp_genes(
             # )
             texts = [
                 ax.text(row[[0]] + 0.03, row[[1]] + 0.03, group)
-                for group, row in xy.loc[highlight_groups].iterrows()
+                for group, row in xy.loc[accent].iterrows()
             ]
 
 
