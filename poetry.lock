@@ -924,6 +924,14 @@ optional = true
 python-versions = ">=3.7"
 
 [[package]]
+name = "MiniSom"
+version = "2.3.0"
+description = "Minimalistic implementation of the Self Organizing Maps (SOM)"
+category = "main"
+optional = false
+python-versions = "*"
+
+[[package]]
 name = "mistune"
 version = "2.0.4"
 description = "A sane Markdown parser with useful plugins and renderers"
@@ -2225,7 +2233,7 @@ torch = ["torch"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8, <3.11"
-content-hash = "37ecdb73709d91c504470bb88063aff8d05504e93ecb695c415296729f4b4ee4"
+content-hash = "a46eccfcf8d540a83934cfac3cc9e783360913ab1f130404fd860b4518af8cc3"
 
 [metadata.files]
 affine = [
@@ -2872,6 +2880,9 @@ mdit-py-plugins = [
 mdurl = [
     {file = "mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8"},
     {file = "mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba"},
+]
+MiniSom = [
+    {file = "MiniSom-2.3.0.tar.gz", hash = "sha256:8f55b7c23136b1cfbc538821f78f64bee78913780998c0b4bfb05bdee9ed192e"},
 ]
 mistune = [
     {file = "mistune-2.0.4-py2.py3-none-any.whl", hash = "sha256:182cc5ee6f8ed1b807de6b7bb50155df7b66495412836b9a74c8fbdfc75fe36d"},
