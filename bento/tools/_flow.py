@@ -8,11 +8,11 @@ from tqdm.auto import tqdm
 from sklearn.preprocessing import quantile_transform, minmax_scale, StandardScaler
 from sklearn.decomposition import TruncatedSVD
 from minisom import MiniSom
-from skimage.transform import rescale
 import geopandas as gpd
 import rasterio
 from shapely.geometry import Polygon
 import emoji
+from kneed import KneeLocator
 
 from .._utils import track
 from ..geometry import get_points
@@ -36,10 +36,7 @@ def flow(
     data,
     n_neighbors=None,
     radius=50,
-    render_resolution=0.01,
-    n_clusters=5,
-    num_iterations=1000,
-    random_state=11,
+    render_resolution=0.1,
     copy=False,
 ):
     """
@@ -57,7 +54,7 @@ def flow(
     radius : float
         Radius to use for local neighborhood.
     render_resolution : float
-        Resolution to use for rendering embedding (for mode=cell). Default 0.01.
+        Resolution to use for rendering embedding. Default 0.01.
     copy : bool
         Whether to return a copy the AnnData object. Default False.
     """
@@ -68,7 +65,7 @@ def flow(
     points = get_points(adata)[["cell", "gene", "x", "y"]]
 
     # embeds points on a uniform grid
-    pbar = tqdm(total=5)
+    pbar = tqdm(total=3)
     pbar.set_description(emoji.emojize(f"Embedding"))
     step = 1 / render_resolution
     # Get grid rasters
@@ -93,17 +90,20 @@ def flow(
 
     points_grouped = points.groupby("cell")
     rpoints_grouped = raster_points.groupby("cell")
-    cells_ordered = list(points_grouped.groups.keys())
+    cells = list(points_grouped.groups.keys())
+
+    cell_composition = adata[cells, gene_names].X.toarray()
 
     # Compute cell composition
-    cell_composition = adata[cells_ordered, gene_names].X.toarray()
     cell_composition = cell_composition / (cell_composition.sum(axis=1).reshape(-1, 1))
+
+    # Robust CLR transform
     cell_composition = robust_clr(cell_composition)
     cell_composition = np.nan_to_num(cell_composition)
 
     # Embed each cell neighborhood independently
     cell_flows = []
-    for i, cell in enumerate(cells_ordered):
+    for i, cell in enumerate(tqdm(cells, leave=False)):
         cell_points = points_grouped.get_group(cell)
         rpoints = rpoints_grouped.get_group(cell)
         gene_count = _count_neighbors(
@@ -116,17 +116,24 @@ def flow(
         )
         gene_count = gene_count.toarray()
 
-        # Compute flow: aitchison distance between cell and neighborhood composition
-        fl_composition = gene_count / (gene_count.sum(axis=1).reshape(-1, 1))
-        fl_composition = robust_clr(fl_composition)
-        cflow = fl_composition - cell_composition[i]
+        # flow embedding = : Aitchison distance between robust CLR transformed neighborhood composition and cell composition
+        # Compute composition of neighborhood
+        flow_composition = gene_count / (gene_count.sum(axis=1).reshape(-1, 1))
+
+        # Robust CLR transform
+        flow_composition = robust_clr(flow_composition)
+
+        # Mask zeros from distance calculation; zeros stay as zero
+        cell_composition_ma = np.ma.masked_equal(cell_composition[i], 0)
+
+        # Aitchison distance from true cell composition
+        cflow = flow_composition - cell_composition_ma
+        cflow = np.ma.asarray(cflow)
 
         # Convert back to sparse matrix
         cflow = csr_matrix(cflow)
 
         # Normalize within cell
-        cflow = StandardScaler(with_mean=False).fit_transform(cflow)
-
         cell_flows.append(cflow)
 
     cell_flows = vstack(cell_flows) if len(cell_flows) > 1 else cell_flows[0]
@@ -134,7 +141,7 @@ def flow(
     pbar.update()
 
     pbar.set_description(emoji.emojize("Reducing"))
-    pca_model = TruncatedSVD(n_components=10).fit(cell_flows)
+    pca_model = TruncatedSVD(n_components=10, algorithm="arpack").fit(cell_flows)
     flow_embed = pca_model.transform(cell_flows)
     variance_ratio = pca_model.explained_variance_ratio_
 
@@ -144,32 +151,136 @@ def flow(
     flow_vis = pd.DataFrame(flow_vis[:, :3], columns=["c1", "c2", "c3"])
     pbar.update()
 
-    pbar.set_description(emoji.emojize("Fitting SOM"))
-    som = MiniSom(1, n_clusters, flow_embed.shape[1], random_seed=random_state)
-    som.random_weights_init(flow_embed)
-    som.train(flow_embed, num_iterations, random_order=True, verbose=False)
-    winner_coordinates = np.array([som.winner(x) for x in flow_embed]).T
-    qnt_index = (
-        np.ravel_multi_index(winner_coordinates, (1, n_clusters)) + 1
-    )  # start clusters at 1
-    raster_points["flow"] = qnt_index
+    pbar.set_description(emoji.emojize("Saving"))
+    adata.uns["flow"] = cell_flows  # sparse gene rclr
+    adata.uns["flow_genes"] = gene_names  # gene names
+    adata.uns["flow_embed"] = flow_embed
+    adata.uns["flow_variance_ratio"] = variance_ratio
+    adata.uns["flow_vis"] = flow_vis
+
+    pbar.set_description(emoji.emojize("Done. :bento_box:"))
+    pbar.update()
+    pbar.close()
+
+    return adata if copy else None
+
+
+def flowmap(
+    data,
+    n_clusters=range(2, 9),
+    num_iterations=1000,
+    train_size=0.2,
+    render_resolution=0.1,
+    random_state=11,
+    plot_error=True,
+    copy=False,
+):
+    """Cluster flow embeddings using self-organizing maps (SOMs) and vectorize clusters as Polygon shapes.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object.
+    n_clusters : int or list
+        Number of clusters to use. If list, will pick best number of clusters
+        using the elbow heuristic evaluated on the quantization error.
+    num_iterations : int
+        Number of iterations to use for SOM training.
+    render_resolution : float
+        Resolution used for rendering embedding. Default 0.01.
+    random_state : int
+        Random state to use for SOM training. Default 11.
+    copy : bool
+        Whether to return a copy the AnnData object. Default False.
+    """
+    adata = data.copy() if copy else data
+
+    # Check if flow embedding has been computed
+    if "flow_embed" not in adata.uns:
+        raise ValueError(
+            "Flow embedding has not been computed. Run `bento.tl.flow()` first."
+        )
+
+    flow_embed = adata.uns["flow_embed"]
+    raster_points = adata.uns["cell_raster"]
+
+    if isinstance(n_clusters, int):
+        n_clusters = [n_clusters]
+
+    if isinstance(n_clusters, range):
+        n_clusters = list(n_clusters)
+
+    # Subsample flow embeddings for faster training
+    if train_size > 1:
+        raise ValueError("train_size must be less than 1.")
+    if train_size < 1:
+        from sklearn.utils import resample
+
+        flow_train = resample(
+            flow_embed,
+            n_samples=int(train_size * flow_embed.shape[0]),
+            random_state=random_state,
+        )
+
+    # Perform SOM clustering over n_clusters range and pick best number of clusters using elbow heuristic
+    pbar = tqdm(total=4)
+    pbar.set_description(emoji.emojize(f"Optimizing # of clusters"))
+    som_models = {}
+    quantization_errors = []
+    for k in tqdm(n_clusters, leave=False):
+        som = MiniSom(1, k, flow_train.shape[1], random_seed=random_state)
+        som.random_weights_init(flow_train)
+        som.train(flow_train, num_iterations, random_order=False, verbose=False)
+        som_models[k] = som
+        quantization_errors.append(som.quantization_error(flow_embed))
+
+    # Use kneed to find elbow
+    if len(n_clusters) > 1:
+        kl = KneeLocator(
+            n_clusters, quantization_errors, curve="convex", direction="decreasing"
+        )
+        best_k = kl.elbow
+
+        if plot_error:
+            kl.plot_knee()
+    else:
+        best_k = n_clusters[0]
     pbar.update()
 
-    pbar.set_description(emoji.emojize("Clustering"))
-    flow_field_df = dict()
-    for cell in cells_ordered:
-        rpoints = rpoints_grouped.get_group(cell)
-        # Render to scaled image
-        rpoints[["x", "y"]] = rpoints[["x", "y"]] * render_resolution
-        max_x = int(rpoints["x"].max())
-        max_y = int(rpoints["y"].max())
-        image = np.zeros((max_y + 1, max_x + 1))
-        for x, y, val in rpoints[["x", "y", "flow"]].values.astype(int):
-            image[y, x] = val
+    # Use best k to assign each sample to a cluster
+    pbar.set_description(f"Assigning clusters")
+    som = som_models[best_k]
+    winner_coordinates = np.array([som.winner(x) for x in flow_embed]).T
 
-        # Scale back up to original
-        image = rescale(image, 1 / render_resolution, order=0)
-        image = image.astype("int32")
+    # Indices start at 0, so add 1
+    qnt_index = np.ravel_multi_index(winner_coordinates, (1, best_k)) + 1
+    raster_points["flowmap"] = qnt_index
+    adata.uns["cell_raster"] = raster_points.copy()
+
+    pbar.update()
+
+    # Vectorize polygons in each cell
+    pbar.set_description(emoji.emojize("Vectorizing clusters"))
+    cells = raster_points["cell"].unique().tolist()
+    # Scale down to render resolution
+    raster_points[["x", "y"]] = raster_points[["x", "y"]] * render_resolution
+
+    # Cast to int
+    raster_points[["x", "y", "flowmap"]] = raster_points[["x", "y", "flowmap"]].astype(
+        int
+    )
+
+    rpoints_grouped = raster_points.groupby("cell")
+    flowmap_df = dict()
+    for cell in tqdm(cells, leave=False):
+        rpoints = rpoints_grouped.get_group(cell)
+
+        # Fill in image at each point xy with flowmap value by casting to dense matrix
+        image = (
+            csr_matrix((rpoints["flowmap"], (rpoints["y"], rpoints["x"])))
+            .todense()
+            .astype("int16")
+        )
 
         # Find all the contours
         contours = rasterio.features.shapes(image)
@@ -177,38 +288,44 @@ def flow(
         shapes = gpd.GeoDataFrame(
             polygons[:, 1],
             geometry=gpd.GeoSeries(polygons[:, 0]).T,
-            columns=["flow"],
+            columns=["flowmap"],
         )
 
-        # Cast as int and remove background shape
-        shapes["flow"] = shapes["flow"].astype(int)
-        shapes = shapes[shapes["flow"] != 0]
+        # Remove background shape
+        shapes["flowmap"] = shapes["flowmap"].astype(int)
+        shapes = shapes[shapes["flowmap"] != 0]
 
         # Group same fields as MultiPolygons
-        shapes = shapes.dissolve("flow")["geometry"]
-        shapes.index = "flow" + shapes.index.astype(str) + "_shape"
+        shapes = shapes.dissolve("flowmap")["geometry"]
 
-        flow_field_df[cell] = shapes
+        flowmap_df[cell] = shapes
 
-    flow_field_df = pd.DataFrame(flow_field_df).T
+    flowmap_df = pd.DataFrame.from_dict(flowmap_df).T
+    flowmap_df.columns = "flowmap" + flowmap_df.columns.astype(str) + "_shape"
+
+    # Upscale to match original resolution
+    flowmap_df = flowmap_df.apply(
+        lambda col: gpd.GeoSeries(col).scale(
+            xfact=1 / render_resolution, yfact=1 / render_resolution, origin=(0, 0)
+        )
+    )
     pbar.update()
 
-    pbar.set_description(emoji.emojize(":bento_box: Saving"))
-    adata.uns["flow"] = cell_flows  # sparse gene rclr
-    adata.uns["flow_genes"] = gene_names  # gene names
-    adata.uns["flow_embed"] = flow_embed
-    adata.uns["flow_variance_ratio"] = variance_ratio
-    adata.uns["flow_vis"] = flow_vis
-    adata.uns["cell_raster"] = raster_points
+    pbar.set_description("Saving")
+    old_cols = adata.obs.columns[adata.obs.columns.str.startswith("flowmap")]
+    adata.obs = adata.obs.drop(old_cols, axis=1, errors="ignore")
 
-    adata.obs = adata.obs.drop(flow_field_df.columns, axis=1, errors="ignore")
-    adata.obs = adata.obs.join(flow_field_df)
+    adata.obs[flowmap_df.columns] = flowmap_df.reindex(adata.obs_names)
 
-    # TODO test this
-    sindex_points(adata, "points", flow_field_df.columns.tolist())
+    old_cols = adata.uns["points"].columns[
+        adata.uns["points"].columns.str.startswith("flowmap")
+    ]
+    adata.uns["points"] = adata.uns["points"].drop(old_cols, axis=1)
 
-    pbar.set_description(emoji.emojize(":bento_box: Done"))
+    # SLOW
+    sindex_points(adata, "points", flowmap_df.columns.tolist())
     pbar.update()
+    pbar.set_description("Done")
     pbar.close()
 
     return adata if copy else None

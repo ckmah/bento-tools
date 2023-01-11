@@ -41,6 +41,7 @@ ipywidgets = "^7.5.1"
 rich = {extras = ["jupyter"], version = "^12.5.1"}
 decoupler = "^1.2.0"
 MiniSom = "^2.3.0"
+kneed = "^0.8.1"
 
 [tool.poetry.extras]
 torch = ["torch"]

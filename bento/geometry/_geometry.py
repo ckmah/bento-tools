@@ -28,24 +28,35 @@ def sindex_points(data, points_key, shape_names, copy=False):
         shape_names = [shape_names]
 
     points = get_points(data, points_key, asgeo=True)
+    points = points.drop(columns=shape_names, errors="ignore")
+    points_grouped = points.groupby("cell")
 
     point_sindex = dict()
     for col in shape_names:
-        shp_gdf = gpd.GeoDataFrame(geometry=adata.obs[col])
-        shp_name = "_".join(str(col).split("_")[:-1])
 
-        # Remove column if it already exists
-        points = points.drop(columns=shp_name, errors="ignore")
+        cur_sindex = []
+        for cell in adata.obs_names:
+            shp_gdf = gpd.GeoDataFrame(geometry=adata.obs.loc[[cell], col])
+            shp_name = "_".join(str(col).split("_")[:-1])
 
-        # remove multiple polygons assigned to same point
-        sindex = gpd.sjoin(points.reset_index(), shp_gdf, how="left", op="intersects")
-        sindex = (
-            sindex.drop_duplicates(subset="index", keep="first")
-            .set_index("index")["index_right"]
-            .notna()
-        )
+            # remove multiple polygons assigned to same point
+            sindex = gpd.sjoin(
+                points_grouped.get_group(cell).reset_index(),
+                shp_gdf,
+                how="left",
+                op="intersects",
+            )
 
-        point_sindex[shp_name] = sindex
+            sindex = (
+                sindex.drop_duplicates(subset="index", keep="first")
+                .set_index("index")["index_right"]
+                .notna()
+            )
+
+            cur_sindex.append(sindex)
+
+        cur_sindex = pd.concat(cur_sindex, axis=0)
+        point_sindex[shp_name] = cur_sindex
 
     point_sindex = pd.DataFrame.from_dict(point_sindex)
 
@@ -56,7 +67,17 @@ def sindex_points(data, points_key, shape_names, copy=False):
 
 
 def crop(data, xlims=None, ylims=None):
-    """Returns a view of data within specified coordinates."""
+    """Returns a view of data within specified coordinates.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object
+    xlims : list, optional
+        Upper and lower x limits, by default None
+    ylims : list, optional
+        Upper and lower y limits, by default None
+    """
     if len(xlims) < 1 and len(xlims) > 2:
         return ValueError("Invalid xlims")
 
@@ -134,7 +155,7 @@ def get_points(data, key="points", asgeo=False):
     return points
 
 
-def set_points(data, copy=False):
+def set_points(data, key="points", copy=False):
     """Set points for the given `AnnData` object, data. Call this setter
     to keep the points DataFrame in sync.
 
@@ -142,6 +163,8 @@ def set_points(data, copy=False):
     ----------
     data : AnnData
         Spatial formatted AnnData object
+    key : str, optional
+        Key for `data.uns` to use, by default 'points'
     copy : bool
             Return a copy of `data` instead of writing to data, by default False.
     Returns
@@ -150,6 +173,6 @@ def set_points(data, copy=False):
         _description_
     """
     adata = data.copy() if copy else data
-    points = get_points(adata)
-    adata.uns["points"] = points
+    points = get_points(adata, key)
+    adata.uns[key] = points
     return adata if copy else None

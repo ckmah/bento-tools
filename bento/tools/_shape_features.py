@@ -3,7 +3,7 @@ import matplotlib.path as mplPath
 import numpy as np
 import pandas as pd
 from scipy.spatial import distance, distance_matrix
-from shapely.geometry import Point
+from shapely.geometry import Point, Polygon, MultiPolygon
 from tqdm.auto import tqdm
 
 from .._utils import get_shape, track
@@ -215,8 +215,17 @@ def _raster_polygon(poly, step=1):
     x = x.flatten()
     y = y.flatten()
     xy = np.array([x, y]).T
-    poly_path = mplPath.Path(np.array(poly.exterior.xy).T)
-    poly_cell_mask = poly_path.contains_points(xy)
+
+    poly_cell_mask = np.ones(xy.shape[0], dtype=bool)
+
+    # Add all points within the polygon; handle MultiPolygons
+    if isinstance(poly, MultiPolygon):
+        for p in poly:
+            poly_path = mplPath.Path(np.array(p.exterior.xy).T)
+            poly_cell_mask = poly_cell_mask & poly_path.contains_points(xy)
+    else:
+        poly_path = mplPath.Path(np.array(poly.exterior.xy).T)
+        poly_cell_mask = poly_path.contains_points(xy)
     xy = xy[poly_cell_mask]
 
     # Make sure at least a single point is returned

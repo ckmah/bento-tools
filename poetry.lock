@@ -788,6 +788,22 @@ optional = false
 python-versions = ">=3.7"
 
 [[package]]
+name = "kneed"
+version = "0.8.1"
+description = "Knee-point detection in Python"
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+numpy = ">=1.14.2"
+scipy = ">=1.0.0"
+
+[package.extras]
+plot = ["matplotlib (>=2.2.5)"]
+testing = ["matplotlib (>=2.2.5)", "pytest (>=5.0.1)", "pytest-cov (>=3.0.0)"]
+
+[[package]]
 name = "livereload"
 version = "2.6.3"
 description = "Python LiveReload is an awesome tool for web developers"
@@ -2233,7 +2249,7 @@ torch = ["torch"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8, <3.11"
-content-hash = "a46eccfcf8d540a83934cfac3cc9e783360913ab1f130404fd860b4518af8cc3"
+content-hash = "ead41c9fa78b60f2c8ee06813287d39db48fa214029d1cb207144975d5ebe58a"
 
 [metadata.files]
 affine = [
@@ -2672,6 +2688,10 @@ kiwisolver = [
     {file = "kiwisolver-1.4.4-pp39-pypy39_pp73-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f6cb459eea32a4e2cf18ba5fcece2dbdf496384413bc1bae15583f19e567f3b2"},
     {file = "kiwisolver-1.4.4-pp39-pypy39_pp73-win_amd64.whl", hash = "sha256:36dafec3d6d6088d34e2de6b85f9d8e2324eb734162fba59d2ba9ed7a2043d5b"},
     {file = "kiwisolver-1.4.4.tar.gz", hash = "sha256:d41997519fcba4a1e46eb4a2fe31bc12f0ff957b2b81bac28db24744f333e955"},
+]
+kneed = [
+    {file = "kneed-0.8.1-py2.py3-none-any.whl", hash = "sha256:93db3e6cd4ca32b48cb6948b13a004359f04f7283803fac33b5605ff5c1ec970"},
+    {file = "kneed-0.8.1.tar.gz", hash = "sha256:6addebca6a3742e51a173f4f40f789c704677c49bc0b02666e7d71152ca0e473"},
 ]
 livereload = [
     {file = "livereload-2.6.3.tar.gz", hash = "sha256:776f2f865e59fde56490a56bcc6773b6917366bce0c267c60ee8aaf1a0959869"},

@@ -2,9 +2,8 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 import seaborn as sns
-from scipy.stats import zscore
+from scipy.sparse import coo_matrix
 from kneed import KneeLocator
-import sparse
 import emoji
 
 
@@ -77,7 +76,7 @@ def _colocation_tensor(data, copy=False):
 
     label_orders = np.array(label_orders)
 
-    s = sparse.COO(label_orders, data=clq_long["clq"].values)
+    s = coo_matrix((clq_long["clq"].values, label_orders))
     tensor = s.todense()
     print(tensor.shape)
 

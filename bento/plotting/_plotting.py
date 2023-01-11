@@ -3,21 +3,22 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import geopandas as gpd
+import matplotlib.patheffects as pe
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+import pandas as pd
 from matplotlib_scalebar.scalebar import ScaleBar
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from shapely.geometry import Polygon
-from tqdm.auto import tqdm
 from scipy.interpolate import griddata
-from scipy.stats import zscore
 from sklearn.neighbors import NearestNeighbors
 import networkx as nx
 from sklearn.preprocessing import quantile_transform
+from sklearn.metrics.pairwise import cosine_similarity
+from adjustText import adjust_text
 
-from ._colors import red2blue_dark
 from ..geometry import get_points
 from ._utils import savefig
 
@@ -203,14 +204,321 @@ def qc_metrics(adata, fname=None):
 
 
 @savefig
+def flow_summary(
+    data,
+    groupby=None,
+    annotate=None,
+    adjust=True,
+    palette="crest",
+    annot_color="blue",
+    sizes=(5, 30),
+    size_norm=(10, 100),
+    sort_dims=False,
+    legend=True,
+    height=5,
+    fname=None,
+):
+    """
+    Plot RNAflow summary with a radviz plot describing gene embedding across flow clusters.
+    """
+    points = data.uns["points"]
+    dims = points.columns[points.columns.str.startswith("flowmap")]
+    # points = pd.DataFrame(data.uns["flow"].todense(), columns=data.uns["flow_genes"])
+    # points[["cell", "flowmap"]] = data.uns["cell_raster"][["cell", "flowmap"]]
+
+    if groupby is not None:
+
+        if (
+            groupby not in data.obs.columns
+            and groupby not in data.uns["cell_raster"].columns
+        ):
+            raise ValueError(f"{groupby} not found")
+
+        if groupby not in data.uns["cell_raster"].columns:
+            group_dict = data.obs[groupby].to_dict()
+            data.uns["cell_raster"][groupby] = [
+                group_dict[c] for c in data.uns["cell_raster"]["cell"]
+            ]
+
+        # Iterate over groupby
+        # points_grouped = points.groupby(data.uns["cell_raster"][groupby])
+        points_grouped = points.groupby(groupby)
+        ngroups = points_grouped.ngroups
+        fig, axes = plt.subplots(1, ngroups, figsize=(ngroups * height * 1.1, height))
+        if axes is not np.ndarray:
+            axes = np.array([axes])
+
+        # Plot each group separately
+        for (group, df), ax in zip(points_grouped, axes.flat):
+            cluster_embed = df.groupby(["cell", "gene"], observed=True)[dims].sum()
+
+            show_legend = False
+            if legend and ax == axes.flat[-1]:
+                show_legend = True
+
+            _radviz(
+                cluster_embed,
+                annotate=annotate,
+                adjust=adjust,
+                palette=palette,
+                annot_color=annot_color,
+                sizes=sizes,
+                size_norm=size_norm,
+                sort_dims=sort_dims,
+                legend=show_legend,
+                ax=ax,
+            )
+            ax.set_title(group, fontsize=12)
+    else:
+        cluster_embed = points.groupby(["cell", "gene"], observed=True)[dims].sum()
+
+        _radviz(
+            cluster_embed,
+            annotate=annotate,
+            adjust=adjust,
+            palette=palette,
+            annot_color=annot_color,
+            sizes=sizes,
+            size_norm=size_norm,
+            sort_dims=sort_dims,
+            legend=legend,
+        )
+
+
+def _radviz(
+    df,
+    annotate=None,
+    adjust=True,
+    palette="crest",
+    annot_color="blue",
+    sizes=None,
+    size_norm=None,
+    sort_dims=True,
+    legend=True,
+    ax=None,
+):
+    """Plot a radviz plot of gene values across fields.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame where rows are observations and gene + fields as columns
+    palette : str, optional
+        Color palette, by default None
+    sizes : tuple, optional
+        Size range for scatter plot, by default None
+    size_norm : tuple, optional
+        Size range for scatter plot, by default None
+    sort_dims : bool, optional
+        Sort dimensions for more intuitive visualization, by default True
+    gridsize : int, optional
+        Gridsize for hexbin plot, by default 20
+    ax : matplotlib.Axes, optional
+        Axes to plot on, by default None
+    """
+    with plt.rc_context({"font.size": 14}):
+        # RADVIZ plot
+        if not ax:
+            figsize = (5, 5)
+            fig = plt.figure(figsize=figsize)
+            ax = plt.gca()
+        else:
+            fig = ax.get_figure()
+
+        row_sums = df.sum(axis=1)
+        df = (df.T / row_sums).T  # Normalize rows
+        gene_embed = df
+
+        # Mean gene composition in each field
+        gene_embed = df.groupby("gene").agg("mean")
+
+        # Determine best dimension ordering by maximizing cosine similarity of adjacent dimensions
+        if sort_dims:
+            dim_order = _sort_dimensions(gene_embed)
+
+            gene_embed = gene_embed.reindex(dim_order, axis=1)
+
+        # Plot the "circular" axis, labels and point positions
+        gene_embed["_"] = ""
+        pd.plotting.radviz(gene_embed, "_", s=0, ax=ax)
+        ax.get_legend().remove()
+
+        # Get vertices and origin
+        center = ax.patches[0]
+        vertices = ax.patches[1:]
+
+        # Add polygon as background
+        poly = plt.Polygon(
+            [v.center for v in vertices],
+            facecolor="none",
+            edgecolor="black",
+            zorder=1,
+        )
+        ax.add_patch(poly)
+
+        # Add lines from origin to vertices
+        for v in vertices:
+            xy = np.array([center.center, v.center])
+            ax.add_line(
+                plt.Line2D(
+                    xy[:, 0],
+                    xy[:, 1],
+                    linestyle=":",
+                    linewidth=1,
+                    color="black",
+                    zorder=1,
+                    alpha=0.4,
+                )
+            )
+            v.remove()
+
+        # Hide 2D axes
+        ax.axis(False)
+
+        # Get points
+        pts = []
+        for c in ax.collections:
+            pts.extend(c.get_offsets().data)
+
+        pts = np.array(pts).reshape(-1, 2)
+        xy = pd.DataFrame(pts, index=gene_embed.index)
+
+        # Point size ~ percent of cells in group
+        n_cells = len(df.index.get_level_values("cell").unique())
+        mean_fraction = (
+            row_sums.groupby("gene").apply(np.count_nonzero) / n_cells
+        ) * 100
+        mean_fraction = mean_fraction.apply(lambda x: round(x, 1))
+        size_key = "Fraction of cells\n in group (%)"
+        xy[size_key] = mean_fraction
+
+        # Hue ~ mean log2(count = 1)
+        mean_count = np.log2(row_sums.groupby("gene").agg("mean") + 1)
+        hue_key = "Mean log2(count + 1)\n in group"
+        xy[hue_key] = mean_count
+
+        # Remove phantom points
+        del ax.collections[0]
+
+        sns.kdeplot(
+            data=xy,
+            x=0,
+            y=1,
+            shade=True,
+            cmap=sns.light_palette("lightseagreen", as_cmap=True),
+            zorder=0.9,
+            ax=ax,
+        )
+
+        # Plot points
+        sns.scatterplot(
+            data=xy,
+            x=0,
+            y=1,
+            hue=hue_key,
+            palette=palette,
+            size=size_key,
+            sizes=sizes,
+            size_norm=size_norm,
+            linewidth=0.5,
+            # alpha=0.6,
+            edgecolor="white",
+            legend=legend,
+            ax=ax,
+        )
+        scatter = ax.collections[0]
+
+        if legend:
+            plt.legend(bbox_to_anchor=[1.1, 1], fontsize=10, frameon=False)
+
+        # Annotate top points
+        if annotate:
+
+            if isinstance(annotate, int):
+
+                # Get top ranked genes by entropy
+                from scipy.stats import entropy
+
+                top_genes = (
+                    gene_embed.loc[:, gene_embed.columns != "_"]
+                    .apply(lambda gene_comp: entropy(gene_comp), axis=1)
+                    .sort_values(ascending=True)
+                    .index[:annotate]
+                )
+                top_xy = xy.loc[top_genes]
+
+            else:
+                top_xy = xy.loc[annotate]
+            # Plot top points
+            sns.scatterplot(
+                data=top_xy,
+                x=0,
+                y=1,
+                hue=hue_key,
+                palette=palette,
+                size=size_key,
+                sizes=sizes,
+                size_norm=size_norm,
+                linewidth=1,
+                facecolor=None,
+                edgecolor=annot_color,
+                legend=False,
+                ax=ax,
+            )
+
+            # Add text labels
+            texts = [
+                ax.text(
+                    row[0],
+                    row[1],
+                    i,
+                    fontsize=8,
+                    weight="medium",
+                    path_effects=[pe.withStroke(linewidth=2, foreground="white")],
+                )
+                for i, row in top_xy.iterrows()
+            ]
+
+            # Adjust text positions
+            if adjust:
+                print("Adjusting text positions...")
+                adjust_text(
+                    texts,
+                    expand_points=(2, 2),
+                    add_objects=[scatter],
+                    arrowprops=dict(arrowstyle="-", color="black", lw=1),
+                    ax=ax,
+                )
+
+
+def _sort_dimensions(composition):
+    sim = cosine_similarity(composition.T, composition.T)
+    sim = pd.DataFrame(sim, index=composition.columns, columns=composition.columns)
+    dim_order = sim.sample(3, random_state=11).index.tolist()
+
+    # Insert dimensions greedily
+    for dim in sim.columns:
+        if dim in dim_order:
+            continue
+
+        insert_score = []
+        for dim_i, dim_j in zip([dim_order[-1]] + dim_order[:-1], dim_order):
+            insert_score.append(np.mean(sim.loc[dim, [dim_i, dim_j]]))
+
+        insert_pos = np.argmax(insert_score)
+        dim_order.insert(insert_pos, dim)
+    return dim_order
+
+
+@savefig
 def plot(
     adata,
     kind="scatter",
     hue=None,
-    col="batch",
+    groupby="batch",
     hue_order=None,
     col_wrap=None,
-    col_order=None,
+    group_order=None,
     points_key="points",
     height=3,
     theme="dark",
@@ -274,14 +582,16 @@ def plot(
         points[adata.uns["flow_vis"].columns] = adata.uns["flow_vis"].values
 
     # Include col if exists
-    if col and (col == "cell" or (col in adata.obs.columns or col in points.columns)):
-        obs_attrs.append(col)
+    if groupby and (
+        groupby == "cell" or (groupby in adata.obs.columns or groupby in points.columns)
+    ):
+        obs_attrs.append(groupby)
 
         # TODO bug, col typeerror
-        if col not in points.columns:
-            points = points.set_index("cell").join(adata.obs[[col]]).reset_index()
+        if groupby not in points.columns:
+            points = points.set_index("cell").join(adata.obs[[groupby]]).reset_index()
     else:
-        col = None
+        groupby = None
 
     # Transfer obs hue to points
     if hue and hue in adata.obs.columns and hue not in points.columns:
@@ -295,19 +605,19 @@ def plot(
     if "cell_shape" in shapes.columns:
         shapes = shapes.set_geometry("cell_shape")
 
-    if col:
+    if groupby:
         # Make sure col is same type across points and shapes
         # if points[col].dtype != shapes[col].dtype:
-        points[col] = points[col].astype(str)
-        shapes[col] = shapes[col].astype(str)
+        points[groupby] = points[groupby].astype(str)
+        shapes[groupby] = shapes[groupby].astype(str)
 
         # Subset to specified col values only; less filtering = faster plotting
-        if col_order:
-            points = points[points[col].isin(col_order)]
-            shapes = shapes[shapes[col].isin(col_order)]
+        if group_order:
+            points = points[points[groupby].isin(group_order)]
+            shapes = shapes[shapes[groupby].isin(group_order)]
 
-        group_names, pt_groups = zip(*points.groupby(col))
-        group_names, shape_groups = zip(*shapes.groupby(col))
+        group_names, pt_groups = zip(*points.groupby(groupby))
+        group_names, shape_groups = zip(*shapes.groupby(groupby))
         # Get subplot grid shape
         if col_wrap is not None:
             ncols = col_wrap
@@ -337,7 +647,7 @@ def plot(
         else:
             if nrows > 1:
                 axes = list(axes.flat)
-            group_names, pt_groups = zip(*points.groupby(col))
+            group_names, pt_groups = zip(*points.groupby(groupby))
 
         # Plot shapes if any
         if isinstance(shape_groups[0], gpd.GeoDataFrame):
@@ -391,8 +701,9 @@ def plot(
 
         print("  + Transcripts")
         for ax, pt_group in zip(axes, pt_groups):
+            show_legend = False
             if legend and ax == axes[-1]:
-                legend = True
+                show_legend = legend
 
             _plot_points(
                 kind, hue, hue_order, palette, cmap, legend, ax, pt_group, **point_kws
@@ -633,7 +944,7 @@ def sig_samples(data, rank, n_genes=5, n_cells=4, col_wrap=4, **kwargs):
             data[top_cells, top_genes],
             kind="scatter",
             hue="gene",
-            col="cell",
+            groupby="cell",
             col_wrap=col_wrap,
             height=2,
             **kwargs,
