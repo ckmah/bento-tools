@@ -27,8 +27,8 @@ def robust_clr(mtx):
     gmeans = mstats.gmean(mtx_ma, axis=1).reshape(-1, 1)
     # CLR transform
     rclr = np.log(mtx_ma / gmeans)
-    rclr = np.ma.asarray(rclr)
-    return mtx
+    rclr = rclr.filled(fill_value=0)
+    return rclr
 
 
 @track
@@ -98,7 +98,7 @@ def flow(
     cell_composition = cell_composition / (cell_composition.sum(axis=1).reshape(-1, 1))
 
     # Robust CLR transform
-    cell_composition = robust_clr(cell_composition)
+    # cell_composition = robust_clr(cell_composition)
     cell_composition = np.nan_to_num(cell_composition)
 
     # Embed each cell neighborhood independently
@@ -116,24 +116,15 @@ def flow(
         )
         gene_count = gene_count.toarray()
 
-        # flow embedding = : Aitchison distance between robust CLR transformed neighborhood composition and cell composition
+        # embedding: distance neighborhood composition and cell composition
         # Compute composition of neighborhood
         flow_composition = gene_count / (gene_count.sum(axis=1).reshape(-1, 1))
-
-        # Robust CLR transform
-        flow_composition = robust_clr(flow_composition)
-
-        # Mask zeros from distance calculation; zeros stay as zero
-        cell_composition_ma = np.ma.masked_equal(cell_composition[i], 0)
-
-        # Aitchison distance from true cell composition
-        cflow = flow_composition - cell_composition_ma
-        cflow = np.ma.asarray(cflow)
+        cflow = flow_composition - cell_composition[i]
+        # cflow = StandardScaler(with_mean=False).fit_transform(cflow)
 
         # Convert back to sparse matrix
         cflow = csr_matrix(cflow)
 
-        # Normalize within cell
         cell_flows.append(cflow)
 
     cell_flows = vstack(cell_flows) if len(cell_flows) > 1 else cell_flows[0]
@@ -248,7 +239,7 @@ def flowmap(
     pbar.update()
 
     # Use best k to assign each sample to a cluster
-    pbar.set_description(f"Assigning clusters")
+    pbar.set_description(f"Assigning to {best_k} clusters")
     som = som_models[best_k]
     winner_coordinates = np.array([som.winner(x) for x in flow_embed]).T
 
@@ -333,7 +324,7 @@ def flowmap(
 
 def fe_fazal2019(data, batch_size=10000, min_n=5, copy=False):
     """Compute enrichment scores from subcellular compartment gene sets from Fazal et al. 2019 (APEX-seq).
-    Wrapper for `bento.tl.spatial_enrichment`.
+    Wrapper for `bento.tl.fe`.
 
     Parameters
     ----------

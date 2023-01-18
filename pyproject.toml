@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "bento-tools"
 packages = [{ include = "bento" }]
-include = ["bento/datasets/datasets.csv", "bento/models/**/*", "bento/datasets/gene_sets/*"]
+include = ["bento/datasets/datasets.csv", "bento/models/**/*", "bento/tools/gene_sets/*"]
 version = "1.0.1"
 description = "A toolkit for subcellular analysis of spatial transcriptomics data"
 authors = ["Clarence Mah <ckmah@ucsd.edu>"]

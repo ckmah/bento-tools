@@ -10,3 +10,4 @@ from ._shape_features import (
 )
 from ._shapes import inner_edge, outer_edge
 from ._signatures import decompose, lp_signatures, signatures, to_tensor
+from ._composition import comp_diff

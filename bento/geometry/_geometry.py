@@ -2,6 +2,53 @@ import geopandas as gpd
 import pandas as pd
 from shapely import wkt
 from shapely.geometry import Polygon
+from scipy.sparse import coo_matrix
+from tqdm.auto import tqdm
+
+
+# Write a function to quantify the number of points in a given shape by summing boolean column in points. Add as a layer dimensions cell by gene in adata.layers.
+def count_points(data, shape_names, copy=False):
+    """Count points in shapes and add as layers to `data`. Expects points to already be indexed to shapes.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object
+    shape_names : str, list
+        List of shape names to index points to
+    copy : bool, optional
+        Whether to return a copy the AnnData object. Default False.
+    Returns
+    -------
+    AnnData
+        .layers: Updated layers with count of points in each shape
+    """
+    adata = data.copy() if copy else data
+
+    if isinstance(shape_names, str):
+        shape_names = [shape_names]
+
+    points = get_points(data, asgeo=True)
+
+    if shape_names[0].endswith("_shape"):
+        shape_prefixes = [
+            "_".join(shp_name.split("_shape")[:-1]) for shp_name in shape_names
+        ]
+    else:
+        shape_prefixes = shape_names
+
+    shape_counts = points.groupby(["cell", "gene"], observed=True)[shape_prefixes].sum()
+
+    for shape in shape_counts.columns:
+        pos_counts = shape_counts[shape]
+        pos_counts = pos_counts[pos_counts > 0]
+        values = pos_counts
+
+        row = adata.obs_names.get_indexer(pos_counts.index.get_level_values("cell"))
+        col = adata.var_names.get_indexer(pos_counts.index.get_level_values("gene"))
+        adata.layers[f"{shape}"] = coo_matrix((values, (row, col)))
+
+    return adata if copy else None
 
 
 def sindex_points(data, points_key, shape_names, copy=False):
@@ -27,41 +74,39 @@ def sindex_points(data, points_key, shape_names, copy=False):
     if isinstance(shape_names, str):
         shape_names = [shape_names]
 
-    points = get_points(data, points_key, asgeo=True)
-    points = points.drop(columns=shape_names, errors="ignore")
-    points_grouped = points.groupby("cell")
+    points = get_points(data, points_key, asgeo=True).sort_values("cell")
+    points = points.drop(
+        columns=shape_names, errors="ignore"
+    )  # Drop columns to overwrite
+    points_grouped = points.groupby("cell", observed=True)
+    cells = list(points_grouped.groups.keys())
+    point_sindex = []
 
-    point_sindex = dict()
-    for col in shape_names:
+    # Iterate over cells and index points to shapes
+    for cell in tqdm(cells, leave=False):
+        pt_group = points_grouped.get_group(cell)
 
-        cur_sindex = []
-        for cell in adata.obs_names:
-            shp_gdf = gpd.GeoDataFrame(geometry=adata.obs.loc[[cell], col])
-            shp_name = "_".join(str(col).split("_")[:-1])
+        # Get shapes to index in current cell
+        cur_shapes = gpd.GeoDataFrame(geometry=data.obs.loc[cell, shape_names].T)
+        cur_sindex = (
+            pt_group.reset_index()
+            .sjoin(cur_shapes, how="left", op="intersects")
+            .drop_duplicates(subset="index", keep="first")
+            .sort_index()
+            .reset_index()["index_right"]
+            .astype(str)
+        )
+        point_sindex.append(cur_sindex)
 
-            # remove multiple polygons assigned to same point
-            sindex = gpd.sjoin(
-                points_grouped.get_group(cell).reset_index(),
-                shp_gdf,
-                how="left",
-                op="intersects",
-            )
-
-            sindex = (
-                sindex.drop_duplicates(subset="index", keep="first")
-                .set_index("index")["index_right"]
-                .notna()
-            )
-
-            cur_sindex.append(sindex)
-
-        cur_sindex = pd.concat(cur_sindex, axis=0)
-        point_sindex[shp_name] = cur_sindex
-
-    point_sindex = pd.DataFrame.from_dict(point_sindex)
+    # TODO: concat is hella slow
+    point_sindex = (
+        pd.concat(point_sindex, ignore_index=True).str.get_dummies() == 1
+    ).fillna(False)
+    point_sindex.columns = [col.replace("_shape", "") for col in point_sindex.columns]
 
     # Add new columns to points
-    adata.uns[points_key] = points.join(point_sindex)
+    points[point_sindex.columns] = point_sindex.values
+    adata.uns[points_key] = points
 
     return adata if copy else None
 

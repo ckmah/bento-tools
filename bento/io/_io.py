@@ -150,10 +150,11 @@ def prepare(
     pbar.update()
 
     # Index points for all shapes
+    # TODO: refactor to use geometry.sindex_points
     point_index = dict()
     for col in obs_shapes.columns:
         shp_gdf = gpd.GeoDataFrame(geometry=obs_shapes[col])
-        shp_name = '_'.join(str(col).split('_')[:-1])
+        shp_name = "_".join(str(col).split("_")[:-1])
         point_index[shp_name] = _index_points(points, shp_gdf)
     point_index = pd.DataFrame.from_dict(point_index)
     pbar.update()
@@ -174,7 +175,7 @@ def prepare(
         print("No molecules found within cells. Data not processed.")
         pbar.close()
         return
-    uns_points[["cell", "gene"]] = uns_points[["cell", "gene"]].astype('category')
+    uns_points[["cell", "gene"]] = uns_points[["cell", "gene"]].astype("category")
 
     # Aggregate points to counts
     expression = (
@@ -202,7 +203,7 @@ def prepare(
     uns_points["cell"] = uns_points["cell"].astype("category")
     uns_points["gene"] = uns_points["gene"].astype("category")
     for shape_name in list(other_seg.keys()):
-        uns_points[shape_name] = uns_points[shape_name].astype('category')
+        uns_points[shape_name] = uns_points[shape_name].astype("category")
 
     adata.uns = {"points": uns_points}
 
@@ -319,7 +320,6 @@ def _index_shapes(shapes, cell_key):
 
         # Add indexed shapes as new column in GeoDataFrame
         indexed_shapes[f"{shape_name}_shape"] = geometry
-
 
     # Cells are rows, intersecting shape sets are columns
     indexed_shapes = indexed_shapes.rename(columns={"geometry": "cell_shape"})

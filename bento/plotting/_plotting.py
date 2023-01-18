@@ -22,6 +22,8 @@ from adjustText import adjust_text
 from ..geometry import get_points
 from ._utils import savefig
 
+from ..tools._composition import _get_compositions
+
 
 def quantiles(data, x, **kwargs):
     ax = plt.gca()
@@ -61,9 +63,11 @@ def obs_stats(
         "nucleus_aspect_ratio",
         "nucleus_density",
     ],
+    s=5,
+    alpha=0.3,
     fname=None,
 ):
-    """Plot shape statistics for each cell. This is a wrapper around seaborn's pairplot.
+    """Plot shape statistic distributions for each cell.
 
     Parameters
     ----------
@@ -93,8 +97,8 @@ def obs_stats(
         x="value",
         color="black",
         linewidth=0,
-        s=2,
-        alpha=0.3,
+        s=s,
+        alpha=alpha,
         rasterized=True,
     )
     g.map_dataframe(quantiles, x="value")
@@ -210,7 +214,7 @@ def flow_summary(
     annotate=None,
     adjust=True,
     palette="crest",
-    annot_color="blue",
+    annot_color="black",
     sizes=(5, 30),
     size_norm=(10, 100),
     sort_dims=False,
@@ -222,42 +226,32 @@ def flow_summary(
     Plot RNAflow summary with a radviz plot describing gene embedding across flow clusters.
     """
     points = data.uns["points"]
-    dims = points.columns[points.columns.str.startswith("flowmap")]
+    dims = data.obs.columns[data.obs.columns.str.startswith("flowmap")]
     # points = pd.DataFrame(data.uns["flow"].todense(), columns=data.uns["flow_genes"])
     # points[["cell", "flowmap"]] = data.uns["cell_raster"][["cell", "flowmap"]]
 
     if groupby is not None:
 
-        if (
-            groupby not in data.obs.columns
-            and groupby not in data.uns["cell_raster"].columns
-        ):
+        if groupby not in data.obs.columns:
             raise ValueError(f"{groupby} not found")
 
-        if groupby not in data.uns["cell_raster"].columns:
-            group_dict = data.obs[groupby].to_dict()
-            data.uns["cell_raster"][groupby] = [
-                group_dict[c] for c in data.uns["cell_raster"]["cell"]
-            ]
-
         # Iterate over groupby
-        # points_grouped = points.groupby(data.uns["cell_raster"][groupby])
-        points_grouped = points.groupby(groupby)
-        ngroups = points_grouped.ngroups
+        groups = data.obs[groupby].unique()
+        ngroups = len(groups)
         fig, axes = plt.subplots(1, ngroups, figsize=(ngroups * height * 1.1, height))
         if axes is not np.ndarray:
             axes = np.array([axes])
 
         # Plot each group separately
-        for (group, df), ax in zip(points_grouped, axes.flat):
-            cluster_embed = df.groupby(["cell", "gene"], observed=True)[dims].sum()
+        for (group, pt_group), ax in zip(points.groupby(groupby), axes.flat):
+            _, group_counts = _get_compositions(pt_group, dims, return_counts=True)
 
             show_legend = False
             if legend and ax == axes.flat[-1]:
                 show_legend = True
 
             _radviz(
-                cluster_embed,
+                group_counts,
                 annotate=annotate,
                 adjust=adjust,
                 palette=palette,
@@ -270,10 +264,10 @@ def flow_summary(
             )
             ax.set_title(group, fontsize=12)
     else:
-        cluster_embed = points.groupby(["cell", "gene"], observed=True)[dims].sum()
+        _, counts = _get_compositions(points, dims, return_counts=True)
 
-        _radviz(
-            cluster_embed,
+        return _radviz(
+            counts,
             annotate=annotate,
             adjust=adjust,
             palette=palette,
@@ -290,7 +284,7 @@ def _radviz(
     annotate=None,
     adjust=True,
     palette="crest",
-    annot_color="blue",
+    annot_color="black",
     sizes=None,
     size_norm=None,
     sort_dims=True,
@@ -327,10 +321,10 @@ def _radviz(
 
         row_sums = df.sum(axis=1)
         df = (df.T / row_sums).T  # Normalize rows
-        gene_embed = df
 
-        # Mean gene composition in each field
-        gene_embed = df.groupby("gene").agg("mean")
+        # Take mean for each gene across cells
+        gene_embed = df.groupby("gene", observed=True).mean()
+        gene_embed = gene_embed[gene_embed.sum(axis=1) > 0]
 
         # Determine best dimension ordering by maximizing cosine similarity of adjacent dimensions
         if sort_dims:
@@ -340,8 +334,16 @@ def _radviz(
 
         # Plot the "circular" axis, labels and point positions
         gene_embed["_"] = ""
-        pd.plotting.radviz(gene_embed, "_", s=0, ax=ax)
+        pd.plotting.radviz(gene_embed, "_", s=20, ax=ax)
         ax.get_legend().remove()
+
+        # Get points
+        pts = []
+        for c in ax.collections:
+            pts.extend(c.get_offsets().data)
+
+        pts = np.array(pts).reshape(-1, 2)
+        xy = pd.DataFrame(pts, index=gene_embed.index)
 
         # Get vertices and origin
         center = ax.patches[0]
@@ -358,11 +360,11 @@ def _radviz(
 
         # Add lines from origin to vertices
         for v in vertices:
-            xy = np.array([center.center, v.center])
+            line_xy = np.array([center.center, v.center])
             ax.add_line(
                 plt.Line2D(
-                    xy[:, 0],
-                    xy[:, 1],
+                    line_xy[:, 0],
+                    line_xy[:, 1],
                     linestyle=":",
                     linewidth=1,
                     color="black",
@@ -374,14 +376,6 @@ def _radviz(
 
         # Hide 2D axes
         ax.axis(False)
-
-        # Get points
-        pts = []
-        for c in ax.collections:
-            pts.extend(c.get_offsets().data)
-
-        pts = np.array(pts).reshape(-1, 2)
-        xy = pd.DataFrame(pts, index=gene_embed.index)
 
         # Point size ~ percent of cells in group
         n_cells = len(df.index.get_level_values("cell").unique())
@@ -446,9 +440,9 @@ def _radviz(
                     .index[:annotate]
                 )
                 top_xy = xy.loc[top_genes]
-
             else:
                 top_xy = xy.loc[annotate]
+
             # Plot top points
             sns.scatterplot(
                 data=top_xy,
@@ -513,26 +507,29 @@ def _sort_dimensions(composition):
 @savefig
 def plot(
     adata,
-    kind="scatter",
-    hue=None,
-    groupby="batch",
-    hue_order=None,
-    col_wrap=None,
-    group_order=None,
     points_key="points",
-    height=3,
+    kind="scatter",
+    groupby="batch",
+    hue=None,
+    group_wrap=None,
+    group_order=None,
+    hue_order=None,
     theme="dark",
     palette=None,
     cmap=None,
+    shape_names=["cell_shape", "nucleus_shape"],
+    facecolors=None,
+    edgecolors=None,
+    linewidths=None,
+    height=6,
+    dx=0.1,
+    units="um",
     legend=True,
     frameon=True,
+    title=True,
     point_kws=dict(),
     graph_kws=dict(),
     shape_kws=dict(),
-    shape_names=["cell_shape", "nucleus_shape"],
-    dx=0.1,
-    units="um",
-    title=True,
     fname=None,
 ):
     """
@@ -619,9 +616,9 @@ def plot(
         group_names, pt_groups = zip(*points.groupby(groupby))
         group_names, shape_groups = zip(*shapes.groupby(groupby))
         # Get subplot grid shape
-        if col_wrap is not None:
-            ncols = col_wrap
-            nrows = int(np.ceil(len(group_names) / col_wrap))
+        if group_wrap is not None:
+            ncols = group_wrap
+            nrows = int(np.ceil(len(group_names) / group_wrap))
         else:
             ncols = len(group_names)
             nrows = 1
@@ -666,11 +663,24 @@ def plot(
             ax_radius = max(ax_radii)
 
             for shape_group, ax in zip(shape_groups, axes):
-                default_kws = dict(facecolor=(0, 0, 0, 0), edgecolor=edgecolor, lw=0.5)
+                default_kws = dict()
                 default_kws.update(shape_kws)
+
+                if facecolors is None:
+                    facecolors = [(0, 0, 0, 0)] * len(shape_names)
+
+                if edgecolors is None:
+                    edgecolors = [edgecolor] * len(shape_names)
+
+                if linewidths is None:
+                    linewidths = [0.5] * len(shape_names)
+
                 _plot_shapes(
                     shape_group,
                     shape_names,
+                    facecolors,
+                    edgecolors,
+                    linewidths,
                     legend,
                     ax,
                     **default_kws,
@@ -816,14 +826,14 @@ def _plot_points(
         ).collections[0]
 
     elif kind == "interpolate":
-        flow_kws = dict(method="linear")
-        flow_kws.update(**point_kws)
+        kws = dict(method="linear")
+        kws.update(**point_kws)
         _interpolate(
             points=pt_group,
             hue=hue,
             cmap=cmap,
             ax=ax,
-            **flow_kws,
+            **kws,
         )
     else:
         raise ValueError(f"Invalid kind: {kind}")
@@ -866,13 +876,21 @@ def _graphs(pt_group, ax, **graph_kws):
 def _plot_shapes(
     data,
     shape_names,
+    facecolors,
+    edgecolors,
+    linewidths,
     legend,
     ax,
     **kwargs,
 ):
     # Gather all shapes and plot
-    for shape_name in shape_names:
+    for shape_name, facecolor, edgecolor, linewidth in zip(
+        shape_names, facecolors, edgecolors, linewidths
+    ):
         data.reset_index().set_geometry(shape_name).plot(
+            facecolor=facecolor,
+            edgecolor=edgecolor,
+            linewidth=linewidth,
             aspect=None,
             ax=ax,
             zorder=3,
@@ -925,7 +943,7 @@ def _interpolate(points, hue, cmap, method, ax, **kwargs):
     ax.autoscale(False)
 
 
-def sig_samples(data, rank, n_genes=5, n_cells=4, col_wrap=4, **kwargs):
+def sig_samples(data, rank, n_genes=5, n_cells=4, group_wrap=4, **kwargs):
     for f in data.uns[f"r{rank}_signatures"].columns:
 
         top_cells = (
@@ -945,7 +963,7 @@ def sig_samples(data, rank, n_genes=5, n_cells=4, col_wrap=4, **kwargs):
             kind="scatter",
             hue="gene",
             groupby="cell",
-            col_wrap=col_wrap,
+            group_wrap=group_wrap,
             height=2,
             **kwargs,
         )

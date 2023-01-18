@@ -139,22 +139,6 @@ def list_attributes(adata):
     return found_attr
 
 
-def get_shape(adata, shape_name):
-    """Get a GeoSeries of Polygon objects from an AnnData object."""
-    if shape_name not in adata.obs.columns:
-        raise ValueError(f"Shape {shape_name} not found in adata.obs.")
-
-    if adata.obs[shape_name].astype(str).str.startswith("POLYGON").any():
-        return gpd.GeoSeries(
-            adata.obs[shape_name]
-            .astype(str)
-            .apply(lambda val: wkt.loads(val) if val != "None" else None)
-        )
-
-    else:
-        return gpd.GeoSeries(adata.obs[shape_name])
-
-
 def pheno_to_color(pheno, palette):
     """
     Maps list of categorical labels to a color palette.
@@ -187,3 +171,31 @@ def pheno_to_color(pheno, palette):
     study2color = dict(zip(values, palette))
     sample_colors = [study2color[v] for v in pheno]
     return study2color, sample_colors
+
+
+def sc_format(data, copy=False):
+    """
+    Convert data.obs GeoPandas columns to string for compatibility with scanpy.
+    """
+    adata = data.copy() if copy else data
+
+    shape_names = data.obs.columns.str.endswith("_shape")
+
+    for col in data.obs.columns[shape_names]:
+        data.obs[col] = data.obs[col].astype(str)
+
+    return adata if copy else None
+
+
+def geo_format(data, copy=False):
+    """
+    Convert data.obs scanpy columns to GeoPandas compatible types.
+    """
+    adata = data.copy() if copy else data
+
+    shape_names = data.obs.columns.str.endswith("_shape")
+
+    for col in data.obs.columns[shape_names]:
+        data.obs[col] = gpd.GeoSeries.from_wkt(data.obs[col])
+
+    return adata if copy else None

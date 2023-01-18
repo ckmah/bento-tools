@@ -6,8 +6,8 @@ from scipy.spatial import distance, distance_matrix
 from shapely.geometry import Point, Polygon, MultiPolygon
 from tqdm.auto import tqdm
 
-from .._utils import get_shape, track
-from ..geometry import get_points, set_points
+from .._utils import track
+from ..geometry import get_points, set_points, get_shape
 
 
 def _area(data, shape_name):
