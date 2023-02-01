@@ -13,7 +13,7 @@ def decompose(
     ranks,
     iterations=3,
     device="auto",
-    random_state=888,
+    random_state=11,
 ):
     # Replace nans with 0 for decomposition
     tensor_mask = ~np.isnan(tensor)

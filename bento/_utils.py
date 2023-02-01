@@ -3,7 +3,7 @@ from functools import wraps
 
 import geopandas as gpd
 from anndata import AnnData
-from shapely import wkt
+import pandas as pd
 import seaborn as sns
 
 PATTERN_NAMES = ["cell_edge", "cytoplasmic", "none", "nuclear", "nuclear_edge"]
@@ -173,6 +173,130 @@ def pheno_to_color(pheno, palette):
     return study2color, sample_colors
 
 
+def sync(data, copy=False):
+    """
+    Sync existing point sets and associated metadata with data.obs_names and data.var_names
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object
+    copy : bool, optional
+    """
+    adata = data.copy() if copy else data
+
+    if "point_sets" not in adata.uns.keys():
+        adata.uns["point_sets"] = dict(points=[])
+
+    # Iterate over point sets
+    for point_key in adata.uns["point_sets"]:
+
+        points = adata.uns[point_key]
+
+        # Subset for cells
+        cells = adata.obs_names.tolist()
+        in_cells = points["cell"].isin(cells)
+
+        # Subset for genes
+        in_genes = [True] * points.shape[0]
+        if "gene" in points.columns:
+            genes = adata.var_names.tolist()
+            in_genes = points["gene"].isin(genes)
+
+        # Combine boolean masks
+        valid_mask = in_cells & in_genes
+
+        # Sync points using mask
+        points = points.loc[valid_mask]
+
+        # Remove unused categories for categorical columns
+        for col in points.columns:
+            if points[col].dtype == "category":
+                points[col].cat.remove_unused_categories(inplace=True)
+
+        adata.uns[point_key] = points
+
+        # Sync point metadata using mask
+        for metadata_key in adata.uns["point_sets"][point_key]:
+            metadata = adata.uns[metadata_key]
+
+            if isinstance(metadata, pd.DataFrame):
+                adata.uns[metadata_key] = metadata.loc[valid_mask]
+            else:
+                adata.uns[metadata_key] = adata.uns[metadata_key][valid_mask]
+
+    return adata if copy else None
+
+
+def register_points(point_key, metadata_keys=[]):
+    """Decorator function to register points to the current `AnnData` object.
+    This keeps track of point sets and keeps them in sync with `AnnData` object.
+
+    Parameters
+    ----------
+    point_key : str
+        Key where points are stored in `data.uns`
+    metadata_keys : list
+        Keys where point metadata are stored in `data.uns`
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwds):
+            kwargs = get_default_args(func)
+            kwargs.update(kwds)
+
+            func(*args, **kwds)
+            data = args[0]
+            # Check for required columns
+            required_cols = ["x", "y", "cell"]
+
+            if point_key not in data.uns.keys():
+                raise ValueError(f"Key {point_key} not found in data.uns")
+
+            points = data.uns[point_key]
+
+            if not all([col in points.columns for col in required_cols]):
+                raise ValueError(
+                    f"Point DataFrame must have columns {', '.join(required_cols)}"
+                )
+
+            # Check for valid cells
+            cells = data.obs_names.tolist()
+            if not points["cell"].isin(cells).all():
+                raise ValueError("Invalid cells in point DataFrame")
+
+            # Initialize/add to point registry
+            if "point_sets" not in data.uns.keys():
+                data.uns["point_sets"] = dict()
+
+            if point_key not in data.uns["point_sets"].keys():
+                data.uns["point_sets"][point_key] = []
+
+            if len(metadata_keys) < 0:
+                return
+
+            # Register metadata
+            for key in metadata_keys:
+                # Check for valid metadata
+                if key not in data.uns.keys():
+                    raise ValueError(f"Key {key} not found in data.uns")
+
+                n_points = data.uns[point_key].shape[0]
+                metadata_len = data.uns[key].shape[0]
+                if metadata_len != n_points:
+                    raise ValueError(
+                        f"Metadata {key} must have same length as points {point_key}"
+                    )
+
+                # Add metadata key to registry
+                data.uns["point_sets"][point_key].append(key)
+
+        return wrapper
+
+    return decorator
+
+
 def sc_format(data, copy=False):
     """
     Convert data.obs GeoPandas columns to string for compatibility with scanpy.
@@ -182,7 +306,7 @@ def sc_format(data, copy=False):
     shape_names = data.obs.columns.str.endswith("_shape")
 
     for col in data.obs.columns[shape_names]:
-        data.obs[col] = data.obs[col].astype(str)
+        adata.obs[col] = adata.obs[col].astype(str)
 
     return adata if copy else None
 
@@ -196,6 +320,6 @@ def geo_format(data, copy=False):
     shape_names = data.obs.columns.str.endswith("_shape")
 
     for col in data.obs.columns[shape_names]:
-        data.obs[col] = gpd.GeoSeries.from_wkt(data.obs[col])
+        data.obs[col] = gpd.GeoSeries.from_wkt(data.obs[col].astype(str))
 
     return adata if copy else None

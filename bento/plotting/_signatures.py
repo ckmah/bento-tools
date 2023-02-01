@@ -137,7 +137,7 @@ def colocation(
             factors[i] = zscore(factors[i], axis=0)
 
     pairs = []
-    for p in labels[2]:
+    for p in labels["pair"]:
         pair = p.split("_")
         pairs.append(pair)
 
@@ -151,10 +151,10 @@ def colocation(
     valid_pairs = np.array(valid_pairs)
 
     factors[2] = factors[2][valid_pairs]
-    labels[2] = labels[2][valid_pairs]
+    labels["pair"] = labels["pair"][valid_pairs]
 
     if self_pairs == "only":
-        labels[2] = [p.split("_")[0] for p in labels[2]]
+        labels["pair"] = [p.split("_")[0] for p in labels["pair"]]
 
     factor(
         factors,
@@ -188,8 +188,8 @@ def factor(
     ----------
     factors : list of np.ndarray
         List of factors to plot, in the order [layers, cells, *]
-    labels : list of list of str
-        List of labels for each factor, in the order [layers, cells, *]
+    labels : dict
+        Dict of {name: labels} for each factor
     names : list of str
         List of names for each factor, in the order [layers, cells, *]
     n_top : int or list of int, optional
@@ -211,9 +211,9 @@ def factor(
         ),
     )
 
-    for i in range(n_factors):
+    for i, name in enumerate(names):
         factor = factors[i]
-        feature_labels = labels[i]
+        feature_labels = labels[name]
         factor = pd.DataFrame(factor, index=feature_labels)
         factor.columns.name = "Factors"
 

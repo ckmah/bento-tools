@@ -1,5 +1,5 @@
 # Installation
-Bento requires Python version 3.8 or 3.9.
+Bento requires Python version 3.8 or 3.9. Only Python 3.8 is supported for installation Windows.
 
 Install Bento with pip.
 

@@ -1,4 +1,16 @@
 [[package]]
+name = "adjustText"
+version = "0.7.3"
+description = "Iteratively adjust text position in matplotlib plots to minimize overlaps"
+category = "main"
+optional = false
+python-versions = "*"
+
+[package.dependencies]
+matplotlib = "*"
+numpy = "*"
+
+[[package]]
 name = "affine"
 version = "2.3.1"
 description = "Matrices describing affine transformation of the plane."
@@ -2249,9 +2261,12 @@ torch = ["torch"]
 [metadata]
 lock-version = "1.1"
 python-versions = ">=3.8, <3.11"
-content-hash = "ead41c9fa78b60f2c8ee06813287d39db48fa214029d1cb207144975d5ebe58a"
+content-hash = "833bddef3ef22c4cc232a37884e732fd81a2874eaee59ca14b4d747b6fedbb3c"
 
 [metadata.files]
+adjustText = [
+    {file = "adjustText-0.7.3.tar.gz", hash = "sha256:b90e275a95b4d980cbbac7967914b8d66477c09bc346a0b3c9e2125bba664b06"},
+]
 affine = [
     {file = "affine-2.3.1-py2.py3-none-any.whl", hash = "sha256:de17839ff05e965580870c3b15e14cefd7992fa05dba9202a0879bbed0c171e4"},
     {file = "affine-2.3.1.tar.gz", hash = "sha256:d676de66157ad6af99ffd94e0f54e89dfc35b0fb7252ead2ed0ad2dca431bdd0"},

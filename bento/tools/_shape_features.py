@@ -6,8 +6,8 @@ from scipy.spatial import distance, distance_matrix
 from shapely.geometry import Point, Polygon, MultiPolygon
 from tqdm.auto import tqdm
 
-from .._utils import track
-from ..geometry import get_points, set_points, get_shape
+from .._utils import track, sync
+from ..geometry import get_points, get_shape
 
 
 def _area(data, shape_name):
@@ -121,7 +121,7 @@ def _density(data, shape_name):
     """
 
     shape_prefix = shape_name.split("_")[0]
-    set_points(data)
+    sync(data)
     count = get_points(data).query(f"{shape_prefix} != '-1'")["cell"].value_counts()
     _area(data, shape_name)
 

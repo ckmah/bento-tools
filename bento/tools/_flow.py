@@ -14,24 +14,15 @@ from shapely.geometry import Polygon
 import emoji
 from kneed import KneeLocator
 
-from .._utils import track
+from .._utils import track, register_points
 from ..geometry import get_points
 from ._neighborhoods import _count_neighbors
 from ._shape_features import analyze_shapes
 from ..geometry import sindex_points
 
 
-def robust_clr(mtx):
-    """Robust CLR transform on 2d numpy array. Use geometric mean of nonzero values"""
-    mtx_ma = np.ma.masked_equal(mtx, 0)
-    gmeans = mstats.gmean(mtx_ma, axis=1).reshape(-1, 1)
-    # CLR transform
-    rclr = np.log(mtx_ma / gmeans)
-    rclr = rclr.filled(fill_value=0)
-    return rclr
-
-
 @track
+@register_points("cell_raster", ["flow", "flow_embed", "flow_vis"])
 def flow(
     data,
     n_neighbors=None,
@@ -86,7 +77,7 @@ def flow(
     n_genes = len(gene_names)
 
     # Factorize for more efficient computation
-    points["gene"] = gene_codes.values
+    # points["gene"] = gene_codes.values
 
     points_grouped = points.groupby("cell")
     rpoints_grouped = raster_points.groupby("cell")
@@ -96,9 +87,6 @@ def flow(
 
     # Compute cell composition
     cell_composition = cell_composition / (cell_composition.sum(axis=1).reshape(-1, 1))
-
-    # Robust CLR transform
-    # cell_composition = robust_clr(cell_composition)
     cell_composition = np.nan_to_num(cell_composition)
 
     # Embed each cell neighborhood independently
@@ -112,15 +100,14 @@ def flow(
             rpoints,
             radius=radius,
             n_neighbors=n_neighbors,
-            agg=False,
+            agg=None,
         )
         gene_count = gene_count.toarray()
-
         # embedding: distance neighborhood composition and cell composition
         # Compute composition of neighborhood
         flow_composition = gene_count / (gene_count.sum(axis=1).reshape(-1, 1))
         cflow = flow_composition - cell_composition[i]
-        # cflow = StandardScaler(with_mean=False).fit_transform(cflow)
+        cflow = StandardScaler(with_mean=False).fit_transform(cflow)
 
         # Convert back to sparse matrix
         cflow = csr_matrix(cflow)
@@ -137,9 +124,8 @@ def flow(
     variance_ratio = pca_model.explained_variance_ratio_
 
     # For color visualization of flow embeddings
-    flow_vis = quantile_transform(flow_embed)
+    flow_vis = quantile_transform(flow_embed[:, :3])
     flow_vis = minmax_scale(flow_vis, feature_range=(0.1, 0.9))
-    flow_vis = pd.DataFrame(flow_vis[:, :3], columns=["c1", "c2", "c3"])
     pbar.update()
 
     pbar.set_description(emoji.emojize("Saving"))
@@ -156,6 +142,7 @@ def flow(
     return adata if copy else None
 
 
+@track
 def flowmap(
     data,
     n_clusters=range(2, 9),
@@ -204,6 +191,8 @@ def flowmap(
     # Subsample flow embeddings for faster training
     if train_size > 1:
         raise ValueError("train_size must be less than 1.")
+    if train_size == 1:
+        flow_train = flow_embed
     if train_size < 1:
         from sklearn.utils import resample
 
@@ -251,10 +240,10 @@ def flowmap(
     pbar.update()
 
     # Vectorize polygons in each cell
-    pbar.set_description(emoji.emojize("Vectorizing clusters"))
+    pbar.set_description(emoji.emojize("Vectorizing domains"))
     cells = raster_points["cell"].unique().tolist()
     # Scale down to render resolution
-    raster_points[["x", "y"]] = raster_points[["x", "y"]] * render_resolution
+    # raster_points[["x", "y"]] = raster_points[["x", "y"]] * render_resolution
 
     # Cast to int
     raster_points[["x", "y", "flowmap"]] = raster_points[["x", "y", "flowmap"]].astype(
@@ -268,7 +257,15 @@ def flowmap(
 
         # Fill in image at each point xy with flowmap value by casting to dense matrix
         image = (
-            csr_matrix((rpoints["flowmap"], (rpoints["y"], rpoints["x"])))
+            csr_matrix(
+                (
+                    rpoints["flowmap"],
+                    (
+                        (rpoints["y"] * render_resolution).astype(int),
+                        (rpoints["x"] * render_resolution).astype(int),
+                    ),
+                )
+            )
             .todense()
             .astype("int16")
         )
@@ -294,10 +291,10 @@ def flowmap(
     flowmap_df = pd.DataFrame.from_dict(flowmap_df).T
     flowmap_df.columns = "flowmap" + flowmap_df.columns.astype(str) + "_shape"
 
-    # Upscale to match original resolution
+    # Upscale to match orinal resolution
     flowmap_df = flowmap_df.apply(
         lambda col: gpd.GeoSeries(col).scale(
-            xfact=1 / render_resolution, yfact=1 / render_resolution, origin=(0, 0)
+            xfact=1 / render_resolution, yfact=1 / render_resolution, orin=(0, 0)
         )
     )
     pbar.update()
@@ -313,7 +310,7 @@ def flowmap(
     ]
     adata.uns["points"] = adata.uns["points"].drop(old_cols, axis=1)
 
-    # SLOW
+    # TODO SLOW
     sindex_points(adata, "points", flowmap_df.columns.tolist())
     pbar.update()
     pbar.set_description("Done")
@@ -409,7 +406,7 @@ def fe(
             scores, left_on="flow", right_index=True, how="left"
         )[scores.columns]
 
-    adata.uns["fe"] = scores
+    adata.uns["flow_fe"] = scores
     _fe_stats(adata, net, source=source, target=target, copy=copy)
 
     return adata if copy else None

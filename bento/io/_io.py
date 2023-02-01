@@ -13,6 +13,8 @@ import rasterio
 import rasterio.features
 import emoji
 
+from .._utils import sc_format
+
 
 def read_h5ad(filename, backed=None):
     """Load bento processed AnnData object from h5ad.
@@ -61,13 +63,7 @@ def write_h5ad(data, filename):
     # Convert geometry from GeoSeries to list for h5ad serialization compatibility
     adata = data.copy()
 
-    adata.obs = adata.obs.apply(
-        lambda col: col.apply(lambda val: val.wkt if val is not None else val).astype(
-            str
-        )
-        if col.astype(str).str.startswith("POLYGON").any()
-        else col
-    )
+    sc_format(adata)
 
     adata.uns["points"] = adata.uns["points"].drop("geometry", axis=1, errors="ignore")
 
@@ -356,6 +352,9 @@ def _index_points(points, shapes):
 
 
 def concatenate(adatas):
+    # Read point registry to identify point sets to concatenate
+    # TODO
+
     uns_points = []
     for i, adata in enumerate(adatas):
         points = adata.uns["points"].copy()

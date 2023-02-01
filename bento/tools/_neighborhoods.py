@@ -5,7 +5,7 @@ from sklearn.neighbors import NearestNeighbors
 
 
 def _count_neighbors(
-    points, n_genes, query_points=None, n_neighbors=None, radius=None, agg=True
+    points, n_genes, query_points=None, n_neighbors=None, radius=None, agg="gene"
 ):
     """Build nearest neighbor index for points.
 
@@ -19,8 +19,9 @@ def _count_neighbors(
         Points to query. If None, use points_df. Default None.
     n_neighbors : int
         Number of nearest neighbors to consider per gene.
-    agg : bool
-        Whether to aggregate nearest neighbors counts at the gene-level or for each point. Default True.
+    agg : "gene", "binary", None
+        Whether to aggregate nearest neighbors counts. "Gene" aggregates counts by gene, whereas "binary" counts neighbors only once per point. If None, return neighbor counts for each point.
+         Default "gene".
     Returns
     -------
     DataFrame or dict of dicts
@@ -59,7 +60,7 @@ def _count_neighbors(
             print(points.shape, query_points.shape)
 
     # Get gene-level neighbor counts for each gene
-    if agg:
+    if agg == "gene":
         gene_code = points["gene"].values
         source_genes, source_indices = np.unique(gene_code, return_index=True)
 
@@ -81,23 +82,33 @@ def _count_neighbors(
 
         return gene_index
 
-    # Get gene-level neighbor counts for each point
-    gene_code = points["gene"].values
-    neighborhood_sizes = np.array([len(n) for n in neighbor_index])
-    flat_nindex = np.concatenate(neighbor_index)
+    else:
+        # Get gene-level neighbor counts for each point
+        gene_codes = points["gene"].cat.codes.values
+        neighborhood_sizes = np.array([len(n) for n in neighbor_index])
+        flat_nindex = np.concatenate(neighbor_index)
+        # Get gene name for each neighbor
+        flat_ncodes = gene_codes[flat_nindex]
 
-    # Count number of times each gene is a neighbor of a given point
-    flat_ncodes = gene_code[flat_nindex]
-    point_ncounts = []
-    cur_pos = 0
-    # np.bincount only works on ints but much faster than np.unique
-    # https://stackoverflow.com/questions/66037744/2d-vectorization-of-unique-values-per-row-with-condition
-    for s in neighborhood_sizes:
-        cur_codes = flat_ncodes[cur_pos : cur_pos + s]
-        point_ncounts.append(np.bincount(cur_codes, minlength=n_genes))
-        cur_pos = cur_pos + s
+        point_ncounts = []
+        cur_pos = 0
+        # np.bincount only works on ints but much faster than np.unique
+        # https://stackoverflow.com/questions/66037744/2d-vectorization-of-unique-values-per-row-with-condition
+        for s in neighborhood_sizes:
+            cur_codes = flat_ncodes[cur_pos : cur_pos + s]
+            point_neighbor_counts = np.bincount(cur_codes, minlength=n_genes)
+            # Count number of times each gene is a neighbor of a given point
+            if agg == "binary":
+                n_indicator = (point_neighbor_counts > 0).astype(int)
+                point_ncounts.append(n_indicator)
 
-    point_ncounts = np.array(point_ncounts)
-    point_ncounts = csr_matrix(point_ncounts)
+            # Quantify abundance of each gene as a neighbor of a given point
+            elif agg is None:
+                point_ncounts.append(point_neighbor_counts)
 
-    return point_ncounts
+            cur_pos += s
+
+        point_ncounts = np.array(point_ncounts)
+        point_ncounts = csr_matrix(point_ncounts)
+
+        return point_ncounts

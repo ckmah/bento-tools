@@ -20,7 +20,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from adjustText import adjust_text
 
 from ..geometry import get_points
+from ..plotting._colors import red_light
 from ._utils import savefig
+
 
 from ..tools._composition import _get_compositions
 
@@ -63,8 +65,7 @@ def obs_stats(
         "nucleus_aspect_ratio",
         "nucleus_density",
     ],
-    s=5,
-    alpha=0.3,
+    rug=False,
     fname=None,
 ):
     """Plot shape statistic distributions for each cell.
@@ -83,42 +84,35 @@ def obs_stats(
         lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=100).flatten()
     )
 
-    g = sns.FacetGrid(
-        data=stats_long,
-        row="variable",
-        height=1,
-        aspect=4,
-        sharex=False,
-        sharey=False,
-        margin_titles=False,
-    )
-    g.map_dataframe(
-        sns.stripplot,
-        x="value",
-        color="black",
-        linewidth=0,
-        s=s,
-        alpha=alpha,
-        rasterized=True,
-    )
-    g.map_dataframe(quantiles, x="value")
-    g.add_legend()
-    sns.move_legend(g, "upper left", bbox_to_anchor=(1, 1))
+    with sns.axes_style("white"):
+        g = sns.FacetGrid(
+            data=stats_long,
+            row="variable",
+            height=1.5,
+            aspect=2,
+            sharex=False,
+            sharey=False,
+            margin_titles=False,
+        )
+        g.map_dataframe(
+            sns.violinplot,
+            color="lightseagreen",
+            x="value",
+        )
+        g.map_dataframe(
+            sns.rugplot, x="value", height=0.1, color="black", alpha=0.5, linewidth=0.5
+        )
+        # g.add_legend()
+        # sns.move_legend(g, "upper left", bbox_to_anchor=(1, 1))
 
-    for ax, var in zip(g.axes.flat, stats_long["variable"].unique()):
-        # ax.spines["bottom"].set_position(("data", 0.3))
-        ax.set_xlabel("")
-        ax.set_ylabel(var, rotation=0, ha="right")
-        ax.set_yticks([])
-        ax.ticklabel_format(axis="x", style="sci", scilimits=(-2, 4))
-        sns.despine(ax=ax, left=True)
-    g.set_titles(row_template="", col_template="")
-    plt.subplots_adjust(hspace=0.03)
-
-    def plot_mean(data, **kwargs):
-        plt.axvline(data.mean(), **kwargs)
-
-    g.map(plot_mean, "value", c="black", lw=0.5, zorder=3)
+        for ax, var in zip(g.axes.flat, stats_long["variable"].unique()):
+            #     # ax.spines["bottom"].set_position(("data", 0.3))
+            ax.set_xlabel("")
+            ax.set_ylabel(var, rotation=0, ha="right", va="center")
+            ax.set_yticks([])
+            ax.ticklabel_format(axis="x", style="sci", scilimits=(-2, 4))
+            sns.despine(ax=ax, left=True)
+        g.set_titles(row_template="", col_template="")
 
 
 @savefig
@@ -211,13 +205,14 @@ def qc_metrics(adata, fname=None):
 def flow_summary(
     data,
     groupby=None,
+    group_order=None,
     annotate=None,
     adjust=True,
-    palette="crest",
+    palette=red_light,
     annot_color="black",
     sizes=(5, 30),
     size_norm=(10, 100),
-    sort_dims=False,
+    dim_order=None,
     legend=True,
     height=5,
     fname=None,
@@ -225,69 +220,63 @@ def flow_summary(
     """
     Plot RNAflow summary with a radviz plot describing gene embedding across flow clusters.
     """
-    points = data.uns["points"]
-    dims = data.obs.columns[data.obs.columns.str.startswith("flowmap")]
-    # points = pd.DataFrame(data.uns["flow"].todense(), columns=data.uns["flow_genes"])
-    # points[["cell", "flowmap"]] = data.uns["cell_raster"][["cell", "flowmap"]]
 
-    if groupby is not None:
-
-        if groupby not in data.obs.columns:
-            raise ValueError(f"{groupby} not found")
-
-        # Iterate over groupby
-        groups = data.obs[groupby].unique()
+    comp_key = f"{groupby}_comp_stats"
+    if groupby and comp_key in data.uns.keys():
+        comp_stats = data.uns[comp_key]
+        if group_order is None:
+            groups = list(comp_stats.keys())
+        else:
+            groups = group_order
         ngroups = len(groups)
         fig, axes = plt.subplots(1, ngroups, figsize=(ngroups * height * 1.1, height))
         if axes is not np.ndarray:
             axes = np.array([axes])
 
         # Plot each group separately
-        for (group, pt_group), ax in zip(points.groupby(groupby), axes.flat):
-            _, group_counts = _get_compositions(pt_group, dims, return_counts=True)
+        for group, ax in zip(groups, axes.flat):
+            group_comp = comp_stats[group]
 
             show_legend = False
             if legend and ax == axes.flat[-1]:
                 show_legend = True
 
             _radviz(
-                group_counts,
+                group_comp,
                 annotate=annotate,
                 adjust=adjust,
                 palette=palette,
                 annot_color=annot_color,
                 sizes=sizes,
                 size_norm=size_norm,
-                sort_dims=sort_dims,
+                dim_order=dim_order,
                 legend=show_legend,
                 ax=ax,
             )
             ax.set_title(group, fontsize=12)
     else:
-        _, counts = _get_compositions(points, dims, return_counts=True)
-
         return _radviz(
-            counts,
+            comp_stats,
             annotate=annotate,
             adjust=adjust,
             palette=palette,
             annot_color=annot_color,
             sizes=sizes,
             size_norm=size_norm,
-            sort_dims=sort_dims,
+            dim_order=dim_order,
             legend=legend,
         )
 
 
 def _radviz(
-    df,
+    comp_stats,
     annotate=None,
     adjust=True,
-    palette="crest",
+    palette=red_light,
     annot_color="black",
     sizes=None,
     size_norm=None,
-    sort_dims=True,
+    dim_order="auto",
     legend=True,
     ax=None,
 ):
@@ -295,16 +284,18 @@ def _radviz(
 
     Parameters
     ----------
-    df : pd.DataFrame
-        DataFrame where rows are observations and gene + fields as columns
+    comp_stats : DataFrame
+        Gene composition stats
     palette : str, optional
         Color palette, by default None
     sizes : tuple, optional
         Size range for scatter plot, by default None
     size_norm : tuple, optional
         Size range for scatter plot, by default None
-    sort_dims : bool, optional
-        Sort dimensions for more intuitive visualization, by default True
+    dim_order : "auto", None, or list, optional
+        Sort dimensions for more intuitive visualization, by default "auto".
+        If "auto", sort dimensions by maximizing cosine similarity of adjacent
+        dimensions. If None, do not sort dimensions. If list, use provided order.
     gridsize : int, optional
         Gridsize for hexbin plot, by default 20
     ax : matplotlib.Axes, optional
@@ -319,22 +310,27 @@ def _radviz(
         else:
             fig = ax.get_figure()
 
-        row_sums = df.sum(axis=1)
-        df = (df.T / row_sums).T  # Normalize rows
-
-        # Take mean for each gene across cells
-        gene_embed = df.groupby("gene", observed=True).mean()
-        gene_embed = gene_embed[gene_embed.sum(axis=1) > 0]
+        # Remove unexpressed genes
+        ndims = comp_stats.columns.get_loc("logcounts") - 1
+        dims = comp_stats.columns[: ndims + 1]
+        stat_cols = comp_stats.columns[ndims + 1 :]
+        comp_stats = comp_stats[comp_stats[dims].sum(axis=1) > 0]
 
         # Determine best dimension ordering by maximizing cosine similarity of adjacent dimensions
-        if sort_dims:
-            dim_order = _sort_dimensions(gene_embed)
+        if not dim_order:
+            dim_order = dims
+        elif dim_order == "auto":
+            dim_order = _sort_dimensions(comp_stats[dims])
+        elif isinstance(dim_order, list):
+            dim_order = dim_order
+        else:
+            raise ValueError(f"Invalid dim_order: {dim_order}")
 
-            gene_embed = gene_embed.reindex(dim_order, axis=1)
+        comp_stats = comp_stats.reindex([*dim_order, *stat_cols], axis=1)
 
         # Plot the "circular" axis, labels and point positions
-        gene_embed["_"] = ""
-        pd.plotting.radviz(gene_embed, "_", s=20, ax=ax)
+        comp_stats["_"] = ""
+        pd.plotting.radviz(comp_stats[[*dims, "_"]], "_", s=20, ax=ax)
         ax.get_legend().remove()
 
         # Get points
@@ -343,7 +339,7 @@ def _radviz(
             pts.extend(c.get_offsets().data)
 
         pts = np.array(pts).reshape(-1, 2)
-        xy = pd.DataFrame(pts, index=gene_embed.index)
+        xy = pd.DataFrame(pts, index=comp_stats.index)
 
         # Get vertices and origin
         center = ax.patches[0]
@@ -378,18 +374,15 @@ def _radviz(
         ax.axis(False)
 
         # Point size ~ percent of cells in group
-        n_cells = len(df.index.get_level_values("cell").unique())
-        mean_fraction = (
-            row_sums.groupby("gene").apply(np.count_nonzero) / n_cells
-        ) * 100
-        mean_fraction = mean_fraction.apply(lambda x: round(x, 1))
+        cell_fraction = comp_stats["cell_fraction"]
+        cell_fraction = cell_fraction.apply(lambda x: round(x, 1))
         size_key = "Fraction of cells\n in group (%)"
-        xy[size_key] = mean_fraction
+        xy[size_key] = cell_fraction
 
         # Hue ~ mean log2(count = 1)
-        mean_count = np.log2(row_sums.groupby("gene").agg("mean") + 1)
-        hue_key = "Mean log2(count + 1)\n in group"
-        xy[hue_key] = mean_count
+        log_count = comp_stats["logcounts"]
+        hue_key = "Mean log2(cnt + 1)\n in group"
+        xy[hue_key] = log_count
 
         # Remove phantom points
         del ax.collections[0]
@@ -399,7 +392,7 @@ def _radviz(
             x=0,
             y=1,
             shade=True,
-            cmap=sns.light_palette("lightseagreen", as_cmap=True),
+            cmap="binary",
             zorder=0.9,
             ax=ax,
         )
@@ -434,14 +427,14 @@ def _radviz(
                 from scipy.stats import entropy
 
                 top_genes = (
-                    gene_embed.loc[:, gene_embed.columns != "_"]
+                    comp_stats.loc[:, dims]
                     .apply(lambda gene_comp: entropy(gene_comp), axis=1)
                     .sort_values(ascending=True)
                     .index[:annotate]
                 )
                 top_xy = xy.loc[top_genes]
             else:
-                top_xy = xy.loc[annotate]
+                top_xy = xy.loc[[g for g in annotate if g in xy.index]]
 
             # Plot top points
             sns.scatterplot(
@@ -570,13 +563,21 @@ def plot(
     # Get points
     points = get_points(adata, key=points_key, asgeo=False)
 
+    # Filter for genes
+    if points_key == "points":
+        points = points[points["gene"].isin(adata.var_names)]
+        # Remove unused categories
+        points["gene"] = (
+            points["gene"].astype("category").cat.remove_unused_categories()
+        )
+
     # Add functional enrichment if exists
-    if "fe" in adata.uns and adata.uns["fe"].shape[0] == points.shape[0]:
-        points[adata.uns["fe"].columns] = adata.uns["fe"].values
+    if "flow_fe" in adata.uns and adata.uns["flow_fe"].shape[0] == points.shape[0]:
+        points[adata.uns["flow_fe"].columns] = adata.uns["flow_fe"].values
 
     # This feels weird here; refactor separate flow plotting?
     if kind == "interpolate":
-        points[adata.uns["flow_vis"].columns] = adata.uns["flow_vis"].values
+        points[["RED", "GREEN", "BLUE"]] = adata.uns["flow_vis"]
 
     # Include col if exists
     if groupby and (
@@ -901,7 +902,7 @@ def _plot_shapes(
 def _interpolate(points, hue, cmap, method, ax, **kwargs):
 
     if hue is None:
-        components = points[["c1", "c2", "c3"]].values
+        components = points[["RED", "GREEN", "BLUE"]].values
     else:
         components = points[hue].values.reshape(-1, 1)
 

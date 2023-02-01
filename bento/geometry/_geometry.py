@@ -5,6 +5,7 @@ from shapely.geometry import Polygon
 from scipy.sparse import coo_matrix
 from tqdm.auto import tqdm
 
+from .._utils import sync
 
 # Write a function to quantify the number of points in a given shape by summing boolean column in points. Add as a layer dimensions cell by gene in adata.layers.
 def count_points(data, shape_names, copy=False):
@@ -135,6 +136,8 @@ def crop(data, xlims=None, ylims=None):
     in_crop = get_shape(data, "cell_shape").within(box)
 
     adata = data[in_crop, :]
+    sync(adata)
+
     return adata
 
 
@@ -171,25 +174,7 @@ def get_points(data, key="points", asgeo=False):
     DataFrame or GeoDataFrame
         Returns `data.uns[key]` as a `[Geo]DataFrame`
     """
-    points = data.uns[key]
-
-    # Subset for cells
-    cells = data.obs_names.tolist()
-    in_cells = points["cell"].isin(cells)
-
-    # Subset for genes
-    in_genes = [True] * points.shape[0]
-    if key == "points":
-        genes = data.var_names.tolist()
-        in_genes = points["gene"].isin(genes)
-
-    # Subset for genes
-    points = points.loc[in_cells & in_genes]
-
-    # Remove unused categories for categorical columns
-    for col in points.columns:
-        if points[col].dtype == "category":
-            points[col].cat.remove_unused_categories(inplace=True)
+    points = sync(data, copy=True).uns[key]
 
     # Cast to GeoDataFrame
     if asgeo:
@@ -198,26 +183,3 @@ def get_points(data, key="points", asgeo=False):
         )
 
     return points
-
-
-def set_points(data, key="points", copy=False):
-    """Set points for the given `AnnData` object, data. Call this setter
-    to keep the points DataFrame in sync.
-
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData object
-    key : str, optional
-        Key for `data.uns` to use, by default 'points'
-    copy : bool
-            Return a copy of `data` instead of writing to data, by default False.
-    Returns
-    -------
-    _type_
-        _description_
-    """
-    adata = data.copy() if copy else data
-    points = get_points(adata, key)
-    adata.uns[key] = points
-    return adata if copy else None

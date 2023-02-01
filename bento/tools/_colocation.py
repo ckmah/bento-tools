@@ -3,8 +3,10 @@ import pandas as pd
 from tqdm.auto import tqdm
 import seaborn as sns
 from scipy.sparse import coo_matrix
+import sparse
 from kneed import KneeLocator
 import emoji
+import numpy.ma as ma
 
 
 from ..geometry import get_points
@@ -18,7 +20,6 @@ def colocation(
     data,
     ranks,
     iterations=3,
-    log=True,
     plot_error=True,
     copy=False,
 ):
@@ -28,8 +29,8 @@ def colocation(
     _colocation_tensor(adata, copy=copy)
 
     tensor = adata.uns["tensor"]
-    if log:
-        tensor = np.log2(tensor + 1)
+    # if log:
+    #     tensor = np.log2(tensor + 1)
 
     print(emoji.emojize(":running: Decomposing tensor..."))
     factors, errors = decompose(tensor, ranks, iterations=iterations)
@@ -67,16 +68,16 @@ def _colocation_tensor(data, copy=False):
     )
 
     label_names = ["compartment", "cell", "pair"]
-    labels = []
+    labels = dict()
     label_orders = []
     for name in label_names:
         label, order = np.unique(clq_long[name], return_inverse=True)
-        labels.append(label)
+        labels[name] = label
         label_orders.append(order)
 
     label_orders = np.array(label_orders)
 
-    s = coo_matrix((clq_long["clq"].values, label_orders))
+    s = sparse.COO(label_orders, data=clq_long["log_clq"].values)
     tensor = s.todense()
     print(tensor.shape)
 
@@ -93,7 +94,7 @@ def coloc_quotient(
     shapes=["cell_shape"],
     radius=20,
     min_points=10,
-    min_cells=10,
+    min_cells=0,
     copy=False,
 ):
     """Calculate pairwise gene colocalization quotient in each cell.
@@ -142,17 +143,19 @@ def coloc_quotient(
 
         cell_clqs = []
         for cell, start, end in tqdm(
-            zip(cells, group_loc, end_loc), desc="shape", total=len(cells)
+            zip(cells, group_loc, end_loc), desc=shape, total=len(cells)
         ):
             cell_points = points.iloc[start:end]
             cell_clq = _cell_clq(cell_points, adata.n_vars, radius, min_points)
             cell_clq["cell"] = cell
+
             cell_clqs.append(cell_clq)
 
         cell_clqs = pd.concat(cell_clqs)
         cell_clqs[["cell", "gene", "neighbor"]] = (
             cell_clqs[["cell", "gene", "neighbor"]].astype(str).astype("category")
         )
+        cell_clqs["log_clq"] = cell_clqs["clq"].replace(0, np.nan).apply(np.log2)
 
         # Save to uns['clq'] as adjacency list
         all_clq[shape] = cell_clqs
@@ -165,23 +168,34 @@ def coloc_quotient(
 def _cell_clq(cell_points, n_genes, radius, min_points):
 
     # Count number of points for each gene
-    counts = cell_points["gene"].value_counts()
+    gene_counts = cell_points["gene"].value_counts()
 
     # Keep genes with at least min_count
-    counts = counts[counts >= min_points]
+    gene_counts = gene_counts[gene_counts >= min_points]
 
-    if len(counts) < 2:
+    if len(gene_counts) < 2:
         return pd.DataFrame()
 
     # Get points
-    valid_points = cell_points[cell_points["gene"].isin(counts.index)]
+    valid_points = cell_points[cell_points["gene"].isin(gene_counts.index)]
 
     # Cleanup gene categories
-    valid_points["gene"] = valid_points["gene"].cat.remove_unused_categories()
+    # valid_points["gene"] = valid_points["gene"].cat.remove_unused_categories()
 
-    neighbor_counts = _count_neighbors(valid_points, n_genes, radius=radius, agg=True)
-
-    clq_df = _clq_statistic(neighbor_counts, counts)
+    # Count number of source points that have neighbor gene
+    point_neighbors = _count_neighbors(
+        valid_points, n_genes, radius=radius, agg="binary"
+    ).toarray()
+    neighbor_counts = (
+        pd.DataFrame(point_neighbors, columns=valid_points["gene"].cat.categories)
+        .groupby(valid_points["gene"].values)
+        .sum()
+        .reset_index()
+        .melt(id_vars="index")
+        .query("value > 0")
+    )
+    neighbor_counts.columns = ["gene", "neighbor", "count"]
+    clq_df = _clq_statistic(neighbor_counts, gene_counts)
 
     return clq_df
 
