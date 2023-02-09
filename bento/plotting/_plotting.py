@@ -99,9 +99,10 @@ def obs_stats(
             color="lightseagreen",
             x="value",
         )
-        g.map_dataframe(
-            sns.rugplot, x="value", height=0.1, color="black", alpha=0.5, linewidth=0.5
-        )
+        if rug:
+            g.map_dataframe(
+                sns.rugplot, x="value", height=0.1, color="black", alpha=0.5, linewidth=0.5
+            )
         # g.add_legend()
         # sns.move_legend(g, "upper left", bbox_to_anchor=(1, 1))
 

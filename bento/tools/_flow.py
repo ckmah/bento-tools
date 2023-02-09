@@ -291,10 +291,10 @@ def flowmap(
     flowmap_df = pd.DataFrame.from_dict(flowmap_df).T
     flowmap_df.columns = "flowmap" + flowmap_df.columns.astype(str) + "_shape"
 
-    # Upscale to match orinal resolution
+    # Upscale to match original resolution
     flowmap_df = flowmap_df.apply(
         lambda col: gpd.GeoSeries(col).scale(
-            xfact=1 / render_resolution, yfact=1 / render_resolution, orin=(0, 0)
+            xfact=1 / render_resolution, yfact=1 / render_resolution, origin=(0, 0)
         )
     )
     pbar.update()
