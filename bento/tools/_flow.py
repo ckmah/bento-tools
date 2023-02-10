@@ -26,7 +26,7 @@ from ..geometry import sindex_points
 def flow(
     data,
     n_neighbors=None,
-    radius=50,
+    radius=None,
     render_resolution=0.1,
     copy=False,
 ):
@@ -49,6 +49,10 @@ def flow(
     copy : bool
         Whether to return a copy the AnnData object. Default False.
     """
+
+    if (radius == None) and (n_neighbors == None):
+         radius = 50
+ 
     adata = data.copy() if copy else data
 
     adata.uns["points"] = get_points(adata).sort_values("cell")
