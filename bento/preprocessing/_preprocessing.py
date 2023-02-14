@@ -2,68 +2,18 @@ import geopandas as gpd
 
 from .._utils import track
 
+# from ..tools import analyze_shapes
+# import scanpy as sc
 
-def get_points(data, asgeo=False):
-    """Get points DataFrame.
+# TODO resolve circular import
+# def qc_metrics(data, copy=False):
 
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData object
-    asgeo : bool, optional
-        Cast as GeoDataFrame using columns x and y for geometry, by default False
+#     adata = data.copy() if copy else data
 
-    Returns
-    -------
-    DataFrame or GeoDataFrame
-        Returns `data.uns['points']` as a `[Geo]DataFrame`
-    """
-    points = data.uns["points"]
+#     sc.pp.calculate_qc_metrics(adata, percent_top=None, inplace=True)
+#     analyze_shapes(adata, "cell_shape", ["area", "density"])
 
-    cells = data.obs_names.tolist()
-    genes = data.var_names.tolist()
-
-    # Subset for cells
-    in_cells = points["cell"].isin(cells)
-    in_genes = points["gene"].isin(genes)
-
-    # Subset for genes
-    points = points.loc[in_cells & in_genes]
-
-    # Remove unused categories for categorical columns
-    for col in points.columns:
-        if points[col].dtype == "category":
-            points[col].cat.remove_unused_categories(inplace=True)
-
-    # Cast to GeoDataFrame
-    if asgeo:
-        points = gpd.GeoDataFrame(
-            points, geometry=gpd.points_from_xy(points.x, points.y)
-        )
-
-    return points
-
-
-@track
-def set_points(data, copy=False):
-    """Set points for the given `AnnData` object, data. Call this setter
-    to keep the points DataFrame in sync.
-
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData object
-    copy : bool
-            Return a copy of `data` instead of writing to data, by default False.
-    Returns
-    -------
-    _type_
-        _description_
-    """
-    adata = data.copy() if copy else data
-    points = get_points(adata)
-    adata.uns["points"] = points
-    return adata if copy else None
+#     return adata if copy else None
 
 
 def get_layers(data, layers, min_count=None):

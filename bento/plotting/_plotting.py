@@ -2,22 +2,118 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-import geopandas
+import geopandas as gpd
+import matplotlib.patheffects as pe
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from matplotlib_scalebar.scalebar import ScaleBar
 import numpy as np
-import pandas as pd
-from pandas.plotting import radviz
 import seaborn as sns
-from upsetplot import UpSet, from_indicators
+import pandas as pd
+from matplotlib_scalebar.scalebar import ScaleBar
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from shapely.geometry import Polygon
+from scipy.interpolate import griddata
+from sklearn.neighbors import NearestNeighbors
+import networkx as nx
+from sklearn.preprocessing import quantile_transform
+from sklearn.metrics.pairwise import cosine_similarity
+from adjustText import adjust_text
 
-from tqdm.auto import tqdm
-
+from ..geometry import get_points
+from ..plotting._colors import red_light
 from ._utils import savefig
-from .._utils import PATTERN_NAMES, PATTERN_COLORS, TENSOR_DIM_NAMES
-from ..preprocessing import get_points
-from ..tools._lp import lp_stats
+
+
+from ..tools._composition import _get_compositions
+
+
+def quantiles(data, x, **kwargs):
+    ax = plt.gca()
+
+    ylims = ax.get_ylim()
+    ymargin = 0.2 * (ylims[1] - ylims[0])
+    quants = np.percentile(data[x], [0, 1, 25, 50, 75, 99, 100])
+    palette = sns.color_palette("red2blue", n_colors=len(quants) - 1)
+
+    xys = [(q, ylims[0]) for q in quants[:-1]]
+    widths = [quants[i + 1] - quants[i] for i in range(len(quants) - 1)]
+    height = ymargin
+    rects = [
+        mpl.patches.Rectangle(
+            xy,
+            width=w,
+            height=height,
+            facecolor=c,
+            alpha=0.8,
+            clip_on=False,
+        )
+        for xy, w, c in zip(xys, widths, palette)
+    ]
+
+    for rect in rects:
+        ax.add_patch(rect)
+
+
+@savefig
+def obs_stats(
+    data,
+    obs_cols=[
+        "cell_area",
+        "cell_aspect_ratio",
+        "cell_density",
+        "nucleus_area",
+        "nucleus_aspect_ratio",
+        "nucleus_density",
+    ],
+    rug=False,
+    fname=None,
+):
+    """Plot shape statistic distributions for each cell.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    cols : list
+        List of obs columns to plot
+    groupby : str, optional
+        Column in obs to groupby, by default None
+    """
+    stats_long = data.obs.melt(value_vars=obs_cols)
+    stats_long["quantile"] = stats_long.groupby("variable")["value"].transform(
+        lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=100).flatten()
+    )
+
+    with sns.axes_style("white"):
+        g = sns.FacetGrid(
+            data=stats_long,
+            row="variable",
+            height=1.5,
+            aspect=2,
+            sharex=False,
+            sharey=False,
+            margin_titles=False,
+        )
+        g.map_dataframe(
+            sns.violinplot,
+            color="lightseagreen",
+            x="value",
+        )
+        if rug:
+            g.map_dataframe(
+                sns.rugplot, x="value", height=0.1, color="black", alpha=0.5, linewidth=0.5
+            )
+        # g.add_legend()
+        # sns.move_legend(g, "upper left", bbox_to_anchor=(1, 1))
+
+        for ax, var in zip(g.axes.flat, stats_long["variable"].unique()):
+            #     # ax.spines["bottom"].set_position(("data", 0.3))
+            ax.set_xlabel("")
+            ax.set_ylabel(var, rotation=0, ha="right", va="center")
+            ax.set_yticks([])
+            ax.ticklabel_format(axis="x", style="sci", scilimits=(-2, 4))
+            sns.despine(ax=ax, left=True)
+        g.set_titles(row_template="", col_template="")
 
 
 @savefig
@@ -34,26 +130,28 @@ def qc_metrics(adata, fname=None):
     """
     color = "lightseagreen"
 
-    fig, axs = plt.subplots(2, 3, figsize=(8, 5))
-
+    fig, axs = plt.subplots(
+        3, 3, figsize=(9, 9), gridspec_kw=dict(wspace=0.5, hspace=1)
+    )
     kde_params = dict(color=color, shade=True, legend=False)
 
     with sns.axes_style("ticks"):
-        sns.kdeplot(adata.obs["total_counts"], ax=axs[0][0], **kde_params)
-
-        sns.distplot(
-            adata.X.flatten() + 1,
+        sns.kdeplot(adata.obs["total_counts"], ax=axs.flat[0], **kde_params)
+        sns.histplot(
+            adata.X.flatten(),
             color=color,
-            kde=False,
-            hist_kws=dict(log=True),
-            ax=axs[0][1],
+            bins=20,
+            log_scale=(False, True),
+            ax=axs.flat[1],
         )
-
-        sns.kdeplot(adata.obs["n_genes_by_counts"], ax=axs[0][2], **kde_params)
-
-        sns.kdeplot(adata.obs["cell_area"], ax=axs[1][0], **kde_params)
-
-        sns.kdeplot(adata.obs["cell_density"], ax=axs[1][1], **kde_params)
+        sns.kdeplot(adata.obs["n_genes_by_counts"], ax=axs.flat[2], **kde_params)
+        sns.kdeplot(adata.obs["cell_area"], ax=axs.flat[3], **kde_params)
+        sns.kdeplot(adata.obs["cell_density"], ax=axs.flat[4], **kde_params)
+        sns.kdeplot(
+            adata.obs["nucleus_area"] / adata.obs["cell_area"],
+            ax=axs.flat[5],
+            **kde_params,
+        )
 
         dual_colors = sns.light_palette(color, n_colors=2, reverse=True)
         no_nucleus_count = (adata.obs["nucleus_shape"] == None).sum()
@@ -63,308 +161,399 @@ def qc_metrics(adata, fname=None):
             f"Yes\n{pie_values[0]} ({pie_percents[0]:.1f}%)",
             f"No\n{pie_values[1]} ({pie_percents[1]:.1f}%)",
         ]
-        axs[1][2].pie(pie_values, labels=pie_labels, colors=dual_colors)
+        axs.flat[6].pie(pie_values, labels=pie_labels, colors=dual_colors)
         pie_inner = plt.Circle((0, 0), 0.6, color="white")
-        axs[1][2].add_artist(pie_inner)
-
-        sns.despine()
+        axs.flat[6].add_artist(pie_inner)
 
     titles = [
-        "Transcripts per Cell",
-        "Transcripts per Gene",
-        "Genes per Cell",
-        "Cell Area",
-        "Transcript Density",
-        "Cell has Nucleus",
+        "molecules / cell",
+        "molecules / gene",
+        "genes / cell",
+        "cell area",
+        "molecule density",
+        "cell has nucleus",
     ]
     xlabels = [
-        "mRNA count",
-        "Gene count",
+        "Molecules",
+        "Molecules",
         "Gene count",
         "Pixels",
         "Transcripts/pixel",
         "",
     ]
 
-    for i, ax in enumerate(np.array(axs).reshape(-1)):
-        #         ax.ticklabel_format(axis='y', style='sci', scilimits=(-2,2))
-        ax.yaxis.set_major_formatter(mpl.ticker.FormatStrFormatter("%1.e"))
-        ax.set_xlabel(xlabels[i], fontsize=12)
-        ax.set_title(titles[i], fontsize=14)
+    for i, ax in enumerate(axs.flat):
+        if i != 1:
+            plt.setp(ax, xlabel=xlabels[i], ylabel="", yticks=[])
+            sns.despine(left=True)
+        else:
+            plt.setp(ax, xlabel=xlabels[i], ylabel=None)
+        ax.ticklabel_format(axis="x", style="sci", scilimits=(-2, 4))
+        ax.set_title(titles[i], fontsize=12)
+        #     0,
+        #     1 - (1 / 12) * (2 * i + 1),
+        #     titles[i],
+        #     ha="right",
+        #     va="center",
+        #     fontsize=12,
+        # )
         ax.grid(False)
 
     plt.tight_layout()
 
 
 @savefig
-def lp_dist(data, percentage=False, scale=1, fname=None):
-    """Plot pattern combination frequencies as an UpSet plot.
-
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData
-    percentage : bool, optional
-        If True, label each bar as a percentage else label as a count, by default False
-    scale : int, optional
-        scale > 1 scales the plot larger, scale < 1 scales. the plot smaller, by default 1
-    fname : str, optional
-        Save the figure to specified filename, by default None
-    """
-    sample_labels = []
-    for p in PATTERN_NAMES:
-        p_df = data.to_df(p).reset_index().melt(id_vars="cell")
-        p_df = p_df[~p_df["value"].isna()]
-        p_df = p_df.set_index(["cell", "gene"])
-        sample_labels.append(p_df)
-
-    sample_labels = pd.concat(sample_labels, axis=1) == 1
-    sample_labels = sample_labels == 1
-    sample_labels.columns = PATTERN_NAMES
-
-    # Drop unlabeled samples
-    # sample_labels = sample_labels[sample_labels.sum(axis=1) > 0]
-
-    # Sort by degree, then pattern name
-    sample_labels["degree"] = -sample_labels[PATTERN_NAMES].sum(axis=1)
-    sample_labels = (
-        sample_labels.reset_index()
-        .sort_values(["degree"] + PATTERN_NAMES, ascending=False)
-        .drop("degree", axis=1)
-    )
-
-    upset = UpSet(
-        from_indicators(PATTERN_NAMES, data=sample_labels),
-        element_size=scale * 40,
-        min_subset_size=sample_labels.shape[0] * 0.001,
-        facecolor="lightgray",
-        sort_by=None,
-        show_counts=(not percentage),
-        show_percentages=percentage,
-    )
-
-    for p, color in zip(PATTERN_NAMES, PATTERN_COLORS):
-        if sample_labels[p].sum() > 0:
-            upset.style_subsets(present=p, max_degree=1, facecolor=color)
-
-    upset.plot()
-    plt.suptitle(f"Localization Patterns\n{data.n_obs} cells, {data.n_vars} genes")
-
-
-@savefig
-def lp_gene_dist(data, fname=None):
-    """Plot the cell fraction distribution of each pattern as a density plot.
-
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData
-    fname : str, optional
-        Save the figure to specified filename, by default None
-    """
-    lp_stats(data)
-
-    col_names = [f"{p}_fraction" for p in PATTERN_NAMES]
-    gene_frac = data.var[col_names]
-    gene_frac.columns = PATTERN_NAMES
-    # Plot frequency distributions
-    sns.displot(
-        data=gene_frac,
-        kind="kde",
-        multiple="layer",
-        height=3,
-        palette=PATTERN_COLORS,
-    )
-    plt.xlim(0, 1)
-    sns.despine()
-
-
-@savefig
-def lp_genes(
+def flow_summary(
     data,
-    kind="scatter",
-    hue="Pattern",
-    sizes=(2, 100),
-    gridsize=20,
-    random_state=4,
-    ax=None,
+    groupby=None,
+    group_order=None,
+    annotate=None,
+    adjust=True,
+    palette=red_light,
+    annot_color="black",
+    sizes=(5, 30),
+    size_norm=(10, 100),
+    dim_order=None,
+    legend=True,
+    height=5,
     fname=None,
-    **kwargs,
 ):
     """
-    Plot the pattern distribution of each gene in a RadViz plot. RadViz projects
-    an N-dimensional data set into a 2D space where the influence of each dimension
-    can be interpreted as a balance between the influence of all dimensions.
+    Plot RNAflow summary with a radviz plot describing gene embedding across flow clusters.
+    """
+
+    comp_key = f"{groupby}_comp_stats"
+    if groupby and comp_key in data.uns.keys():
+        comp_stats = data.uns[comp_key]
+        if group_order is None:
+            groups = list(comp_stats.keys())
+        else:
+            groups = group_order
+        ngroups = len(groups)
+        fig, axes = plt.subplots(1, ngroups, figsize=(ngroups * height * 1.1, height))
+        if axes is not np.ndarray:
+            axes = np.array([axes])
+
+        # Plot each group separately
+        for group, ax in zip(groups, axes.flat):
+            group_comp = comp_stats[group]
+
+            show_legend = False
+            if legend and ax == axes.flat[-1]:
+                show_legend = True
+
+            _radviz(
+                group_comp,
+                annotate=annotate,
+                adjust=adjust,
+                palette=palette,
+                annot_color=annot_color,
+                sizes=sizes,
+                size_norm=size_norm,
+                dim_order=dim_order,
+                legend=show_legend,
+                ax=ax,
+            )
+            ax.set_title(group, fontsize=12)
+    else:
+        return _radviz(
+            comp_stats,
+            annotate=annotate,
+            adjust=adjust,
+            palette=palette,
+            annot_color=annot_color,
+            sizes=sizes,
+            size_norm=size_norm,
+            dim_order=dim_order,
+            legend=legend,
+        )
+
+
+def _radviz(
+    comp_stats,
+    annotate=None,
+    adjust=True,
+    palette=red_light,
+    annot_color="black",
+    sizes=None,
+    size_norm=None,
+    dim_order="auto",
+    legend=True,
+    ax=None,
+):
+    """Plot a radviz plot of gene values across fields.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
-    kind : str
-        'Scatter' for scatter plot, 'hex' for hex plot, default "scatter"
-    hue : str
-        Name of columns in data.obs to color points, default "Pattern"
-    sizes : tuple
-        Minimum and maximum point size to scale points, default (2, 100)
-    gridsize : int
-        Number of hex bins along each axis, default 20
-    fname : str, optional
-        Save the figure to specified filename, by default None
-    **kwargs
-        Options to pass to matplotlib plotting method.
+    comp_stats : DataFrame
+        Gene composition stats
+    palette : str, optional
+        Color palette, by default None
+    sizes : tuple, optional
+        Size range for scatter plot, by default None
+    size_norm : tuple, optional
+        Size range for scatter plot, by default None
+    dim_order : "auto", None, or list, optional
+        Sort dimensions for more intuitive visualization, by default "auto".
+        If "auto", sort dimensions by maximizing cosine similarity of adjacent
+        dimensions. If None, do not sort dimensions. If list, use provided order.
+    gridsize : int, optional
+        Gridsize for hexbin plot, by default 20
+    ax : matplotlib.Axes, optional
+        Axes to plot on, by default None
     """
-    lp_stats(data)
+    with plt.rc_context({"font.size": 14}):
+        # RADVIZ plot
+        if not ax:
+            figsize = (5, 5)
+            fig = plt.figure(figsize=figsize)
+            ax = plt.gca()
+        else:
+            fig = ax.get_figure()
 
-    palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
+        # Remove unexpressed genes
+        ndims = comp_stats.columns.get_loc("logcounts") - 1
+        dims = comp_stats.columns[: ndims + 1]
+        stat_cols = comp_stats.columns[ndims + 1 :]
+        comp_stats = comp_stats[comp_stats[dims].sum(axis=1) > 0]
 
-    # RADVIZ plot
-    if not ax:
-        figsize = (6, 6)
-        fig = plt.figure(figsize=figsize)
+        # Determine best dimension ordering by maximizing cosine similarity of adjacent dimensions
+        if not dim_order:
+            dim_order = dims
+        elif dim_order == "auto":
+            dim_order = _sort_dimensions(comp_stats[dims])
+        elif isinstance(dim_order, list):
+            dim_order = dim_order
+        else:
+            raise ValueError(f"Invalid dim_order: {dim_order}")
 
-    # Use Plot the "circular" axis and labels, hide points
-    # TODO move "pattern" computation to lp_stats
-    col_names = [f"{p}_fraction" for p in PATTERN_NAMES]
-    gene_frac = data.var[col_names]
-    gene_frac.columns = PATTERN_NAMES
-    gene_frac["Pattern"] = gene_frac.idxmax(axis=1)
-    gene_frac_copy = gene_frac.copy()
-    gene_frac_copy["Pattern"] = ""
+        comp_stats = comp_stats.reindex([*dim_order, *stat_cols], axis=1)
 
-    if hue and hue != "Pattern":
-        gene_frac = gene_frac.join(data.var[hue])
+        # Plot the "circular" axis, labels and point positions
+        comp_stats["_"] = ""
+        pd.plotting.radviz(comp_stats[[*dims, "_"]], "_", s=20, ax=ax)
+        ax.get_legend().remove()
 
-    if not ax:
-        ax = radviz(gene_frac_copy, "Pattern", s=0)
-    else:
-        radviz(gene_frac_copy, "Pattern", s=0, ax=ax)
-    del gene_frac_copy
-    ax.get_legend().remove()
-    circle = plt.Circle((0, 0), radius=1, color="black", fill=False)
-    ax.add_patch(circle)
+        # Get points
+        pts = []
+        for c in ax.collections:
+            pts.extend(c.get_offsets().data)
 
-    # Hide 2D axes
-    ax.axis(False)
+        pts = np.array(pts).reshape(-1, 2)
+        xy = pd.DataFrame(pts, index=comp_stats.index)
 
-    # Get points
-    pts = []
-    for c in ax.collections:
-        pts.extend(c.get_offsets().data)
+        # Get vertices and origin
+        center = ax.patches[0]
+        vertices = ax.patches[1:]
 
-    pts = np.array(pts).reshape(-1, 2)
-    xy = pd.DataFrame(pts, index=gene_frac.index)
-    xy["Pattern"] = gene_frac["Pattern"]
+        # Add polygon as background
+        poly = plt.Polygon(
+            [v.center for v in vertices],
+            facecolor="none",
+            edgecolor="black",
+            zorder=1,
+        )
+        ax.add_patch(poly)
 
-    # Plot points as scatter or hex
-    if kind == "scatter":
+        # Add lines from origin to vertices
+        for v in vertices:
+            line_xy = np.array([center.center, v.center])
+            ax.add_line(
+                plt.Line2D(
+                    line_xy[:, 0],
+                    line_xy[:, 1],
+                    linestyle=":",
+                    linewidth=1,
+                    color="black",
+                    zorder=1,
+                    alpha=0.4,
+                )
+            )
+            v.remove()
 
+        # Hide 2D axes
+        ax.axis(False)
+
+        # Point size ~ percent of cells in group
+        cell_fraction = comp_stats["cell_fraction"]
+        cell_fraction = cell_fraction.apply(lambda x: round(x, 1))
+        size_key = "Fraction of cells\n in group (%)"
+        xy[size_key] = cell_fraction
+
+        # Hue ~ mean log2(count = 1)
+        log_count = comp_stats["logcounts"]
+        hue_key = "Mean log2(cnt + 1)\n in group"
+        xy[hue_key] = log_count
+
+        # Remove phantom points
         del ax.collections[0]
 
-        # Scale point size by max
-        xy["Fraction of cells"] = gene_frac.iloc[:, :5].max(axis=1)
+        sns.kdeplot(
+            data=xy,
+            x=0,
+            y=1,
+            shade=True,
+            cmap="binary",
+            zorder=0.9,
+            ax=ax,
+        )
 
         # Plot points
         sns.scatterplot(
-            data=xy.sample(frac=1, random_state=random_state),
+            data=xy,
             x=0,
             y=1,
-            size="Fraction of cells",
-            hue=hue,
-            sizes=sizes,
-            linewidth=0,
+            hue=hue_key,
             palette=palette,
+            size=size_key,
+            sizes=sizes,
+            size_norm=size_norm,
+            linewidth=0.5,
+            # alpha=0.6,
+            edgecolor="white",
+            legend=legend,
             ax=ax,
-            **kwargs,
         )
-        plt.legend(bbox_to_anchor=(1.05, 0.5), loc="center left", frameon=False)
+        scatter = ax.collections[0]
 
-    elif kind == "hex":
-        # Hexbin
-        xy.plot.hexbin(
-            x=0,
-            y=1,
-            gridsize=gridsize,
-            extent=(-1, 1, -1, 1),
-            cmap=sns.light_palette("lightseagreen", as_cmap=True),
-            mincnt=1,
-            colorbar=False,
-            ax=ax,
-            **kwargs,
-        )
-        # [left, bottom, width, height]
-        plt.colorbar(
-            ax.collections[-1], cax=fig.add_axes([1, 0.4, 0.05, 0.3]), label="genes"
-        )
+        if legend:
+            plt.legend(bbox_to_anchor=[1.1, 1], fontsize=10, frameon=False)
+
+        # Annotate top points
+        if annotate:
+
+            if isinstance(annotate, int):
+
+                # Get top ranked genes by entropy
+                from scipy.stats import entropy
+
+                top_genes = (
+                    comp_stats.loc[:, dims]
+                    .apply(lambda gene_comp: entropy(gene_comp), axis=1)
+                    .sort_values(ascending=True)
+                    .index[:annotate]
+                )
+                top_xy = xy.loc[top_genes]
+            else:
+                top_xy = xy.loc[[g for g in annotate if g in xy.index]]
+
+            # Plot top points
+            sns.scatterplot(
+                data=top_xy,
+                x=0,
+                y=1,
+                hue=hue_key,
+                palette=palette,
+                size=size_key,
+                sizes=sizes,
+                size_norm=size_norm,
+                linewidth=1,
+                facecolor=None,
+                edgecolor=annot_color,
+                legend=False,
+                ax=ax,
+            )
+
+            # Add text labels
+            texts = [
+                ax.text(
+                    row[0],
+                    row[1],
+                    i,
+                    fontsize=8,
+                    weight="medium",
+                    path_effects=[pe.withStroke(linewidth=2, foreground="white")],
+                )
+                for i, row in top_xy.iterrows()
+            ]
+
+            # Adjust text positions
+            if adjust:
+                print("Adjusting text positions...")
+                adjust_text(
+                    texts,
+                    expand_points=(2, 2),
+                    add_objects=[scatter],
+                    arrowprops=dict(arrowstyle="-", color="black", lw=1),
+                    ax=ax,
+                )
+
+
+def _sort_dimensions(composition):
+    sim = cosine_similarity(composition.T, composition.T)
+    sim = pd.DataFrame(sim, index=composition.columns, columns=composition.columns)
+    dim_order = sim.sample(3, random_state=11).index.tolist()
+
+    # Insert dimensions greedily
+    for dim in sim.columns:
+        if dim in dim_order:
+            continue
+
+        insert_score = []
+        for dim_i, dim_j in zip([dim_order[-1]] + dim_order[:-1], dim_order):
+            insert_score.append(np.mean(sim.loc[dim, [dim_i, dim_j]]))
+
+        insert_pos = np.argmax(insert_score)
+        dim_order.insert(insert_pos, dim)
+    return dim_order
 
 
 @savefig
-def lp_diff(data, phenotype, fname=None):
-    """Visualize gene pattern frequencies between groups of cells by plotting
-    log2 fold change and -log10p, similar to volcano plot. Run after `bento.tl.lp_diff()`
+def plot(
+    adata,
+    points_key="points",
+    kind="scatter",
+    groupby="batch",
+    hue=None,
+    group_wrap=None,
+    group_order=None,
+    hue_order=None,
+    theme="dark",
+    palette=None,
+    cmap=None,
+    shape_names=["cell_shape", "nucleus_shape"],
+    facecolors=None,
+    edgecolors=None,
+    linewidths=None,
+    height=6,
+    dx=0.1,
+    units="um",
+    legend=True,
+    frameon=True,
+    title=True,
+    point_kws=dict(),
+    graph_kws=dict(),
+    shape_kws=dict(),
+    fname=None,
+):
+    """
+    Plot spatial data. This function wraps sns.FacetGrid to handle plotting multiple columns (no rows).
 
     Parameters
     ----------
-    data : AnnData
+    adata : AnnData
         Spatial formatted AnnData
-    phenotype : str
-        Variable used to group cells when calling `bento.tl.lp_diff()`.
-    fname : str, optional
-        Save the figure to specified filename, by default None
+    kind : {"hist", "scatter", "interpolate"}, optional
+        Plotting method, by default "scatter"
+
     """
-    diff_stats = data.uns[f"diff_{phenotype}"]
 
-    g = sns.relplot(
-        data=diff_stats,
-        x=f"log2fc",
-        y="-log10padj",
-        size=4,
-        hue="pattern",
-        col="phenotype",
-        col_wrap=3,
-        height=2.5,
-        palette="tab10",
-        s=20,
-        linewidth=0,
-    )
+    # Set style
+    if theme == "dark":
+        style = "dark_background"
+        facecolor = "black"
+        edgecolor = "white"
+        textcolor = "white"
+    elif theme == "light":
+        style = "default"
+        facecolor = "white"
+        edgecolor = "black"
+        textcolor = "black"
+    else:
+        return ValueError("Theme must be 'dark' or 'light'.")
 
-    for ax in g.axes:
-        ax.axvline(0, lw=0.5, c="grey")  # -log2fc = 0
-        ax.axvline(-2, lw=1, c="pink", ls="dotted")  # log2fc = -2
-        ax.axvline(2, lw=1, c="pink", ls="dotted")  # log2fc = 2
-        ax.axhline(
-            -np.log10(0.05), c="pink", ls="dotted", zorder=0
-        )  # line where FDR = 0.05
-        sns.despine()
-
-    return g
-
-
-@savefig
-def cellplot(
-    adata,
-    hue=None,
-    kind="hist",
-    col="batch",
-    legend=True,
-    palette=None,
-    hue_order=None,
-    hue_norm=None,
-    col_wrap=None,
-    col_order=None,
-    shape_names=["cell_shape", "nucleus_shape"],
-    dx=0.1,
-    units="um",
-    height=6,
-    facet_kws=None,
-    fname=None,
-    **kwargs,
-):
-    # Get points
-    points = get_points(adata, asgeo=False)
-
-    # Add all shape_names if None
-    if shape_names == None:
-        shape_names = adata.obs.columns[adata.obs.columns.str.endswith("_shape")]
+    if shape_names is None:
+        shape_names = []
 
     # Convert shape_names to list
     shape_names = [shape_names] if isinstance(shape_names, str) else shape_names
@@ -372,163 +561,412 @@ def cellplot(
     # Get obs attributes starting with shapes
     obs_attrs = list(shape_names)
 
+    # Get points
+    points = get_points(adata, key=points_key, asgeo=False)
+
+    # Filter for genes
+    if points_key == "points":
+        points = points[points["gene"].isin(adata.var_names)]
+        # Remove unused categories
+        points["gene"] = (
+            points["gene"].astype("category").cat.remove_unused_categories()
+        )
+
+    # Add functional enrichment if exists
+    if "flow_fe" in adata.uns and adata.uns["flow_fe"].shape[0] == points.shape[0]:
+        points[adata.uns["flow_fe"].columns] = adata.uns["flow_fe"].values
+
+    # This feels weird here; refactor separate flow plotting?
+    if kind == "interpolate":
+        points[["RED", "GREEN", "BLUE"]] = adata.uns["flow_vis"]
+
     # Include col if exists
-    if col and (col == "cell" or (col in adata.obs.columns and col in points.columns)):
-        obs_attrs.append(col)
+    if groupby and (
+        groupby == "cell" or (groupby in adata.obs.columns or groupby in points.columns)
+    ):
+        obs_attrs.append(groupby)
+
+        # TODO bug, col typeerror
+        if groupby not in points.columns:
+            points = points.set_index("cell").join(adata.obs[[groupby]]).reset_index()
     else:
-        col = None
+        groupby = None
+
+    # Transfer obs hue to points
+    if hue and hue in adata.obs.columns and hue not in points.columns:
+        points = points.set_index("cell").join(adata.obs[[hue]]).reset_index()
+        obs_attrs.append(hue)
 
     obs_attrs = list(set(obs_attrs))
 
     # Get shapes
     shapes = adata.obs.reset_index()[obs_attrs]
+    if "cell_shape" in shapes.columns:
+        shapes = shapes.set_geometry("cell_shape")
 
-    if col:
+    if groupby:
         # Make sure col is same type across points and shapes
-        if points[col].dtype != shapes[col].dtype:
-            points[col] = points[col].astype(str)
-            shapes[col] = shapes[col].astype(str)
+        # if points[col].dtype != shapes[col].dtype:
+        points[groupby] = points[groupby].astype(str)
+        shapes[groupby] = shapes[groupby].astype(str)
 
         # Subset to specified col values only; less filtering = faster plotting
-        if col_order:
-            points = points[points[col].isin(col_order)]
-            shapes = shapes[shapes[col].isin(col_order)]
+        if group_order:
+            points = points[points[groupby].isin(group_order)]
+            shapes = shapes[shapes[groupby].isin(group_order)]
 
-    # Remove unused categories in points
-    if col or hue:
-        for cat in points.columns:
-            points[cat] = (
-                points[cat].cat.remove_unused_categories()
-                if points[cat].dtype == "category"
-                else points[cat]
-            )
+        group_names, pt_groups = zip(*points.groupby(groupby))
+        group_names, shape_groups = zip(*shapes.groupby(groupby))
+        # Get subplot grid shape
+        if group_wrap is not None:
+            ncols = group_wrap
+            nrows = int(np.ceil(len(group_names) / group_wrap))
+        else:
+            ncols = len(group_names)
+            nrows = 1
+    else:
+        group_names = [""]
+        pt_groups = [points]
+        shape_groups = [shapes]
 
-    # Convert shapes to GeoDataFrames AFTER filtering
-    shapes = geopandas.GeoDataFrame(shapes, geometry="cell_shape")
+        ncols = 1
+        nrows = 1
 
-    # Get updated
-    kws = dict(sharex=False, sharey=False)
-    if isinstance(facet_kws, dict):
-        kws.update(facet_kws)
+    with plt.style.context(style):
+        print("Plotting layers:")
+        # https://stackoverflow.com/questions/32633322/changing-aspect-ratio-of-subplots-in-matplotlib
+        fig_width = ncols * height
+        fig_height = nrows * height
+        figsize = (fig_width, fig_height)
 
-    # https://stackoverflow.com/questions/32633322/changing-aspect-ratio-of-subplots-in-matplotlib
-    g = sns.FacetGrid(
-        points,
-        col=col,
-        hue=hue,
-        legend_out=legend,
-        palette=palette,
-        hue_order=hue_order,
-        col_wrap=col_wrap,
-        col_order=col_order,
-        height=height,
-        aspect=1,
-        margin_titles=False,
-        **kws,
-    )
+        fig, axes = plt.subplots(nrows, ncols, figsize=figsize)
 
-    if kind == "scatter":
-        scatter_kws = dict(linewidth=0, s=5)
-        scatter_kws.update(**kwargs)
-        g.map_dataframe(sns.scatterplot, x="x", y="y", **scatter_kws)
-    elif kind == "hist":
-        hist_kws = dict(cmap="viridis", binwidth=15)
-        hist_kws.update(**kwargs)
-        g.map_dataframe(sns.histplot, x="x", y="y", **hist_kws)
-    elif kind == "hex":
-        hex_kws = dict(cmap="viridis", mincnt=1, linewidth=0, gridsize=100)
-        hex_kws.update(**kwargs)
-        g.map_dataframe(plt.hexbin, x="x", y="y", **hex_kws)
+        if len(group_names) == 1:
+            axes = [axes]
+        else:
+            if nrows > 1:
+                axes = list(axes.flat)
+            group_names, pt_groups = zip(*points.groupby(groupby))
 
-    if shapes.shape[0] > 0:
-        if col:
-            shapes = shapes.groupby(col)
+        # Plot shapes if any
+        if isinstance(shape_groups[0], gpd.GeoDataFrame):
+            print("  + Shapes")
 
-            # Get max ax radius across groups
+            # Get max radius across groups
             ax_radii = []
-            for k, ax in g.axes_dict.items():
-                s = shapes.get_group(k)
+            for shape_group in shape_groups:
                 # Determine fixed radius of each subplot
-                cell_bounds = s.bounds
+                cell_bounds = shape_group.bounds
                 cell_maxw = cell_bounds["maxx"].max() - cell_bounds["minx"].min()
                 cell_maxh = cell_bounds["maxy"].max() - cell_bounds["miny"].min()
-                ax_radius = 1.1 * (max(cell_maxw, cell_maxh) / 2)
+                ax_radius = 1.05 * (max(cell_maxw, cell_maxh) / 2)
                 ax_radii.append(ax_radius)
 
             ax_radius = max(ax_radii)
 
-            for k, ax in tqdm(g.axes_dict.items()):
-                s = shapes.get_group(k)
-                shape_subplot(s, shape_names, dx, units, ax_radius=ax_radius, ax=ax)
+            for shape_group, ax in zip(shape_groups, axes):
+                default_kws = dict()
+                default_kws.update(shape_kws)
 
+                if facecolors is None:
+                    facecolors = [(0, 0, 0, 0)] * len(shape_names)
+
+                if edgecolors is None:
+                    edgecolors = [edgecolor] * len(shape_names)
+
+                if linewidths is None:
+                    linewidths = [0.5] * len(shape_names)
+
+                _plot_shapes(
+                    shape_group,
+                    shape_names,
+                    facecolors,
+                    edgecolors,
+                    linewidths,
+                    legend,
+                    ax,
+                    **default_kws,
+                )
+
+                # Set axis limits
+                xmin, xmax, ymin, ymax = ax.axis()
+                xmin -= ax_radius * 0.02
+                ymin -= ax_radius * 0.02
+                xmax += ax_radius * 0.02
+                ymax += ax_radius * 0.02
+                xcenter = (xmax + xmin) / 2
+                ycenter = (ymax + ymin) / 2
+                ax.set_xlim(xcenter - ax_radius, xcenter + ax_radius)
+                ax.set_ylim(ycenter - ax_radius, ycenter + ax_radius)
+
+                # Mask outside cells
+                rect_bound = gpd.GeoDataFrame(
+                    geometry=[
+                        Polygon(
+                            [(xmin, ymin), (xmin, ymax), (xmax, ymax), (xmax, ymin)]
+                        )
+                    ]
+                )
+                rect_bound.overlay(shape_group, how="difference").plot(
+                    facecolor=facecolor, edgecolor=None, zorder=2, ax=ax
+                )
+
+        print("  + Transcripts")
+        for ax, pt_group in zip(axes, pt_groups):
+            show_legend = False
+            if legend and ax == axes[-1]:
+                show_legend = legend
+
+            _plot_points(
+                kind, hue, hue_order, palette, cmap, legend, ax, pt_group, **point_kws
+            )
+
+            # plot graph layer
+            if kind == "graph":
+                print("  + Graphs")
+                default_kws = dict(
+                    radius=20, edge_color=edgecolor, width=0.5, alpha=0.3, node_size=0
+                )
+                default_kws.update(graph_kws)
+                _graphs(pt_group, ax, **default_kws)
+
+        # Formatting subplots
+        for ax, group_name in zip(axes, group_names):
+
+            # Create scale bar
+            scalebar = ScaleBar(
+                dx,
+                units,
+                location="lower right",
+                color=textcolor,
+                box_alpha=0,
+                scale_loc="top",
+            )
+            ax.add_artist(scalebar)
+
+            # Add title
+            if title:
+                plt.text(
+                    0.02,
+                    0.98,
+                    group_name,
+                    ha="left",
+                    va="top",
+                    color=textcolor,
+                    transform=ax.transAxes,
+                )
+            ax.spines[["top", "right", "bottom", "left"]].set_visible(frameon)
+            ax.axis(frameon)
+
+        # box_aspect for Axes, aspect for data
+        if len(axes) > 1:
+            box_aspect = 1
         else:
-            shape_subplot(shapes, shape_names, dx, units, ax=g.ax)
+            box_aspect = None
 
-    if legend:
-        g.add_legend()
-
-    g.set_titles(template="")
-
-    # box_aspect for Axes, aspect for data
-    g.set(
-        xticks=[],
-        yticks=[],
-        xlabel=None,
-        ylabel=None,
-        xmargin=0,
-        ymargin=0,
-        facecolor="black",
-        box_aspect=1,
-        aspect=1,
-    )
-    g.tight_layout()
-
-
-def shape_subplot(data, shape_names, dx, units, ax, ax_radius=None):
-    # Gather all shapes and plot
-    all_shapes = geopandas.GeoSeries(data[shape_names].values.flatten())
-    all_shapes.plot(
-        color=(0, 0, 0, 0), edgecolor=(1, 1, 1, 0.8), lw=1, aspect=None, ax=ax
-    )
-
-    # Set axes boundaries to be square; make sure size of cells are relative to one another
-    if ax_radius:
-        s_bound = data.bounds
-        centerx = np.mean([s_bound["minx"].min(), s_bound["maxx"].max()])
-        centery = np.mean([s_bound["miny"].min(), s_bound["maxy"].max()])
-        ax.set_xlim(centerx - ax_radius, centerx + ax_radius)
-        ax.set_ylim(centery - ax_radius, centery + ax_radius)
-
-    for spine in ax.spines.values():
-        spine.set(edgecolor="white", linewidth=1)
-
-    # Create scale bar
-    scalebar = ScaleBar(
-        dx, units, location="lower right", color="white", box_alpha=0, scale_loc="top"
-    )
-    ax.add_artist(scalebar)
-
-
-def sig_samples(data, n=5, col_wrap=2):
-    for f in data.uns["tensor_loadings"][TENSOR_DIM_NAMES[0]]:
-        top_genes = (
-            data.uns["tensor_loadings"]["genes"]
-            .sort_values(f, ascending=False)
-            .index.tolist()[:n]
+        plt.setp(
+            axes,
+            xticks=[],
+            yticks=[],
+            xticklabels=[],
+            yticklabels=[],
+            xlabel=None,
+            ylabel=None,
+            xmargin=0,
+            ymargin=0,
+            facecolor=facecolor,
+            box_aspect=box_aspect,
+            aspect=1,
         )
+        plt.subplots_adjust(wspace=0, hspace=0)
+
+        plt.setp(fig.patch, facecolor=facecolor)
+        print("Done.")
+
+
+def _plot_points(
+    kind, hue, hue_order, palette, cmap, legend, ax, pt_group, **point_kws
+):
+    if kind == "scatter" or kind == "graph":
+        scatter_kws = dict(linewidth=0, s=1)
+        scatter_kws.update(point_kws)
+
+        M = ax.transData.get_matrix()
+        xscale = M[0, 0]
+        yscale = M[1, 1]
+        # has desired_data_width of width
+        scatter_kws["s"] = (xscale * scatter_kws["s"]) ** 2
+
+        # Matplotlib handle color
+        if "c" in point_kws:
+            collection = ax.scatter(x=pt_group["x"], y=pt_group["y"], **scatter_kws)
+        # Use seaborn for hue mapping
+        else:
+            collection = sns.scatterplot(
+                data=pt_group,
+                x="x",
+                y="y",
+                hue=hue,
+                hue_order=hue_order,
+                palette=palette,
+                legend=legend,
+                ax=ax,
+                **scatter_kws,
+            ).collections[0]
+
+    elif kind == "hist":
+        hist_kws = dict(binwidth=15)
+        hist_kws.update(**point_kws)
+        collection = sns.histplot(
+            data=pt_group,
+            x="x",
+            y="y",
+            hue=hue,
+            palette=palette,
+            ax=ax,
+            **hist_kws,
+        ).collections[0]
+
+    elif kind == "interpolate":
+        kws = dict(method="linear")
+        kws.update(**point_kws)
+        _interpolate(
+            points=pt_group,
+            hue=hue,
+            cmap=cmap,
+            ax=ax,
+            **kws,
+        )
+    else:
+        raise ValueError(f"Invalid kind: {kind}")
+
+    # Add colorbar to last subplot
+    if legend and kind in ["scatter", "hist", "graph"]:
+        if kind == "scatter" and "c" in point_kws:
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("bottom", size="5%", pad=0)
+            plt.colorbar(collection, cax=cax, orientation="horizontal")
+        else:
+            ax.legend(loc="center left", bbox_to_anchor=(1, 0.5), frameon=False)
+
+
+def _graphs(pt_group, ax, **graph_kws):
+
+    # Convert points neighborhood adjacency list
+    neighbor_index = (
+        NearestNeighbors(radius=graph_kws["radius"], n_jobs=-1)
+        .fit(pt_group[["x", "y"]])
+        .radius_neighbors(pt_group[["x", "y"]], return_distance=False)
+    )
+
+    # Create networkx graph from adjacency list
+    pt_graph = nx.Graph(dict(zip(range(len(neighbor_index)), neighbor_index)))
+    pt_graph.remove_edges_from(nx.selfloop_edges(pt_graph))
+
+    positions = dict(zip(pt_graph.nodes, pt_group[["x", "y"]].values))
+
+    del graph_kws["radius"]
+    collection = nx.draw_networkx_edges(
+        pt_graph,
+        pos=positions,
+        ax=ax,
+        **graph_kws,
+    )
+    collection.set_zorder(0.99)
+
+
+def _plot_shapes(
+    data,
+    shape_names,
+    facecolors,
+    edgecolors,
+    linewidths,
+    legend,
+    ax,
+    **kwargs,
+):
+    # Gather all shapes and plot
+    for shape_name, facecolor, edgecolor, linewidth in zip(
+        shape_names, facecolors, edgecolors, linewidths
+    ):
+        data.reset_index().set_geometry(shape_name).plot(
+            facecolor=facecolor,
+            edgecolor=edgecolor,
+            linewidth=linewidth,
+            aspect=None,
+            ax=ax,
+            zorder=3,
+            **kwargs,
+        )
+
+
+def _interpolate(points, hue, cmap, method, ax, **kwargs):
+
+    if hue is None:
+        components = points[["RED", "GREEN", "BLUE"]].values
+    else:
+        components = points[hue].values.reshape(-1, 1)
+
+    # Get subplot xy grid bounds
+    minx, maxx = points["x"].min(), points["x"].max()
+    miny, maxy = points["y"].min(), points["y"].max()
+
+    # Infer step size by finding the smallest distance between the two smallest values of x
+    unique_x = np.unique(points["x"])
+    step = abs(unique_x[1] - unique_x[0])
+
+    # Define grid coordinates
+    grid_x, grid_y = np.mgrid[
+        minx : maxx + step : step,
+        miny : maxy + step : step,
+    ]
+    values = []
+
+    # Interpolate values for each channel
+    for cp in range(components.shape[1]):
+        values.append(
+            griddata(
+                points[["x", "y"]].values,
+                components[:, cp],
+                (grid_x, grid_y),
+                method=method,
+                fill_value=0,
+            ).T
+        )
+
+    values = np.stack(values, axis=-1)
+    # interpolating can cause values to be outside of [0, 1] range; clip values for rgb images only
+    if values.shape[2] > 1:
+        values = np.clip(values, 0, 1)
+
+    ax.imshow(
+        values, extent=(minx, maxx, miny, maxy), origin="lower", cmap=cmap, **kwargs
+    )
+    ax.autoscale(False)
+
+
+def sig_samples(data, rank, n_genes=5, n_cells=4, group_wrap=4, **kwargs):
+    for f in data.uns[f"r{rank}_signatures"].columns:
 
         top_cells = (
-            data.uns["tensor_loadings"]["cells"]
+            data.obsm[f"r{rank}_signatures"]
             .sort_values(f, ascending=False)
-            .index.tolist()[:n]
+            .index.tolist()[:n_cells]
         )
 
-        cellplot(
+        top_genes = (
+            data.varm[f"r{rank}_signatures"]
+            .sort_values(f, ascending=False)
+            .index.tolist()[:n_genes]
+        )
+
+        plot(
             data[top_cells, top_genes],
             kind="scatter",
             hue="gene",
-            col="cell",
-            col_wrap=col_wrap,
+            groupby="cell",
+            group_wrap=group_wrap,
             height=2,
+            **kwargs,
         )
-        # plt.suptitle(f)
+        plt.suptitle(f)

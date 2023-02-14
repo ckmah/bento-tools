@@ -1,5 +1,4 @@
 import geopandas as gpd
-
 from .._utils import track
 
 
