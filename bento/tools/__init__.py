@@ -1,13 +1,12 @@
 from ._colocation import coloc_quotient, colocation
-from ._flow import fe_fazal2019, fe, flow, flowmap
+from ._composition import comp_diff
+from ._flow import fe, fe_fazal2019, flow, flowmap
 from ._lp import lp, lp_diff, lp_stats, lp_top_genes
 from ._point_features import analyze_points, point_features, register_point_feature
 from ._shape_features import (
     analyze_shapes,
+    obs_stats,
     register_shape_feature,
     shape_features,
-    obs_stats,
 )
-from ._shapes import inner_edge, outer_edge
-from ._signatures import decompose, lp_signatures, signatures, to_tensor
-from ._composition import comp_diff
+from ._decomposition import decompose, to_tensor

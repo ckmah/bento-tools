@@ -229,7 +229,7 @@ def sync(data, copy=False):
     return adata if copy else None
 
 
-def register_points(point_key, metadata_keys=[]):
+def register_points(point_key: str, metadata_keys: list):
     """Decorator function to register points to the current `AnnData` object.
     This keeps track of point sets and keeps them in sync with `AnnData` object.
 

@@ -263,6 +263,10 @@ def _raster(data, shape_name, step=1):
         raster_df[shape_prefix] = s
         raster_all.append(raster_df)
 
+    # Add raster to data.obs as 2d array per cell (for point_features compatibility)
+    data.obs[f"{shape_prefix}_raster"] = [df[["x", "y"]].values for df in raster_all]
+
+    # Add raster to data.uns as long dataframe (for flow compatibility)
     raster_all = pd.concat(raster_all).reset_index(drop=True)
     data.uns[f"{shape_prefix}_raster"] = raster_all
 

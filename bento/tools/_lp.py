@@ -4,20 +4,17 @@ import bento
 import numpy as np
 import pandas as pd
 import statsmodels.formula.api as sfm
-from dask import dataframe as dd
-from dask.diagnostics import ProgressBar
 from patsy import PatsyError
 from statsmodels.tools.sm_exceptions import PerfectSeparationError
 from tqdm.auto import tqdm
 
-from .._utils import PATTERN_NAMES, PATTERN_PROBS, PATTERN_FEATURES, track
-from ..preprocessing import get_layers
+from .._utils import PATTERN_NAMES, PATTERN_FEATURES, track
 
 tqdm.pandas()
 
 
 @track
-def lp(data, groupby="gene", chunksize=5, copy=False):
+def lp(data, groupby="gene", copy=False):
     """Predict transcript subcellular localization patterns.
     Patterns include: cell edge, cytoplasmic, nuclear edge, nuclear, none
 
@@ -27,8 +24,6 @@ def lp(data, groupby="gene", chunksize=5, copy=False):
         Spatial formatted AnnData object
     groupby : str or list of str, optional (default: None)
         Key in `data.uns['points'] to groupby, by default None. Always treats each cell separately
-    chunksize : int, optional
-        Number of cells to process in each chunk, passed to `dask`, by default 5.
     copy : bool
         Return a copy of `data` instead of writing to data, by default False.
 
@@ -47,6 +42,10 @@ def lp(data, groupby="gene", chunksize=5, copy=False):
     model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"
     model = pickle.load(open(f"{model_dir}/rf_calib_20220514.pkl", "rb"))
 
+    # Compatibility with newer versions of scikit-learn
+    for cls in model.calibrated_classifiers_:
+        cls.estimator = cls.base_estimator
+
     # Compute features
     feature_key = f"cell_{'_'.join(groupby)}_features"
     if not feature_key in adata.uns.keys() or not all(
@@ -57,14 +56,12 @@ def lp(data, groupby="gene", chunksize=5, copy=False):
             "cell_shape",
             ["proximity", "asymmetry", "ripley", "point_dispersion_norm"],
             groupby=groupby,
-            chunksize=chunksize,
         )
         bento.tl.analyze_points(
             adata,
             "nucleus_shape",
             ["proximity", "asymmetry", "shape_dispersion_norm"],
             groupby=groupby,
-            chunksize=chunksize,
         )
 
     X_df = adata.uns[feature_key][PATTERN_FEATURES]
@@ -84,36 +81,34 @@ def lp(data, groupby="gene", chunksize=5, copy=False):
 
 
 def lp_top_genes(data, n_genes=5):
-    lp = data.uns["lp"].groupby('gene').sum()
+    lp = data.uns["lp"].groupby("gene").sum()
 
     top_genes = lp.apply(
-        lambda col: col.sort_values(ascending=False)
-        .head(n_genes)
-        .index.tolist()
+        lambda col: col.sort_values(ascending=False).head(n_genes).index.tolist()
     )
-    
+
     return top_genes
 
 
 @track
-def lp_stats(data, groupby="gene", copy=False):
+def lp_stats(data, copy=False):
     """Computes frequencies of localization patterns across cells and genes.
 
     Parameters
     ----------
     data : AnnData
-        Spatial formatted AnnData object
+        Spatial formatted AnnData object.
     copy : bool
-        Return a copy of `data` instead of writing to data, by default False.
+        Whether to return a copy of the AnnData object. Default False.
     Returns
     -------
-    [type]
-        [description]
+    adata : AnnData
+        .uns['lp_stats']: DataFrame of localization pattern frequencies.
     """
     adata = data.copy() if copy else data
 
     lp = adata.uns["lp"][PATTERN_NAMES]
-    grouper = adata.uns[f"cell_{groupby}_features"][groupby]
+    grouper = adata.uns["cell_gene_features"]["gene"]
 
     g_pattern_counts = lp.groupby(grouper).apply(lambda df: df.sum())
     adata.uns["lp_stats"] = g_pattern_counts
@@ -140,9 +135,9 @@ def _lp_logfc(data, phenotype=None):
 
     pattern_df = data.uns["lp"].copy()
     groups_name = stats.index.name
-    pattern_df[["cell", groups_name]] = data.uns[
-        f"cell_{groups_name}_features"
-    ][["cell", groups_name]]
+    pattern_df[["cell", groups_name]] = data.uns[f"cell_{groups_name}_features"][
+        ["cell", groups_name]
+    ]
 
     gene_fc_stats = []
     for c in PATTERN_NAMES:
@@ -236,7 +231,6 @@ def _lp_diff_gene(cell_by_pattern, phenotype, phenotype_vector):
             r = r.reset_index().rename({"index": "pattern"}, axis=1)
 
             results.append(r)
-        #
         except (
             np.linalg.LinAlgError,
             ValueError,
@@ -281,9 +275,9 @@ def lp_diff(data, phenotype=None, continuous=False, copy=False):
         for p in PATTERN_NAMES:
             p_labels = adata.uns["lp"][p]
             groups_name = stats.index.name
-            p_labels[["cell", groups_name]] = adata.uns[
-                f"cell_{groups_name}_features"
-            ][["cell", groups_name]]
+            p_labels[["cell", groups_name]] = adata.uns[f"cell_{groups_name}_features"][
+                ["cell", groups_name]
+            ]
             p_labels = p_labels.pivot(index="cell", columns="gene", values=p)
             p_corr = p_df.corrwith(phenotype_vector, drop=True)
             pattern_dfs[p] = p_labels
@@ -292,50 +286,18 @@ def lp_diff(data, phenotype=None, continuous=False, copy=False):
         # [Sample by patterns] where sample id = [cell, group] pair
         pattern_df = adata.uns["lp"].copy()
         groups_name = stats.index.name
-        pattern_df[["cell", groups_name]] = adata.uns[
-            f"cell_{groups_name}_features"
-        ][["cell", groups_name]]
-
-        # Fit logit for each gene
-        meta = {
-            "pattern": str,
-            "dy/dx": float,
-            "std_err": float,
-            "z": float,
-            "pvalue": float,
-            "ci_low": float,
-            "ci_high": float,
-            "phenotype": str,
-        }
+        pattern_df[["cell", groups_name]] = adata.uns[f"cell_{groups_name}_features"][
+            ["cell", groups_name]
+        ]
 
         diff_output = (
             pattern_df.groupby(groups_name)
-            .progress_apply(
-                lambda gp: _lp_diff_gene(gp, phenotype, phenotype_vector)
-            )
+            .progress_apply(lambda gp: _lp_diff_gene(gp, phenotype, phenotype_vector))
             .reset_index()
         )
 
-    #         with ProgressBar():
-    #             diff_output = (
-    #                 dd.from_pandas(pattern_df, chunksize=100)
-    #                 .groupby(groups_name)
-    #                 .apply(
-    #                     lambda gp: _lp_diff_gene(gp, phenotype, phenotype_vector), meta=meta
-    #                 )
-    #                 .reset_index()
-    #                 .compute()
-    #             )
-
-    # Format pattern column
-    # diff_output = pd.concat(diff_output)
-
-    print(diff_output.head())
-
     # FDR correction
-    diff_output["padj"] = (
-        diff_output["pvalue"] * diff_output[groups_name].nunique()
-    )
+    diff_output["padj"] = diff_output["pvalue"] * diff_output[groups_name].nunique()
 
     results = diff_output.dropna()
 

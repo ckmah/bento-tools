@@ -1,56 +1,74 @@
+from typing import Iterable, Literal, Optional, Union
+
 import decoupler as dc
+import emoji
+import geopandas as gpd
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pkg_resources
-from scipy.sparse import vstack, csr_matrix
-from tqdm.auto import tqdm
-from sklearn.preprocessing import quantile_transform, minmax_scale, StandardScaler
-from sklearn.decomposition import TruncatedSVD
-from minisom import MiniSom
-import geopandas as gpd
 import rasterio
 import shapely
-import emoji
+from anndata import AnnData
 from kneed import KneeLocator
-from matplotlib import pyplot as plt
+from minisom import MiniSom
+from scipy.sparse import csr_matrix, vstack
+from sklearn.decomposition import TruncatedSVD
+from sklearn.preprocessing import StandardScaler, minmax_scale, quantile_transform
+from sklearn.utils import resample
+from tqdm.auto import tqdm
 
-from .._utils import track, register_points
-from ..geometry import get_points
+from .._utils import register_points, track
+from ..geometry import get_points, sindex_points
 from ._neighborhoods import _count_neighbors
 from ._shape_features import analyze_shapes
-from ..geometry import sindex_points
 
 
 @track
 @register_points("cell_raster", ["flow", "flow_embed", "flow_vis"])
 def flow(
-    data,
-    n_neighbors=None,
-    radius=None,
-    render_resolution=0.1,
-    copy=False,
+    data: AnnData,
+    method: Literal["knn", "radius"] = "radius",
+    n_neighbors: Optional[int] = None,
+    radius: Optional[int] = None,
+    render_resolution: int = 0.1,
+    copy: bool = False,
 ):
     """
-    RNAFlow: Method for embedding spatial data with local gene expression neighborhoods.
-    Must specify one of `n_neighbors` or `radius`.
+    RNAflow: Embedding each pixel as normalized local composition normalized by cell composition.
+    For k-nearest neighborhoods or "knn", method, specify n_neighbors. For radius neighborhoods, specify radius.
+    The default method is "radius" with radius=50. RNAflow requires a minimum of 4 genes per cell to compute all embeddings properly.
 
     Parameters
     ----------
     data : AnnData
         Spatial formatted AnnData object.
-    norm : bool
-        Whether to normalize embedding by cell specific expression. Default True.
+    method: str
+        Method to use for local neighborhood. Either 'knn' or 'radius'.
     n_neighbors : int
         Number of neighbors to use for local neighborhood.
     radius : float
         Radius to use for local neighborhood.
     render_resolution : float
-        Resolution to use for rendering embedding. Default 0.01.
+        Resolution to use for rendering embedding. Default 0.1 samples at 10% original resolution (10 units between pixels)
     copy : bool
         Whether to return a copy the AnnData object. Default False.
-    """
 
-    if (radius == None) and (n_neighbors == None):
+    Returns
+    -------
+    adata : AnnData
+        .uns["flow"] : scipy.csr_matrix
+            [pixels x genes] sparse matrix of normalized local composition.
+        .uns["flow_embed"] : np.ndarray
+            [pixels x components] array of embedded flow values.
+        .uns["flow_vis"] : np.ndarray
+            [pixels x 3] array of RGB values for visualization.
+        .uns["flow_genes"] : list
+            List of genes used for embedding.
+        .uns["flow_variance_ratio"] : np.ndarray
+            [components] array of explained variance ratio for each component.
+    """
+    if n_neighbors is None and radius is None:
         radius = 50
 
     adata = data.copy() if copy else data
@@ -61,7 +79,7 @@ def flow(
 
     # embeds points on a uniform grid
     pbar = tqdm(total=3)
-    pbar.set_description(emoji.emojize(f"Embedding"))
+    pbar.set_description(emoji.emojize("Embedding"))
     step = 1 / render_resolution
     # Get grid rasters
     analyze_shapes(
@@ -98,14 +116,22 @@ def flow(
     for i, cell in enumerate(tqdm(cells, leave=False)):
         cell_points = points_grouped.get_group(cell)
         rpoints = rpoints_grouped.get_group(cell)
-        gene_count = _count_neighbors(
-            cell_points,
-            n_genes,
-            rpoints,
-            radius=radius,
-            n_neighbors=n_neighbors,
-            agg=None,
-        )
+        if method == "knn":
+            gene_count = _count_neighbors(
+                cell_points,
+                n_genes,
+                rpoints,
+                n_neighbors=n_neighbors,
+                agg=None,
+            )
+        elif method == "radius":
+            gene_count = _count_neighbors(
+                cell_points,
+                n_genes,
+                rpoints,
+                radius=radius,
+                agg=None,
+            )
         gene_count = gene_count.toarray()
         # embedding: distance neighborhood composition and cell composition
         # Compute composition of neighborhood
@@ -123,7 +149,10 @@ def flow(
     pbar.update()
 
     pbar.set_description(emoji.emojize("Reducing"))
-    pca_model = TruncatedSVD(n_components=10, algorithm="arpack").fit(cell_flows)
+    n_components = min(n_genes - 1, 10)
+    pca_model = TruncatedSVD(n_components=n_components, algorithm="arpack").fit(
+        cell_flows
+    )
     flow_embed = pca_model.transform(cell_flows)
     variance_ratio = pca_model.explained_variance_ratio_
 
@@ -133,7 +162,7 @@ def flow(
     pbar.update()
 
     pbar.set_description(emoji.emojize("Saving"))
-    adata.uns["flow"] = cell_flows  # sparse gene rclr
+    adata.uns["flow"] = cell_flows  # sparse gene embedding
     adata.uns["flow_genes"] = gene_names  # gene names
     adata.uns["flow_embed"] = flow_embed
     adata.uns["flow_variance_ratio"] = variance_ratio
@@ -148,14 +177,14 @@ def flow(
 
 @track
 def flowmap(
-    data,
-    n_clusters=range(2, 9),
-    num_iterations=1000,
-    train_size=0.2,
-    render_resolution=0.1,
-    random_state=11,
-    plot_error=True,
-    copy=False,
+    data: AnnData,
+    n_clusters: Union[Iterable[int], int] = range(2, 9),
+    num_iterations: int = 1000,
+    train_size: float = 0.2,
+    render_resolution: float = 0.1,
+    random_state: int = 11,
+    plot_error: bool = True,
+    copy: bool = False,
 ):
     """Cluster flow embeddings using self-organizing maps (SOMs) and vectorize clusters as Polygon shapes.
 
@@ -168,12 +197,26 @@ def flowmap(
         using the elbow heuristic evaluated on the quantization error.
     num_iterations : int
         Number of iterations to use for SOM training.
+    train_size : float
+        Fraction of cells to use for SOM training. Default 0.2.
     render_resolution : float
-        Resolution used for rendering embedding. Default 0.01.
+        Resolution used for rendering embedding. Default 0.1.
     random_state : int
         Random state to use for SOM training. Default 11.
+    plot_error : bool
+        Whether to plot quantization error. Default True.
     copy : bool
         Whether to return a copy the AnnData object. Default False.
+
+    Returns
+    -------
+    data : AnnData
+        .uns["cell_raster"] : DataFrame
+            Adds "flowmap" column denoting cluster membership.
+        .uns["points"] : DataFrame
+            Adds "flowmap#" columns for each cluster.
+        .obs : GeoSeries
+            Adds "flowmap#_shape" columns for each cluster rendered as (Multi)Polygon shapes.
     """
     adata = data.copy() if copy else data
 
@@ -198,7 +241,6 @@ def flowmap(
     if train_size == 1:
         flow_train = flow_embed
     if train_size < 1:
-        from sklearn.utils import resample
 
         flow_train = resample(
             flow_embed,
@@ -324,7 +366,9 @@ def flowmap(
     return adata if copy else None
 
 
-def fe_fazal2019(data, batch_size=10000, min_n=5, copy=False):
+def fe_fazal2019(
+    data: AnnData, batch_size: int = 10000, min_n: int = 5, copy: bool = False
+) -> Optional[AnnData]:
     """Compute enrichment scores from subcellular compartment gene sets from Fazal et al. 2019 (APEX-seq).
     Wrapper for `bento.tl.fe`.
 
@@ -335,8 +379,9 @@ def fe_fazal2019(data, batch_size=10000, min_n=5, copy=False):
     batch_size : int
         Number of points to process in each batch. Default 10000.
     min_n : int
-        Minimum number of points required to compute enrichment score. Default 5.
-
+        Minimum number of targets per source. If less, sources are removed.
+    copy : bool
+        Return a copy instead of writing to `adata`. Default False.
     Returns
     -------
     DataFrame
@@ -354,17 +399,18 @@ def fe_fazal2019(data, batch_size=10000, min_n=5, copy=False):
 
 
 @track
+@register_points("cell_raster", ["flow_fe"])
 def fe(
-    data,
-    net,
-    groupby=None,
-    source="source",
-    target="target",
-    weight="weight",
-    batch_size=10000,
-    min_n=0,
-    copy=False,
-):
+    data: AnnData,
+    net: pd.DataFrame,
+    groupby: Optional[str] = None,
+    source: Optional[str] = None,
+    target: Optional[str] = None,
+    weight: Optional[str] = None,
+    batch_size: int = 10000,
+    min_n: int = 0,
+    copy: bool = False,
+) -> Optional[AnnData]:
     """
     Perform functional enrichment on point embeddings. Wrapper for decoupler wsum function.
 
@@ -374,7 +420,26 @@ def fe(
         Spatial formatted AnnData object.
     net : DataFrame
         DataFrame with columns "source", "target", and "weight". See decoupler API for more details.
+    groupby : str, optional
+        Column in `adata.uns["cell_raster"]` to group by. Default None.
+    source : str, optional
+        Column name for source nodes in `net`. Default "source".
+    target : str, optional
+        Column name for target nodes in `net`. Default "target".
+    weight : str, optional
+        Column name for weights in `net`. Default "weight".
+    batch_size : int
+        Number of points to process in each batch. Default 10000.
+    min_n : int
+        Minimum number of targets per source. If less, sources are removed.
+    copy : bool
+        Return a copy instead of writing to `adata`. Default False.
 
+    Returns
+    -------
+    adata : AnnData
+        uns["flow_fe"] : DataFrame
+            Enrichment scores for each gene set.
     """
 
     adata = data.copy() if copy else data
@@ -417,7 +482,13 @@ def fe(
     return adata if copy else None
 
 
-def _fe_stats(data, net, source="source", target="target", copy=False):
+def _fe_stats(
+    data: AnnData,
+    net: pd.DataFrame,
+    source: str = "source",
+    target: str = "target",
+    copy: bool = False,
+):
 
     adata = data.copy() if copy else data
 
