@@ -1,23 +1,26 @@
 [tool.poetry]
 name = "bento-tools"
 packages = [{ include = "bento" }]
-include = ["bento/datasets/datasets.csv", "bento/models/**/*", "bento/tools/gene_sets/*"]
-version = "1.0.1"
+include = [
+    "bento/datasets/datasets.csv",
+    "bento/models/**/*",
+    "bento/tools/gene_sets/*",
+]
+version = "2.0.0a0"
 description = "A toolkit for subcellular analysis of spatial transcriptomics data"
 authors = ["Clarence Mah <ckmah@ucsd.edu>"]
-license = "MIT"
+license = "BSD-2-Clause"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.8, <3.11"
+python = ">=3.8, <3.10"
 anndata = "^0.7.6"
 astropy = "^5.0"
-dask-geopandas = "^0.1.3"
 geopandas = "^0.10.0"
 matplotlib = "^3.2"
 matplotlib-scalebar = "^0.8.1"
 myst-parser = { version = "^0.18.0", optional = true }
-nbsphinx = {version = "^0.8.9", optional = true }
+nbsphinx = { version = "^0.8.9", optional = true }
 pandas = "<=1.2.5"
 pygeos = "^0.12.0"
 scanpy = "^1.9.1"
@@ -29,27 +32,31 @@ sphinx-autobuild = { version = "^2021.3.14", optional = true }
 sphinx-book-theme = { version = "^0.3.2", optional = true }
 sphinx-gallery = { version = "^0.10.1", optional = true }
 statsmodels = "^0.13.2"
-torch = {version = "^1.11.0", extras = ["torch"]}
 tqdm = "^4.64.0"
 UpSetPlot = "^0.6.1"
-numba = "^0.55.2"
 xgboost = "1.4.0"
 emoji = "^1.7.0"
 tensorly = "^0.7.0"
 rasterio = "^1.3.0"
 ipywidgets = "^7.5.1"
-rich = {extras = ["jupyter"], version = "^12.5.1"}
 decoupler = "^1.2.0"
 MiniSom = "^2.3.0"
 kneed = "^0.8.1"
 adjustText = "^0.7.3"
+sparse = "^0.13.0"
 
 [tool.poetry.extras]
-torch = ["torch"]
-docs = ["Sphinx", "sphinx-autobuild", "sphinx-book-theme", "nbsphinx", "sphinx-gallery", "myst-parser"]
+docs = [
+    "Sphinx",
+    "sphinx-autobuild",
+    "sphinx-book-theme",
+    "nbsphinx",
+    "sphinx-gallery",
+    "myst-parser",
+]
 
 [tool.setuptools]
-py_modules=[]
+py_modules = []
 
 [build-system]
 requires = ["poetry-core>=1.0.0", 'setuptools']
