@@ -34,14 +34,13 @@ def read_h5ad(filename, backed=None):
     """
 
     adata = anndata.read_h5ad(filename, backed=backed)
-
     # Load obs columns that are shapely geometries
     adata.obs = adata.obs.apply(
         lambda col: gpd.GeoSeries(
             col.astype(str).apply(lambda val: wkt.loads(val) if val != "None" else None)
         )
         if col.astype(str).str.startswith("POLYGON").any()
-        else gpd.GeoSeries(col)
+        else pd.Series(col)
     )
 
     adata.obs.index.name = "cell"
