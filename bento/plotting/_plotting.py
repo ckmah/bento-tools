@@ -31,7 +31,7 @@ def quantiles(data, x, **kwargs):
     ax = plt.gca()
 
     ylims = ax.get_ylim()
-    ymargin = 0.2 * (ylims[1] - ylims[0])
+    ymargin = 0.3 * (ylims[1] - ylims[0])
     quants = np.percentile(data[x], [0, 1, 25, 50, 75, 99, 100])
     palette = sns.color_palette("red2blue", n_colors=len(quants) - 1)
 
@@ -45,6 +45,8 @@ def quantiles(data, x, **kwargs):
             height=height,
             facecolor=c,
             alpha=0.8,
+            linewidth=1,
+            edgecolor="black",
             clip_on=False,
         )
         for xy, w, c in zip(xys, widths, palette)
@@ -65,6 +67,8 @@ def obs_stats(
         "nucleus_aspect_ratio",
         "nucleus_density",
     ],
+    s=5,
+    alpha=0.3,
     rug=False,
     fname=None,
 ):
@@ -84,36 +88,38 @@ def obs_stats(
         lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=100).flatten()
     )
 
-    with sns.axes_style("white"):
-        g = sns.FacetGrid(
-            data=stats_long,
-            row="variable",
-            height=1.5,
-            aspect=2,
-            sharex=False,
-            sharey=False,
-            margin_titles=False,
-        )
-        g.map_dataframe(
-            sns.violinplot,
-            color="lightseagreen",
-            x="value",
-        )
-        if rug:
-            g.map_dataframe(
-                sns.rugplot, x="value", height=0.1, color="black", alpha=0.5, linewidth=0.5
-            )
-        # g.add_legend()
-        # sns.move_legend(g, "upper left", bbox_to_anchor=(1, 1))
+    g = sns.FacetGrid(
+        data=stats_long,
+        row="variable",
+        height=1.2,
+        aspect=2,
+        sharex=False,
+        sharey=False,
+        margin_titles=False,
+    )
+    g.map_dataframe(
+        sns.stripplot,
+        x="value",
+        color="black",
+        s=s,
+        alpha=alpha,
+        rasterized=True,
+    )
+    g.map_dataframe(quantiles, x="value")
+    g.add_legend()
+    sns.move_legend(g, "upper left", bbox_to_anchor=(1, 1))
 
-        for ax, var in zip(g.axes.flat, stats_long["variable"].unique()):
-            #     # ax.spines["bottom"].set_position(("data", 0.3))
-            ax.set_xlabel("")
-            ax.set_ylabel(var, rotation=0, ha="right", va="center")
-            ax.set_yticks([])
-            ax.ticklabel_format(axis="x", style="sci", scilimits=(-2, 4))
-            sns.despine(ax=ax, left=True)
-        g.set_titles(row_template="", col_template="")
+    for ax, var in zip(g.axes.flat, stats_long["variable"].unique()):
+        ax.set_xlabel("")
+        ax.set_yticks([])
+        ax.ticklabel_format(axis="x", style="sci", scilimits=(-2, 4))
+        sns.despine(ax=ax, left=True)
+    g.set_titles(template="{row_name}", row_template="", col_template="")
+
+    def plot_median(data, **kwargs):
+        plt.axvline(data.median(), **kwargs)
+
+    g.map(plot_median, "value", c="black", lw=1.5, zorder=3)
 
 
 @savefig
