@@ -10,6 +10,7 @@ from sklearn.decomposition import TruncatedSVD
 from minisom import MiniSom
 import geopandas as gpd
 import rasterio
+import shapely
 from shapely.geometry import Polygon
 import emoji
 from kneed import KneeLocator
@@ -276,7 +277,7 @@ def flowmap(
 
         # Find all the contours
         contours = rasterio.features.shapes(image)
-        polygons = np.array([(Polygon(p["coordinates"][0]), v) for p, v in contours])
+        polygons = np.array([(shapely.geometry.shape(p), v) for p, v in contours])
         shapes = gpd.GeoDataFrame(
             polygons[:, 1],
             geometry=gpd.GeoSeries(polygons[:, 0]).T,
