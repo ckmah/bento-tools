@@ -5,6 +5,7 @@ import geopandas as gpd
 from anndata import AnnData
 import pandas as pd
 import seaborn as sns
+from shapely import wkt
 
 PATTERN_NAMES = ["cell_edge", "cytoplasmic", "none", "nuclear", "nuclear_edge"]
 PATTERN_PROBS = [f"{p}_p" for p in PATTERN_NAMES]
@@ -317,9 +318,13 @@ def geo_format(data, copy=False):
     """
     adata = data.copy() if copy else data
 
-    shape_names = data.obs.columns.str.endswith("_shape")
-
-    for col in data.obs.columns[shape_names]:
-        data.obs[col] = gpd.GeoSeries.from_wkt(data.obs[col].astype(str))
+    shape_names = adata.obs.columns[adata.obs.columns.str.endswith("_shape")]
+    
+    adata.obs[shape_names] = adata.obs[shape_names].apply(
+        lambda col: gpd.GeoSeries(
+            col.astype(str).apply(lambda val: wkt.loads(
+                val) if val != "None" else None)
+        )
+    )
 
     return adata if copy else None
