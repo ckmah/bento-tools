@@ -1,14 +1,20 @@
+import re
+from typing import Dict, List, Literal, Optional, Tuple, Union
+
 import geopandas as gpd
 import pandas as pd
+from anndata import AnnData
+from scipy.sparse import coo_matrix
 from shapely import wkt
 from shapely.geometry import Polygon
-from scipy.sparse import coo_matrix
 from tqdm.auto import tqdm
 
 from .._utils import sync
 
-# Write a function to quantify the number of points in a given shape by summing boolean column in points. Add as a layer dimensions cell by gene in adata.layers.
-def count_points(data, shape_names, copy=False):
+
+def count_points(
+    data: AnnData, shape_names: List[str], copy: bool = False
+) -> Optional[AnnData]:
     """Count points in shapes and add as layers to `data`. Expects points to already be indexed to shapes.
 
     Parameters
@@ -19,6 +25,7 @@ def count_points(data, shape_names, copy=False):
         List of shape names to index points to
     copy : bool, optional
         Whether to return a copy the AnnData object. Default False.
+
     Returns
     -------
     AnnData
@@ -52,7 +59,9 @@ def count_points(data, shape_names, copy=False):
     return adata if copy else None
 
 
-def sindex_points(data, points_key, shape_names, copy=False):
+def sindex_points(
+    data: AnnData, points_key: str, shape_names: List[str], copy: bool = False
+) -> Optional[AnnData]:
     """Index points to shapes and add as columns to `data.uns[points_key]`.
 
     Parameters
@@ -112,7 +121,12 @@ def sindex_points(data, points_key, shape_names, copy=False):
     return adata if copy else None
 
 
-def crop(data, xlims=None, ylims=None):
+def crop(
+    data: AnnData,
+    xlims: Union[Tuple[int], None] = None,
+    ylims: Union[Tuple[int], None] = None,
+    copy: bool = True,
+) -> Optional[AnnData]:
     """Returns a view of data within specified coordinates.
 
     Parameters
@@ -123,6 +137,13 @@ def crop(data, xlims=None, ylims=None):
         Upper and lower x limits, by default None
     ylims : list, optional
         Upper and lower y limits, by default None
+    copy : bool, optional
+        Whether to return a copy the AnnData object. Default True.
+
+    Returns
+    -------
+    AnnData
+        AnnData object with data cropped to specified coordinates
     """
     if len(xlims) < 1 and len(xlims) > 2:
         return ValueError("Invalid xlims")
@@ -141,8 +162,21 @@ def crop(data, xlims=None, ylims=None):
     return adata
 
 
-def get_shape(adata, shape_name):
-    """Get a GeoSeries of Polygon objects from an AnnData object."""
+def get_shape(adata: AnnData, shape_name: str) -> gpd.GeoSeries:
+    """Get a GeoSeries of Polygon objects from an AnnData object.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Spatial formatted AnnData object
+    shape_name : str
+        Name of shape column in adata.obs
+
+    Returns
+    -------
+    GeoSeries
+        GeoSeries of Polygon objects
+    """
     if shape_name not in adata.obs.columns:
         raise ValueError(f"Shape {shape_name} not found in adata.obs.")
 
@@ -157,7 +191,71 @@ def get_shape(adata, shape_name):
         return gpd.GeoSeries(adata.obs[shape_name])
 
 
-def get_points(data, key="points", asgeo=False):
+def rename_shapes(
+    data: AnnData,
+    mapping: Dict[str, str],
+    points_key: Optional[Union[List[str], None]] = None,
+    points_encoding: Union[List[Literal["label", "onehot"]], None] = None,
+    copy: bool = False,
+) -> Optional[AnnData]:
+    """Rename shape columns in adata.obs and points columns in adata.uns.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Spatial formatted AnnData object
+    mapping : Dict[str, str]
+        Mapping of old shape names to new shape names
+    points_key : list of str, optional
+        List of keys for points DataFrame in `adata.uns`, by default None
+    points_encoding : {"label", "onehot"}, optional
+        Encoding type for each specified points
+    copy : bool, optional
+        Whether to return a copy of the AnnData object. Default False.
+
+    Returns
+    -------
+    AnnData
+        .obs: Updated shape column names
+        .uns[points_key]: Updated points shape(s) columns according to encoding type
+    """
+    adata = data.copy() if copy else data
+    adata.obs.rename(columns=mapping, inplace=True)
+
+    # Map point columns
+    if points_key:
+        # Get mapping for points column names
+        prefix_map = {
+            _get_shape_prefix(shape_name): _get_shape_prefix(new_name)
+            for shape_name, new_name in mapping.items()
+        }
+        # Get mapping for label encoding
+        label_map = {
+            re.sub(r"\D", "", shape_name): re.sub(r"\D", "", new_name)
+            for shape_name, new_name in prefix_map.items()
+        }
+
+        for p_key, p_encoding in zip(points_key, points_encoding):
+            if p_encoding == "label":
+                # Point column name with label encoding
+                col = re.sub(r"\d", "", list(prefix_map.keys())[0])
+                adata.uns[p_key][col] = adata.uns[p_key][col].astype(str).map(label_map)
+
+            elif p_encoding == "onehot":
+                # Remap column names
+                adata.uns[p_key].rename(columns=prefix_map, inplace=True)
+
+    return adata if copy else None
+
+
+def _get_shape_prefix(shape_name):
+    """Get prefix of shape name."""
+    return "_".join(shape_name.split("_")[:-1])
+
+
+def get_points(
+    data: AnnData, key: str = "points", asgeo: bool = False
+) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
     """Get points DataFrame.
 
     Parameters

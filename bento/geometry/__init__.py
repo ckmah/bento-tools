@@ -1,7 +1,8 @@
 from ._geometry import (
-    crop,
-    get_shape,
-    get_points,
-    sindex_points,
     count_points,
+    crop,
+    get_points,
+    get_shape,
+    rename_shapes,
+    sindex_points,
 )
