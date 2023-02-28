@@ -210,7 +210,7 @@ def flowmap(
 
     Returns
     -------
-    data : AnnData
+    adata : AnnData
         .uns["cell_raster"] : DataFrame
             Adds "flowmap" column denoting cluster membership.
         .uns["points"] : DataFrame
@@ -270,6 +270,11 @@ def flowmap(
         if plot_error:
             kl.plot_knee()
             plt.show()
+
+        if best_k is None:
+            print("No elbow found. Rerun with a fixed k or a different range.")
+            return
+
     else:
         best_k = n_clusters[0]
     pbar.update()

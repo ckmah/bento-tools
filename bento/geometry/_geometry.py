@@ -123,8 +123,8 @@ def sindex_points(
 
 def crop(
     data: AnnData,
-    xlims: Union[Tuple[int], None] = None,
-    ylims: Union[Tuple[int], None] = None,
+    xlims: Tuple[int],
+    ylims: Tuple[int],
     copy: bool = True,
 ) -> Optional[AnnData]:
     """Returns a view of data within specified coordinates.
@@ -145,6 +145,8 @@ def crop(
     AnnData
         AnnData object with data cropped to specified coordinates
     """
+    adata = data.copy() if copy else data
+
     if len(xlims) < 1 and len(xlims) > 2:
         return ValueError("Invalid xlims")
 
@@ -157,9 +159,9 @@ def crop(
     in_crop = get_shape(data, "cell_shape").within(box)
 
     adata = data[in_crop, :]
-    sync(adata)
+    sync(adata, copy=False)
 
-    return adata
+    return adata if copy else None
 
 
 def get_shape(adata: AnnData, shape_name: str) -> gpd.GeoSeries:

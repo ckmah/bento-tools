@@ -9,8 +9,8 @@ import seaborn as sns
 from pandas.plotting import radviz
 from upsetplot import UpSet, from_indicators
 
-from .._utils import PATTERN_COLORS, PATTERN_NAMES
-from ..tools._lp import lp_stats
+from .._constants import PATTERN_COLORS, PATTERN_NAMES
+from ..tools import lp_stats
 from ._utils import savefig
 
 

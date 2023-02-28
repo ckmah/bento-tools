@@ -1,30 +1,34 @@
-import geopandas as gpd
+from typing import Callable, Dict, List, Union
+
 import matplotlib.path as mplPath
 import numpy as np
 import pandas as pd
+from anndata import AnnData
 from scipy.spatial import distance, distance_matrix
-from shapely.geometry import Point, Polygon, MultiPolygon
+from shapely.geometry import MultiPolygon, Point
 from tqdm.auto import tqdm
 
-from .._utils import track, sync
+from .._utils import sync, track
 from ..geometry import get_points, get_shape
 
 
-def _area(data, shape_name):
+def _area(data: AnnData, shape_name: str):
     """Compute the area of each shape.
 
     Parameters
     ----------
     data : AnnData
         Spatial formatted AnnData
+    shape_name : str
+        Key in `data.obs` that contains the shape information.
 
-    Adds fields to `data`:
-        `obs['{shape}_area']` : np.array
-            Area of each polygon in `obs['{shape_name}']`
+    Fields
+    ------
+        .obs['{shape}_area'] : float
+            Area of each polygon
     """
 
     # Calculate pixel-wise area
-    # TODO: unit scale?
     area = get_shape(data, shape_name).area
 
     shape_prefix = shape_name.split("_")[0]
@@ -32,6 +36,7 @@ def _area(data, shape_name):
 
 
 def _poly_aspect_ratio(poly):
+    """Compute the aspect ratio of the minimum rotated rectangle that contains a polygon."""
     # get coordinates of min bounding box vertices around polygon
     x, y = poly.minimum_rotated_rectangle.exterior.coords.xy
 
@@ -48,21 +53,20 @@ def _poly_aspect_ratio(poly):
     return length / width
 
 
-def _aspect_ratio(data, shape_name):
+def _aspect_ratio(data: AnnData, shape_name: str):
     """Compute the aspect ratio of the minimum rotated rectangle that contains each shape.
 
     Parameters
     ----------
     data : AnnData
         Spatial formatted AnnData
+    shape_name : str
+        Key in `data.obs` that contains the shape information.
 
-    Returns
-    -------
-    data : anndata.AnnData
-        Returns `data` if `copy=True`, otherwise adds fields to `data`:
-
-        `obs['{shape}_aspect_ratio']` : np.array
-            Ratio of long / short axis for each polygon in `obs['{shape_name}']`
+    Fields
+    ------
+        .obs['{shape}_aspect_ratio'] : float
+            Ratio of major to minor axis for each polygon
     """
 
     ar = get_shape(data, shape_name).apply(_poly_aspect_ratio)
@@ -77,20 +81,19 @@ def _bounds(data, shape_name):
     ----------
     data : AnnData
         Spatial formatted AnnData
+    shape_name : str
+        Key in `data.obs` that contains the shape information.
 
-    Returns
-    -------
-    data : anndata.AnnData
-        Returns `data` if `copy=True`, otherwise adds fields to `data`:
-
-        `obs['{shape}_minx']` : float
-            x-axis lower bound of each polygon in `obs['{shape_name}']`
-        `obs['{shape}_miny']` : float
-            y-axis lower bound of each polygon in `obs['{shape_name}']`
-        `obs['{shape}_maxx']` : float
-            x-axis upper bound of each polygon in `obs['{shape_name}']`
-        `obs['{shape}_maxy']` : float
-            y-axis upper bound of each polygon in `obs['{shape_name}']`
+    Fields
+    ------
+        .obs['{shape}_minx'] : float
+            x-axis lower bound of each polygon
+        .obs['{shape}_miny'] : float
+            y-axis lower bound of each polygon
+        .obs['{shape}_maxx'] : float
+            x-axis upper bound of each polygon
+        .obs['{shape}_maxy'] : float
+            y-axis upper bound of each polygon
     """
 
     bounds = get_shape(data, shape_name).bounds
@@ -110,18 +113,16 @@ def _density(data, shape_name):
     ----------
     data : AnnData
         Spatial formatted AnnData
+    shape_name : str
+        Key in `data.obs` that contains the shape information.
 
-    Returns
-    -------
-    data : anndata.AnnData
-        Returns `data` if `copy=True`, otherwise adds fields to `data`:
-
-        `obs['{shape}_density']` : np.array
-            Density (total cell counts / shape area) of each polygon in `obs['{shape_name}']`
+    Fields
+    ------
+        .obs['{shape}_density'] : float
+            Density (molecules / shape area) of each polygon
     """
 
     shape_prefix = shape_name.split("_")[0]
-    sync(data)
     count = get_points(data).query(f"{shape_prefix} != '-1'")["cell"].value_counts()
     _area(data, shape_name)
 
@@ -184,7 +185,7 @@ def _second_moment(data, shape_name):
         Returns `data` if `copy=True`, otherwise adds fields to `data`:
 
         `obs['{shape}_moment']` : float
-            The second moment for each polygon in `obs['{shape_name}']`
+            The second moment for each polygon
     """
 
     shape_prefix = shape_name.split("_")[0]
@@ -285,7 +286,7 @@ def _perimeter(data, shape_name):
         Returns `data` if `copy=True`, otherwise adds fields to `data`:
 
         `obs['{shape}_perimeter']` : np.array
-            Perimeter of each polygon in `obs['{shape_name}']`
+            Perimeter of each polygon
     """
 
     shape_prefix = shape_name.split("_")[0]
@@ -336,7 +337,7 @@ def _span(data, shape_name):
         Returns `data` if `copy=True`, otherwise adds fields to `data`:
 
         `obs['{shape}_span']` : float
-            Length of longest diagonal for each polygon in `obs['{shape_name}']`
+            Length of longest diagonal for each polygon
     """
 
     def get_span(poly):
@@ -347,46 +348,6 @@ def _span(data, shape_name):
 
     shape_prefix = shape_name.split("_")[0]
     data.obs[f"{shape_prefix}_span"] = span
-
-
-@track
-def nucleus_area_ratio(data):
-
-    _area(data, "cell_shape")
-    _area(data, "nucleus_shape")
-    data.obs["nucleus_area_ratio"] = data.obs["nucleus_area"] / data.obs["cell_area"]
-
-
-@track
-def nucleus_offset(data):
-
-    cell_centroid = get_shape(data, "cell_shape").centroid
-    nucleus_centroid = get_shape(data, "nucleus_shape").centroid
-
-    _radius(data, "cell_shape")
-    offset = cell_centroid.distance(nucleus_centroid, align=False)
-    offset = offset.apply(abs)
-
-    data.obs["nucleus_offset"] = offset
-
-
-@track
-def is_nuclear(data, shape_name):
-    """
-    Check if shape_name is contained within the nucleus.
-    TODO speed up with sjoin
-    """
-
-    shape_prefix = shape_name.split("_shape")[0]
-
-    if shape_name == "nucleus_shape":
-        data.obs["nucleus_in_nucleus"] = True
-    else:
-        shapes = get_shape(data, shape_name)
-        nuclei = gpd.GeoSeries(get_shape(data, "nucleus_shape"))
-
-        shape_in_nucleus = shapes.within(nuclei)
-        data.obs[f"{shape_prefix}_in_nucleus"] = shape_in_nucleus
 
 
 shape_features = dict(
@@ -402,21 +363,20 @@ shape_features = dict(
 )
 
 
-# For given shape, compute features in shape_features()
 def obs_stats(
-    data,
-    shape_name,
-    feature_names=["area", "aspect_ratio", "density"],
+    data: AnnData,
+    feature_names: List[str] = ["area", "aspect_ratio", "density"],
     copy=False,
 ):
-    """Compute features for each shape. See list of available features in `bento.tl.shape_features`.
+    """Compute features for each cell shape. Convenient wrapper for `bento.tl.shape_features`.
+    See list of available features in `bento.tl.shape_features`.
 
     Parameters
     ----------
     data : AnnData
         Spatial formatted AnnData
     shape_name : str
-        Name of shape to compute features for
+        Name of shape column in `data.obs` to compute features for. Default is `cell_shape`.
     feature_names : list
         List of features to compute. See list of available features in `bento.tl.shape_features`.
     copy : bool, optional
@@ -428,24 +388,24 @@ def obs_stats(
         Returns `data` if `copy=True`, otherwise adds fields to `data`:
 
         `obs['{shape}_{feature}']` : np.array
-            Feature of each polygon in `obs['{shape_name}']`
+            Feature of each polygon
     """
     adata = data.copy() if copy else data
 
-    if shape_name not in data.obs.columns:
-        raise ValueError(f"Shape {shape_name} not found in data.obs")
-
-    for feature in feature_names:
-        if feature not in shape_features:
-            raise ValueError(f"Feature {feature} not found in bento.tl.shape_features")
-        shape_features[feature](data, shape_name)
+    # Compute features
+    analyze_shapes(adata, "cell_shape", feature_names, copy=copy)
 
     return adata if copy else None
 
 
 @track
 def analyze_shapes(
-    data, shape_names, feature_names, feature_kws=None, progress=True, copy=False
+    data: AnnData,
+    shape_names: Union[str, List[str]],
+    feature_names: Union[str, List[str]],
+    feature_kws: Dict[str, Dict] = None,
+    progress: bool = True,
+    copy: bool = False,
 ):
     """Analyze features of shapes.
 
@@ -464,8 +424,8 @@ def analyze_shapes(
 
     Returns
     -------
-    adata : anndata.AnnData
-        Returns `adata` if `copy=True`, otherwise adds fields to `data`. See feature documentation for fields added.
+    adata : AnnData
+        See specific feature function docs for fields added.
 
     """
     adata = data.copy() if copy else data
@@ -495,7 +455,7 @@ def analyze_shapes(
     return adata if copy else None
 
 
-def register_shape_feature(name, func):
+def register_shape_feature(name: str, func: Callable):
     """Register a shape feature function. The function should take an AnnData object and a shape name as input.
     The function should add the feature to the AnnData object as a column in AnnData.obs. This should be done in place and not return anything.
 
@@ -510,4 +470,4 @@ def register_shape_feature(name, func):
 
     # TODO perform some checks on the function
 
-    print(f"Registered shape feature '{name}' to `bento.tools.shape_features`.")
+    print(f"Registered shape feature '{name}' to `bento.tl.shape_features`.")

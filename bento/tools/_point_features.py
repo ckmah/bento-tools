@@ -745,7 +745,7 @@ point_features = dict(
 )
 
 
-def register_point_feature(name, FeatureClass):
+def register_point_feature(name: str, FeatureClass: PointFeature):
     """Register a new point feature function.
 
     Parameters
@@ -757,3 +757,5 @@ def register_point_feature(name, FeatureClass):
     """
 
     point_features[name] = FeatureClass
+
+    print(f"Registered point feature '{name}' to `bento.tl.shape_features`.")

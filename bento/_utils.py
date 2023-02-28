@@ -2,35 +2,10 @@ import inspect
 from functools import wraps
 
 import geopandas as gpd
-from anndata import AnnData
 import pandas as pd
 import seaborn as sns
+from anndata import AnnData
 from shapely import wkt
-
-PATTERN_NAMES = ["cell_edge", "cytoplasmic", "none", "nuclear", "nuclear_edge"]
-PATTERN_PROBS = [f"{p}_p" for p in PATTERN_NAMES]
-PATTERN_FEATURES = [
-    "cell_inner_proximity",
-    "nucleus_inner_proximity",
-    "nucleus_outer_proximity",
-    "cell_inner_asymmetry",
-    "nucleus_inner_asymmetry",
-    "nucleus_outer_asymmetry",
-    "l_max",
-    "l_max_gradient",
-    "l_min_gradient",
-    "l_monotony",
-    "l_half_radius",
-    "point_dispersion_norm",
-    "nucleus_dispersion_norm",
-]
-
-# Colors correspond to order of PATTERN_NAMES: cyan, blue, gray, orange, red
-PATTERN_COLORS = ["#17becf", "#1f77b4", "#7f7f7f", "#ff7f0e", "#d62728"]
-
-# Colors to represent each dimension (features, cells, genes); Set2 palette n_colors=3
-DIM_COLORS = ["#66c2a5", "#fc8d62", "#8da0cb"]
-# ['#AD6A6C', '#f5b841', '#0cf2c9']
 
 
 def get_default_args(func):
@@ -319,11 +294,10 @@ def geo_format(data, copy=False):
     adata = data.copy() if copy else data
 
     shape_names = adata.obs.columns[adata.obs.columns.str.endswith("_shape")]
-    
+
     adata.obs[shape_names] = adata.obs[shape_names].apply(
         lambda col: gpd.GeoSeries(
-            col.astype(str).apply(lambda val: wkt.loads(
-                val) if val != "None" else None)
+            col.astype(str).apply(lambda val: wkt.loads(val) if val != "None" else None)
         )
     )
 

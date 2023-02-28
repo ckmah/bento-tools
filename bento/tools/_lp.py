@@ -7,14 +7,15 @@ import statsmodels.formula.api as sfm
 from patsy import PatsyError
 from statsmodels.tools.sm_exceptions import PerfectSeparationError
 from tqdm.auto import tqdm
-
-from .._utils import PATTERN_NAMES, PATTERN_FEATURES, track
+from anndata import AnnData
+from .._utils import track
+from .._constants import PATTERN_NAMES, PATTERN_FEATURES
 
 tqdm.pandas()
 
 
 @track
-def lp(data, groupby="gene", copy=False):
+def lp(data: AnnData, groupby: str = "gene", copy: bool = False):
     """Predict transcript subcellular localization patterns.
     Patterns include: cell edge, cytoplasmic, nuclear edge, nuclear, none
 
@@ -29,9 +30,11 @@ def lp(data, groupby="gene", copy=False):
 
     Returns
     -------
-    Depending on `copy`, returns or updates `adata.layers` with the
-    `'cell_edge'`, `'cytoplasm'`, `'none'`, `'nuclear'`, and `'nuclear_edge'`
-    fields for their respective localization pattern labels.
+    adata : AnnData
+        .uns['lp']: DataFrame
+            Localization pattern indicator matrix.
+        .uns['lpp']: DataFrame
+            Localization pattern probabilities.
     """
     adata = data.copy() if copy else data
 
@@ -80,18 +83,8 @@ def lp(data, groupby="gene", copy=False):
     return adata if copy else None
 
 
-def lp_top_genes(data, n_genes=5):
-    lp = data.uns["lp"].groupby("gene").sum()
-
-    top_genes = lp.apply(
-        lambda col: col.sort_values(ascending=False).head(n_genes).index.tolist()
-    )
-
-    return top_genes
-
-
 @track
-def lp_stats(data, copy=False):
+def lp_stats(data: AnnData, copy: bool = False):
     """Computes frequencies of localization patterns across cells and genes.
 
     Parameters
@@ -122,9 +115,14 @@ def _lp_logfc(data, phenotype=None):
     Parameters
     ----------
     data : AnnData
-        Anndata formatted spatial data.
+        Spatial formatted AnnData object.
     phenotype : str
         Variable grouping cells for differential analysis. Must be in data.obs.columns.
+
+    Returns
+    -------
+    gene_fc_stats : DataFrame
+        log2 fold change of patterns between groups in phenotype.
     """
     stats = data.uns["lp_stats"]
 
@@ -188,11 +186,16 @@ def _lp_logfc(data, phenotype=None):
     return gene_fc_stats
 
 
-def _lp_diff_gene(cell_by_pattern, phenotype, phenotype_vector):
+def _lp_diff_gene(cell_by_pattern, phenotype_vector):
     """Perform pairwise comparison between groupby and every class.
 
     Parameters
     ----------
+    cell_by_pattern : DataFrame
+        Cell by pattern matrix.
+    phenotype_vector : Series
+        Series of cell groupings.
+
     Returns
     -------
     DataFrame
@@ -246,19 +249,28 @@ def _lp_diff_gene(cell_by_pattern, phenotype, phenotype_vector):
 
 
 @track
-def lp_diff(data, phenotype=None, continuous=False, copy=False):
+def lp_diff(
+    data: AnnData, phenotype: str = None, continuous: bool = False, copy: bool = False
+):
     """Gene-wise test for differential localization across phenotype of interest.
 
     Parameters
     ----------
     data : AnnData
-        Anndata formatted spatial data.
+        Spatial formatted AnnData object.
     phenotype : str
         Variable grouping cells for differential analysis. Must be in data.obs.columns.
     continuous : bool
         Whether the phenotype is continuous or categorical. By default False.
     copy : bool
         Return a copy of `data` instead of writing to data, by default False.
+
+    Returns
+    -------
+    adata : AnnData
+        Spatial formatted AnnData object.
+        .uns['diff_{phenotype}'] : DataFrame
+            Long DataFrame with differential localization test results across phenotype groups.
     """
     adata = data.copy() if copy else data
 
@@ -292,7 +304,7 @@ def lp_diff(data, phenotype=None, continuous=False, copy=False):
 
         diff_output = (
             pattern_df.groupby(groups_name)
-            .progress_apply(lambda gp: _lp_diff_gene(gp, phenotype, phenotype_vector))
+            .progress_apply(lambda gp: _lp_diff_gene(gp, phenotype_vector))
             .reset_index()
         )
 

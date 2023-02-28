@@ -1,14 +1,13 @@
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler
-
 import matplotlib.pyplot as plt
-import seaborn as sns
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from scipy.stats import zscore
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 
-from .._utils import PATTERN_PROBS, PATTERN_COLORS, pheno_to_color
+from .._constants import PATTERN_COLORS, PATTERN_PROBS
+from ._colors import red2blue, red_light
 from ._utils import savefig
-from ._colors import red_light, red2blue
 
 
 @savefig

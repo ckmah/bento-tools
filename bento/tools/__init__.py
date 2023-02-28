@@ -1,7 +1,7 @@
 from ._colocation import coloc_quotient, colocation
 from ._composition import comp_diff
 from ._flow import fe, fe_fazal2019, flow, flowmap
-from ._lp import lp, lp_diff, lp_stats, lp_top_genes
+from ._lp import lp, lp_diff, lp_stats
 from ._point_features import analyze_points, point_features, register_point_feature
 from ._shape_features import (
     analyze_shapes,
