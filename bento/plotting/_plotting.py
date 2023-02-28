@@ -584,7 +584,7 @@ def plot(
 
     # This feels weird here; refactor separate flow plotting?
     if kind == "interpolate":
-        points[["RED", "GREEN", "BLUE"]] = adata.uns["flow_vis"]
+        points[["vis1", "vis2", "vis3"]] = adata.uns["flow_vis"]
 
     # Include col if exists
     if groupby and (
@@ -847,11 +847,15 @@ def _plot_points(
         raise ValueError(f"Invalid kind: {kind}")
 
     # Add colorbar to last subplot
-    if legend and kind in ["scatter", "hist", "graph"]:
+    # if legend and kind in ["scatter", "hist", "graph"]:
+    if legend:
+        divider = make_axes_locatable(ax)
         if kind == "scatter" and "c" in point_kws:
-            divider = make_axes_locatable(ax)
             cax = divider.append_axes("bottom", size="5%", pad=0)
             plt.colorbar(collection, cax=cax, orientation="horizontal")
+        elif kind == "interpolate" and hue:
+            cax = divider.append_axes("bottom", size="5%", pad=0)
+            plt.colorbar(ax.get_images()[0], cax=cax, orientation="horizontal")
         else:
             ax.legend(loc="center left", bbox_to_anchor=(1, 0.5), frameon=False)
 
@@ -895,13 +899,17 @@ def _plot_shapes(
     for shape_name, facecolor, edgecolor, linewidth in zip(
         shape_names, facecolors, edgecolors, linewidths
     ):
+        zorder = 3
+        if shape_name == "cell_shape":
+            zorder = 3.5
+
         data.reset_index().set_geometry(shape_name).plot(
             facecolor=facecolor,
             edgecolor=edgecolor,
             linewidth=linewidth,
             aspect=None,
             ax=ax,
-            zorder=3,
+            zorder=zorder,
             **kwargs,
         )
 
@@ -909,7 +917,7 @@ def _plot_shapes(
 def _interpolate(points, hue, cmap, method, ax, **kwargs):
 
     if hue is None:
-        components = points[["RED", "GREEN", "BLUE"]].values
+        components = points[["vis1", "vis2", "vis3"]].values
     else:
         components = points[hue].values.reshape(-1, 1)
 
