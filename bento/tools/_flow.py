@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import pkg_resources
 from scipy.sparse import vstack, csr_matrix
-from scipy.stats import mstats
 from tqdm.auto import tqdm
 from sklearn.preprocessing import quantile_transform, minmax_scale, StandardScaler
 from sklearn.decomposition import TruncatedSVD
@@ -11,9 +10,9 @@ from minisom import MiniSom
 import geopandas as gpd
 import rasterio
 import shapely
-from shapely.geometry import Polygon
 import emoji
 from kneed import KneeLocator
+from matplotlib import pyplot as plt
 
 from .._utils import track, register_points
 from ..geometry import get_points
@@ -228,6 +227,7 @@ def flowmap(
 
         if plot_error:
             kl.plot_knee()
+            plt.show()
     else:
         best_k = n_clusters[0]
     pbar.update()
