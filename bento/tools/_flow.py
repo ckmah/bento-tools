@@ -51,8 +51,8 @@ def flow(
     """
 
     if (radius == None) and (n_neighbors == None):
-         radius = 50
- 
+        radius = 50
+
     adata = data.copy() if copy else data
 
     adata.uns["points"] = get_points(adata).sort_values("cell")
