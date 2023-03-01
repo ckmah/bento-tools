@@ -25,8 +25,8 @@ from ._shape_features import analyze_shapes
 
 
 @track
-@register_points("cell_raster", ["flow", "flow_embed", "flow_vis"])
-def flow(
+@register_points("cell_raster", ["flux", "flux_embed", "flux_vis"])
+def flux(
     data: AnnData,
     method: Literal["knn", "radius"] = "radius",
     n_neighbors: Optional[int] = None,
@@ -35,9 +35,9 @@ def flow(
     copy: bool = False,
 ):
     """
-    RNAflow: Embedding each pixel as normalized local composition normalized by cell composition.
+    RNAflux: Embedding each pixel as normalized local composition normalized by cell composition.
     For k-nearest neighborhoods or "knn", method, specify n_neighbors. For radius neighborhoods, specify radius.
-    The default method is "radius" with radius=50. RNAflow requires a minimum of 4 genes per cell to compute all embeddings properly.
+    The default method is "radius" with radius=50. RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
 
     Parameters
     ----------
@@ -57,15 +57,15 @@ def flow(
     Returns
     -------
     adata : AnnData
-        .uns["flow"] : scipy.csr_matrix
+        .uns["flux"] : scipy.csr_matrix
             [pixels x genes] sparse matrix of normalized local composition.
-        .uns["flow_embed"] : np.ndarray
-            [pixels x components] array of embedded flow values.
-        .uns["flow_vis"] : np.ndarray
+        .uns["flux_embed"] : np.ndarray
+            [pixels x components] array of embedded flux values.
+        .uns["flux_vis"] : np.ndarray
             [pixels x 3] array of RGB values for visualization.
-        .uns["flow_genes"] : list
+        .uns["flux_genes"] : list
             List of genes used for embedding.
-        .uns["flow_variance_ratio"] : np.ndarray
+        .uns["flux_variance_ratio"] : np.ndarray
             [components] array of explained variance ratio for each component.
     """
     if n_neighbors is None and radius is None:
@@ -112,7 +112,7 @@ def flow(
     cell_composition = np.nan_to_num(cell_composition)
 
     # Embed each cell neighborhood independently
-    cell_flows = []
+    cell_fluxs = []
     for i, cell in enumerate(tqdm(cells, leave=False)):
         cell_points = points_grouped.get_group(cell)
         rpoints = rpoints_grouped.get_group(cell)
@@ -135,38 +135,38 @@ def flow(
         gene_count = gene_count.toarray()
         # embedding: distance neighborhood composition and cell composition
         # Compute composition of neighborhood
-        flow_composition = gene_count / (gene_count.sum(axis=1).reshape(-1, 1))
-        cflow = flow_composition - cell_composition[i]
-        cflow = StandardScaler(with_mean=False).fit_transform(cflow)
+        flux_composition = gene_count / (gene_count.sum(axis=1).reshape(-1, 1))
+        cflux = flux_composition - cell_composition[i]
+        cflux = StandardScaler(with_mean=False).fit_transform(cflux)
 
         # Convert back to sparse matrix
-        cflow = csr_matrix(cflow)
+        cflux = csr_matrix(cflux)
 
-        cell_flows.append(cflow)
+        cell_fluxs.append(cflux)
 
-    cell_flows = vstack(cell_flows) if len(cell_flows) > 1 else cell_flows[0]
-    cell_flows.data = np.nan_to_num(cell_flows.data)
+    cell_fluxs = vstack(cell_fluxs) if len(cell_fluxs) > 1 else cell_fluxs[0]
+    cell_fluxs.data = np.nan_to_num(cell_fluxs.data)
     pbar.update()
 
     pbar.set_description(emoji.emojize("Reducing"))
     n_components = min(n_genes - 1, 10)
     pca_model = TruncatedSVD(n_components=n_components, algorithm="arpack").fit(
-        cell_flows
+        cell_fluxs
     )
-    flow_embed = pca_model.transform(cell_flows)
+    flux_embed = pca_model.transform(cell_fluxs)
     variance_ratio = pca_model.explained_variance_ratio_
 
-    # For color visualization of flow embeddings
-    flow_vis = quantile_transform(flow_embed[:, :3])
-    flow_vis = minmax_scale(flow_vis, feature_range=(0.1, 0.9))
+    # For color visualization of flux embeddings
+    flux_vis = quantile_transform(flux_embed[:, :3])
+    flux_vis = minmax_scale(flux_vis, feature_range=(0.1, 0.9))
     pbar.update()
 
     pbar.set_description(emoji.emojize("Saving"))
-    adata.uns["flow"] = cell_flows  # sparse gene embedding
-    adata.uns["flow_genes"] = gene_names  # gene names
-    adata.uns["flow_embed"] = flow_embed
-    adata.uns["flow_variance_ratio"] = variance_ratio
-    adata.uns["flow_vis"] = flow_vis
+    adata.uns["flux"] = cell_fluxs  # sparse gene embedding
+    adata.uns["flux_genes"] = gene_names  # gene names
+    adata.uns["flux_embed"] = flux_embed
+    adata.uns["flux_variance_ratio"] = variance_ratio
+    adata.uns["flux_vis"] = flux_vis
 
     pbar.set_description(emoji.emojize("Done. :bento_box:"))
     pbar.update()
@@ -176,7 +176,7 @@ def flow(
 
 
 @track
-def flowmap(
+def fluxmap(
     data: AnnData,
     n_clusters: Union[Iterable[int], int] = range(2, 9),
     num_iterations: int = 1000,
@@ -186,7 +186,7 @@ def flowmap(
     plot_error: bool = True,
     copy: bool = False,
 ):
-    """Cluster flow embeddings using self-organizing maps (SOMs) and vectorize clusters as Polygon shapes.
+    """Cluster flux embeddings using self-organizing maps (SOMs) and vectorize clusters as Polygon shapes.
 
     Parameters
     ----------
@@ -212,21 +212,21 @@ def flowmap(
     -------
     adata : AnnData
         .uns["cell_raster"] : DataFrame
-            Adds "flowmap" column denoting cluster membership.
+            Adds "fluxmap" column denoting cluster membership.
         .uns["points"] : DataFrame
-            Adds "flowmap#" columns for each cluster.
+            Adds "fluxmap#" columns for each cluster.
         .obs : GeoSeries
-            Adds "flowmap#_shape" columns for each cluster rendered as (Multi)Polygon shapes.
+            Adds "fluxmap#_shape" columns for each cluster rendered as (Multi)Polygon shapes.
     """
     adata = data.copy() if copy else data
 
-    # Check if flow embedding has been computed
-    if "flow_embed" not in adata.uns:
+    # Check if flux embedding has been computed
+    if "flux_embed" not in adata.uns:
         raise ValueError(
-            "Flow embedding has not been computed. Run `bento.tl.flow()` first."
+            "Flux embedding has not been computed. Run `bento.tl.flux()` first."
         )
 
-    flow_embed = adata.uns["flow_embed"]
+    flux_embed = adata.uns["flux_embed"]
     raster_points = adata.uns["cell_raster"]
 
     if isinstance(n_clusters, int):
@@ -235,16 +235,16 @@ def flowmap(
     if isinstance(n_clusters, range):
         n_clusters = list(n_clusters)
 
-    # Subsample flow embeddings for faster training
+    # Subsample flux embeddings for faster training
     if train_size > 1:
         raise ValueError("train_size must be less than 1.")
     if train_size == 1:
-        flow_train = flow_embed
+        flux_train = flux_embed
     if train_size < 1:
 
-        flow_train = resample(
-            flow_embed,
-            n_samples=int(train_size * flow_embed.shape[0]),
+        flux_train = resample(
+            flux_embed,
+            n_samples=int(train_size * flux_embed.shape[0]),
             random_state=random_state,
         )
 
@@ -254,11 +254,11 @@ def flowmap(
     som_models = {}
     quantization_errors = []
     for k in tqdm(n_clusters, leave=False):
-        som = MiniSom(1, k, flow_train.shape[1], random_seed=random_state)
-        som.random_weights_init(flow_train)
-        som.train(flow_train, num_iterations, random_order=False, verbose=False)
+        som = MiniSom(1, k, flux_train.shape[1], random_seed=random_state)
+        som.random_weights_init(flux_train)
+        som.train(flux_train, num_iterations, random_order=False, verbose=False)
         som_models[k] = som
-        quantization_errors.append(som.quantization_error(flow_embed))
+        quantization_errors.append(som.quantization_error(flux_embed))
 
     # Use kneed to find elbow
     if len(n_clusters) > 1:
@@ -282,11 +282,11 @@ def flowmap(
     # Use best k to assign each sample to a cluster
     pbar.set_description(f"Assigning to {best_k} clusters")
     som = som_models[best_k]
-    winner_coordinates = np.array([som.winner(x) for x in flow_embed]).T
+    winner_coordinates = np.array([som.winner(x) for x in flux_embed]).T
 
     # Indices start at 0, so add 1
     qnt_index = np.ravel_multi_index(winner_coordinates, (1, best_k)) + 1
-    raster_points["flowmap"] = qnt_index
+    raster_points["fluxmap"] = qnt_index
     adata.uns["cell_raster"] = raster_points.copy()
 
     pbar.update()
@@ -298,20 +298,20 @@ def flowmap(
     # raster_points[["x", "y"]] = raster_points[["x", "y"]] * render_resolution
 
     # Cast to int
-    raster_points[["x", "y", "flowmap"]] = raster_points[["x", "y", "flowmap"]].astype(
+    raster_points[["x", "y", "fluxmap"]] = raster_points[["x", "y", "fluxmap"]].astype(
         int
     )
 
     rpoints_grouped = raster_points.groupby("cell")
-    flowmap_df = dict()
+    fluxmap_df = dict()
     for cell in tqdm(cells, leave=False):
         rpoints = rpoints_grouped.get_group(cell)
 
-        # Fill in image at each point xy with flowmap value by casting to dense matrix
+        # Fill in image at each point xy with fluxmap value by casting to dense matrix
         image = (
             csr_matrix(
                 (
-                    rpoints["flowmap"],
+                    rpoints["fluxmap"],
                     (
                         (rpoints["y"] * render_resolution).astype(int),
                         (rpoints["x"] * render_resolution).astype(int),
@@ -328,23 +328,23 @@ def flowmap(
         shapes = gpd.GeoDataFrame(
             polygons[:, 1],
             geometry=gpd.GeoSeries(polygons[:, 0]).T,
-            columns=["flowmap"],
+            columns=["fluxmap"],
         )
 
         # Remove background shape
-        shapes["flowmap"] = shapes["flowmap"].astype(int)
-        shapes = shapes[shapes["flowmap"] != 0]
+        shapes["fluxmap"] = shapes["fluxmap"].astype(int)
+        shapes = shapes[shapes["fluxmap"] != 0]
 
         # Group same fields as MultiPolygons
-        shapes = shapes.dissolve("flowmap")["geometry"]
+        shapes = shapes.dissolve("fluxmap")["geometry"]
 
-        flowmap_df[cell] = shapes
+        fluxmap_df[cell] = shapes
 
-    flowmap_df = pd.DataFrame.from_dict(flowmap_df).T
-    flowmap_df.columns = "flowmap" + flowmap_df.columns.astype(str) + "_shape"
+    fluxmap_df = pd.DataFrame.from_dict(fluxmap_df).T
+    fluxmap_df.columns = "fluxmap" + fluxmap_df.columns.astype(str) + "_shape"
 
     # Upscale to match original resolution
-    flowmap_df = flowmap_df.apply(
+    fluxmap_df = fluxmap_df.apply(
         lambda col: gpd.GeoSeries(col).scale(
             xfact=1 / render_resolution, yfact=1 / render_resolution, origin=(0, 0)
         )
@@ -352,18 +352,18 @@ def flowmap(
     pbar.update()
 
     pbar.set_description("Saving")
-    old_cols = adata.obs.columns[adata.obs.columns.str.startswith("flowmap")]
+    old_cols = adata.obs.columns[adata.obs.columns.str.startswith("fluxmap")]
     adata.obs = adata.obs.drop(old_cols, axis=1, errors="ignore")
 
-    adata.obs[flowmap_df.columns] = flowmap_df.reindex(adata.obs_names)
+    adata.obs[fluxmap_df.columns] = fluxmap_df.reindex(adata.obs_names)
 
     old_cols = adata.uns["points"].columns[
-        adata.uns["points"].columns.str.startswith("flowmap")
+        adata.uns["points"].columns.str.startswith("fluxmap")
     ]
     adata.uns["points"] = adata.uns["points"].drop(old_cols, axis=1)
 
     # TODO SLOW
-    sindex_points(adata, "points", flowmap_df.columns.tolist())
+    sindex_points(adata, "points", fluxmap_df.columns.tolist())
     pbar.update()
     pbar.set_description("Done")
     pbar.close()
@@ -404,7 +404,7 @@ def fe_fazal2019(
 
 
 @track
-@register_points("cell_raster", ["flow_fe"])
+@register_points("cell_raster", ["flux_fe"])
 def fe(
     data: AnnData,
     net: pd.DataFrame,
@@ -443,22 +443,22 @@ def fe(
     Returns
     -------
     adata : AnnData
-        uns["flow_fe"] : DataFrame
+        uns["flux_fe"] : DataFrame
             Enrichment scores for each gene set.
     """
 
     adata = data.copy() if copy else data
 
     # Make sure embedding is run first
-    if "flow" not in data.uns:
-        print("Run bento.tl.flow first.")
+    if "flux" not in data.uns:
+        print("Run bento.tl.flux first.")
         return
 
-    mat = adata.uns["flow"]  # sparse matrix in csr format
+    mat = adata.uns["flux"]  # sparse matrix in csr format
     zero_rows = mat.getnnz(1) == 0
 
     samples = adata.uns["cell_raster"].index.astype(str)
-    features = adata.uns["flow_genes"]
+    features = adata.uns["flux_genes"]
 
     enrichment = dc.run_wsum(
         mat=[mat, samples, features],
@@ -478,10 +478,10 @@ def fe(
             adata.uns["cell_raster"][groupby].reset_index(drop=True)
         ).mean()
         scores = adata.uns["cell_raster"].merge(
-            scores, left_on="flow", right_index=True, how="left"
+            scores, left_on="flux", right_index=True, how="left"
         )[scores.columns]
 
-    adata.uns["flow_fe"] = scores
+    adata.uns["flux_fe"] = scores
     _fe_stats(adata, net, source=source, target=target, copy=copy)
 
     return adata if copy else None

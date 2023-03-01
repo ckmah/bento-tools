@@ -209,7 +209,7 @@ def qc_metrics(adata, fname=None):
 
 
 @savefig
-def flow_summary(
+def flux_summary(
     data,
     groupby=None,
     group_order=None,
@@ -225,7 +225,7 @@ def flow_summary(
     fname=None,
 ):
     """
-    Plot RNAflow summary with a radviz plot describing gene embedding across flow clusters.
+    Plot RNAflux summary with a radviz plot describing gene embedding across flux clusters.
     """
 
     comp_key = f"{groupby}_comp_stats"
