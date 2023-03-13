@@ -3,7 +3,9 @@ from typing import Iterable, Literal, Optional, Union
 import decoupler as dc
 import emoji
 import geopandas as gpd
+import matplotlib as mpl
 import matplotlib.pyplot as plt
+
 import numpy as np
 import pandas as pd
 import pkg_resources
@@ -18,14 +20,14 @@ from sklearn.preprocessing import StandardScaler, minmax_scale, quantile_transfo
 from sklearn.utils import resample
 from tqdm.auto import tqdm
 
-from .._utils import register_points, track
-from ..geometry import get_points, sindex_points
-from ._neighborhoods import _count_neighbors
-from ._shape_features import analyze_shapes
+from bento._utils import register_points, track
+from bento.geometry import get_points, sindex_points
+from bento.tools._neighborhoods import _count_neighbors
+from bento.tools._shape_features import analyze_shapes
 
 
 @track
-@register_points("cell_raster", ["flux", "flux_embed", "flux_vis"])
+@register_points("cell_raster", ["flux", "flux_embed", "flux_color"])
 def flux(
     data: AnnData,
     method: Literal["knn", "radius"] = "radius",
@@ -61,7 +63,7 @@ def flux(
             [pixels x genes] sparse matrix of normalized local composition.
         .uns["flux_embed"] : np.ndarray
             [pixels x components] array of embedded flux values.
-        .uns["flux_vis"] : np.ndarray
+        .uns["flux_color"] : np.ndarray
             [pixels x 3] array of RGB values for visualization.
         .uns["flux_genes"] : list
             List of genes used for embedding.
@@ -95,11 +97,7 @@ def flux(
 
     # Extract gene names and codes
     gene_names = points["gene"].cat.categories.tolist()
-    gene_codes = points["gene"].cat.codes
     n_genes = len(gene_names)
-
-    # Factorize for more efficient computation
-    # points["gene"] = gene_codes.values
 
     points_grouped = points.groupby("cell")
     rpoints_grouped = raster_points.groupby("cell")
@@ -157,8 +155,7 @@ def flux(
     variance_ratio = pca_model.explained_variance_ratio_
 
     # For color visualization of flux embeddings
-    flux_vis = quantile_transform(flux_embed[:, :3])
-    flux_vis = minmax_scale(flux_vis, feature_range=(0.1, 0.9))
+    flux_color = vec2color(flux_embed, fmt="hex", vmin=0.1, vmax=0.9)
     pbar.update()
 
     pbar.set_description(emoji.emojize("Saving"))
@@ -166,13 +163,33 @@ def flux(
     adata.uns["flux_genes"] = gene_names  # gene names
     adata.uns["flux_embed"] = flux_embed
     adata.uns["flux_variance_ratio"] = variance_ratio
-    adata.uns["flux_vis"] = flux_vis
+    adata.uns["flux_color"] = flux_color
 
     pbar.set_description(emoji.emojize("Done. :bento_box:"))
     pbar.update()
     pbar.close()
 
     return adata if copy else None
+
+
+def vec2color(
+    vec: np.ndarray,
+    fmt: Literal[
+        "rgb",
+        "hex",
+    ] = "hex",
+    vmin: float = 0,
+    vmax: float = 1,
+):
+    """Convert vector to color."""
+    color = quantile_transform(vec[:, :3])
+    color = minmax_scale(color, feature_range=(vmin, vmax))
+
+    if fmt == "rgb":
+        pass
+    elif fmt == "hex":
+        color = np.apply_along_axis(mpl.colors.to_hex, 1, color, keep_alpha=True)
+    return color
 
 
 @track

@@ -266,7 +266,8 @@ def register_points(point_key: str, metadata_keys: list):
                     )
 
                 # Add metadata key to registry
-                data.uns["point_sets"][point_key].append(key)
+                if key not in data.uns["point_sets"][point_key]:
+                    data.uns["point_sets"][point_key].append(key)
 
         return wrapper
 

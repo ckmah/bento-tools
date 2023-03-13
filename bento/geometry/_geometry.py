@@ -258,7 +258,7 @@ def _get_shape_prefix(shape_name):
 def get_points(
     data: AnnData, key: str = "points", asgeo: bool = False
 ) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
-    """Get points DataFrame.
+    """Get points DataFrame synced to AnnData object.
 
     Parameters
     ----------
@@ -283,3 +283,29 @@ def get_points(
         )
 
     return points
+
+
+def get_points_metadata(
+    data: AnnData,
+    metadata_key: str,
+    points_key: str = "points",
+):
+    """Get points metadata synced to AnnData object.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object
+    metadata_key : str
+        Key for `data.uns[key]` to use
+    key : str, optional
+        Key for `data.uns` to use, by default "points"
+
+    Returns
+    -------
+    Series
+        Returns `data.uns[key][metadata_key]` as a `Series`
+    """
+    pt_index = sync(data, copy=True).uns[points_key]
+    metadata = data.uns[metadata_key]
+    return metadata
