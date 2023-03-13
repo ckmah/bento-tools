@@ -113,9 +113,8 @@ def lp_stats(data, groupby="gene", copy=False):
     adata = data.copy() if copy else data
 
     lp = adata.uns["lp"][PATTERN_NAMES]
-    grouper = adata.uns[f"cell_{groupby}_features"][groupby]
 
-    g_pattern_counts = lp.groupby(grouper).apply(lambda df: df.sum())
+    g_pattern_counts = lp.groupby(groupby).apply(lambda df: df.sum())
     adata.uns["lp_stats"] = g_pattern_counts
 
     return adata if copy else None

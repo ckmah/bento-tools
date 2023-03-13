@@ -12,7 +12,7 @@ from upsetplot import UpSet, from_indicators
 from .._utils import PATTERN_COLORS, PATTERN_NAMES
 from ..tools._lp import lp_stats
 from ._utils import savefig
-
+from ._plotting import _radviz
 
 @savefig
 def lp_dist(data, percentage=False, scale=1, fname=None):
@@ -39,6 +39,7 @@ def lp_dist(data, percentage=False, scale=1, fname=None):
         .sort_values(["degree"] + PATTERN_NAMES, ascending=False)
         .drop("degree", axis=1)
     )
+    print(sample_labels)
 
     upset = UpSet(
         from_indicators(PATTERN_NAMES, data=sample_labels),
@@ -89,11 +90,7 @@ def lp_gene_dist(data, fname=None):
 def lp_genes(
     data,
     groupby="gene",
-    highlight_groups=None,
-    kind="scatter",
-    hue="Pattern",
-    sizes=(2, 100),
-    gridsize=20,
+    annotate=None,
     ax=None,
     fname=None,
     **kwargs,
@@ -109,10 +106,6 @@ def lp_genes(
         Spatial formatted AnnData
     groupby : str
         Grouping variable, default "gene"
-    kind : str
-        'Scatter' for scatter plot, 'hex' for hex plot, default "scatter"
-    hue : str
-        Name of columns in data.obs to color points, default "Pattern"
     sizes : tuple
         Minimum and maximum point size to scale points, default (2, 100)
     gridsize : int
@@ -126,12 +119,23 @@ def lp_genes(
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
 
-    gene_frac = data.uns["lp_stats"][PATTERN_NAMES] / data.n_obs
-    gene_frac["Pattern"] = gene_frac.idxmax(axis=1)
-    gene_frac_copy = gene_frac.copy()
-    gene_frac_copy["Pattern"] = ""
+    n_cells = data.n_obs
+    gene_frac = data.uns["lp_stats"][PATTERN_NAMES] / n_cells
+    # gene_frac["Pattern"] = gene_frac.idxmax(axis=1)
+    
+    gene_logcount = data.X.mean(axis=0, where=data.X > 0)
+    gene_logcount = np.log2(gene_logcount + 1)
+    gene_frac['logcounts'] = gene_logcount
+    
+    cell_fraction = (
+        100 * data.uns['points'].groupby("gene", observed=True)["cell"].nunique() / n_cells
+    )
+    gene_frac['cell_fraction'] = cell_fraction
+
+    scatter_kws=dict(sizes=(2,200), size_norm=(0, 20))
+    scatter_kws.update(kwargs)
     _radviz(
-        gene_frac, highlight_groups, kind, hue, sizes, gridsize, ax, kwargs, palette
+        gene_frac, annotate=annotate, ax=ax, **scatter_kws
     )
 
 
