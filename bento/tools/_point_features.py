@@ -1,30 +1,26 @@
 from abc import ABCMeta, abstractmethod
+from typing import List, Optional, Union
 
-from astropy.stats.spatial import RipleysKEstimator
-from scipy.stats.stats import spearmanr
-from scipy.spatial import distance
-
-import dask_geopandas
 import numpy as np
 import pandas as pd
-from dask.diagnostics import ProgressBar
+from anndata import AnnData
+from astropy.stats.spatial import RipleysKEstimator
+from scipy.spatial import distance
+from scipy.stats.stats import spearmanr
 from tqdm.auto import tqdm
-from tqdm.dask import TqdmCallback
 
 from .. import tools as tl
-from ..geometry import get_points
 from .._utils import track
+from ..geometry import get_points
 
 
 @track
 def analyze_points(
-    data,
-    shape_names,
-    feature_names,
-    groupby=None,
-    progress=True,
-    chunksize=5,
-    copy=False,
+    data: AnnData,
+    shape_names: List[str],
+    feature_names: List[str],
+    groupby: Optional[Union[str, List[str]]] = None,
+    copy: bool = False,
 ):
     """Calculate the set of specified `features` for each point group. Groups are within each cell.
 
@@ -36,10 +32,8 @@ def analyze_points(
         Names of the shapes to analyze.
     feature_names : str or list of str
         Names of the features to analyze.
-    groupby : str or list of str, optional (default: None)
-        Key in `data.uns['points'] to groupby, by default None. Always treats each cell separately
-    chunksize : int, optional
-        Number of cells to process in each chunk, passed to `dask`, by default 5.
+    groupby : str or list of str, optional
+        Key(s) in `data.uns['points'] to groupby, by default None. Always treats each cell separately
     copy : bool
         Return a copy of `data` instead of writing to data, by default False.
 
@@ -68,6 +62,8 @@ def analyze_points(
         groupby = ["cell", groupby]
     elif isinstance(groupby, list):
         groupby = ["cell"] + groupby
+    else:
+        groupby = ["cell"]
 
     # Make sure all groupby keys are in point columns
     for g in groupby:
@@ -749,7 +745,7 @@ point_features = dict(
 )
 
 
-def register_point_feature(name, FeatureClass):
+def register_point_feature(name: str, FeatureClass: PointFeature):
     """Register a new point feature function.
 
     Parameters
@@ -761,3 +757,5 @@ def register_point_feature(name, FeatureClass):
     """
 
     point_features[name] = FeatureClass
+
+    print(f"Registered point feature '{name}' to `bento.tl.shape_features`.")

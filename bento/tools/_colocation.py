@@ -1,36 +1,54 @@
+from typing import List
+
+import emoji
 import numpy as np
 import pandas as pd
-from tqdm.auto import tqdm
 import seaborn as sns
-from scipy.sparse import coo_matrix
 import sparse
+from anndata import AnnData
 from kneed import KneeLocator
-import emoji
-import numpy.ma as ma
+from tqdm.auto import tqdm
 
-
+from .._utils import track
 from ..geometry import get_points
 from ._neighborhoods import _count_neighbors
-from ._signatures import decompose
-from .._utils import track
+from ._decomposition import decompose
 
 
 @track
 def colocation(
-    data,
-    ranks,
-    iterations=3,
-    plot_error=True,
-    copy=False,
+    data: AnnData,
+    ranks: List[int],
+    iterations: int = 3,
+    plot_error: bool = True,
+    copy: bool = False,
 ):
+    """Decompose a tensor of pairwise colocalization quotients into signatures.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Spatial formatted AnnData object.
+    ranks : list
+        List of ranks to decompose the tensor.
+    iterations : int
+        Number of iterations to run the decomposition.
+    plot_error : bool
+        Whether to plot the error of the decomposition.
+    copy : bool
+        Whether to return a copy of the AnnData object. Default False.
+    Returns
+    -------
+    adata : AnnData
+        .uns['factors']: Decomposed tensor factors.
+        .uns['factors_error']: Decomposition error.
+    """
     adata = data.copy() if copy else data
 
     print("Preparing tensor...")
     _colocation_tensor(adata, copy=copy)
 
     tensor = adata.uns["tensor"]
-    # if log:
-    #     tensor = np.log2(tensor + 1)
 
     print(emoji.emojize(":running: Decomposing tensor..."))
     factors, errors = decompose(tensor, ranks, iterations=iterations)
@@ -49,9 +67,16 @@ def colocation(
     return adata if copy else None
 
 
-def _colocation_tensor(data, copy=False):
+def _colocation_tensor(data: AnnData, copy: bool = False):
     """
     Convert a dictionary of colocation quotient values in long format to a dense tensor.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object.
+    copy : bool
+        Whether to return a copy of the AnnData object. Default False.
     """
     adata = data.copy() if copy else data
 
@@ -90,25 +115,29 @@ def _colocation_tensor(data, copy=False):
 
 @track
 def coloc_quotient(
-    data,
-    shapes=["cell_shape"],
-    radius=20,
-    min_points=10,
-    min_cells=0,
-    copy=False,
+    data: AnnData,
+    shapes: List[str] = ["cell_shape"],
+    radius: int = 20,
+    min_points: int = 10,
+    min_cells: int = 0,
+    copy: bool = False,
 ):
     """Calculate pairwise gene colocalization quotient in each cell.
 
     Parameters
     ----------
     adata : AnnData
-        AnnData formatted spatial data.
+        Spatial formatted AnnData object.
     shapes : list
         Specify which shapes to compute colocalization separately.
     radius : int
         Unit distance to count neighbors, default 20
+    min_points : int
+        Minimum number of points for sample to be considered for colocalization, default 10
+    min_cells : int
+        Minimum number of cells for gene to be considered for colocalization, default 0
     copy : bool
-        Whether to copy the AnnData object. Default False.
+        Whether to return a copy of the AnnData object. Default False.
     Returns
     -------
     adata : AnnData
@@ -216,40 +245,3 @@ def _clq_statistic(neighbor_counts, counts):
         counts.loc[clq_df["neighbor"]].values / counts.sum()
     )
     return clq_df.drop("count", axis=1)
-
-
-def global_clq(neighbor_counts, counts):
-    gclq_df = neighbor_counts.copy()
-    gclq_df = gclq_df[gclq_df["gene"] == gclq_df["neighbor"]]
-    global_counts = counts.loc[gclq_df["gene"]].values
-    total_count = global_counts.sum()
-    gclq_df["gclq"] = (
-        gclq_df["gclq"].sum()
-        / (global_counts * ((global_counts - 1) / (total_count - 1))).sum()
-    )
-
-    return global_clq
-
-
-def local_clq(adata, gene_a, gene_b):
-    """
-    Compute local colocation quotients for every point between two genes across all cells. Note that this is not a symmetric function.
-    Parameters
-    ----------
-    gene_a : str
-        Gene name
-    gene_b : str
-        Gene name
-    Returns
-    -------
-    clq : float
-        Local colocation quotient for each point in gene_b
-    """
-    # Get points for cell
-    points = get_points(adata, asgeo=False)
-
-    # Get counts for each gene
-    counts = points["gene"].value_counts()
-
-    return
-    # nai->b / nb (N - 1)

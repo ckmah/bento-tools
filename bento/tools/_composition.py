@@ -7,8 +7,10 @@ import numpy as np
 from ..geometry import get_points
 from .._utils import track
 
+from anndata import AnnData
 
-def _get_compositions(points, shape_names):
+
+def _get_compositions(points: pd.DataFrame, shape_names: list) -> pd.DataFrame:
     """Compute the mean composition of each gene across shapes.
 
     Parameters
@@ -17,8 +19,6 @@ def _get_compositions(points, shape_names):
         Points indexed to shape_names denoted by boolean columns.
     shape_names : list of str
         Names of shapes to calculate compositions for.
-    return_counts : bool, optional (default: False)
-        Whether to return the counts of each shape in each cell.
 
     Returns
     -------
@@ -58,7 +58,9 @@ def _get_compositions(points, shape_names):
 
 
 @track
-def comp_diff(data, shape_names, groupby, ref_group, copy=False):
+def comp_diff(
+    data: AnnData, shape_names: list, groupby: str, ref_group: str, copy: bool = False
+):
     """Calculate the average difference in gene composition for shapes across batches of cells. Uses the Wasserstein distance.
 
     Parameters
@@ -66,7 +68,18 @@ def comp_diff(data, shape_names, groupby, ref_group, copy=False):
     data : anndata.AnnData
         Spatial formatted AnnData object.
     shape_names : list of str
+        Names of shapes to calculate compositions for.
+    groupby : str
+        Key in `adata.obs` to group cells by.
+    ref_group : str
+        Reference group to compare other groups to.
+    copy : bool
+        Return a copy of `data` instead of writing to data, by default False.
 
+    Returns
+    -------
+    adata : anndata.AnnData
+        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
 
     """
 
@@ -82,7 +95,6 @@ def comp_diff(data, shape_names, groupby, ref_group, copy=False):
     ref_comp = comp_stats[ref_group]
 
     dims = [s.replace("_shape", "") for s in shape_names]
-    comp_diff = dict()
     for group in comp_stats.keys():
         if group == ref_group:
             continue

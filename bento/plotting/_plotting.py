@@ -209,7 +209,7 @@ def qc_metrics(adata, fname=None):
 
 
 @savefig
-def flow_summary(
+def flux_summary(
     data,
     groupby=None,
     group_order=None,
@@ -225,7 +225,7 @@ def flow_summary(
     fname=None,
 ):
     """
-    Plot RNAflow summary with a radviz plot describing gene embedding across flow clusters.
+    Plot RNAflux summary with a radviz plot describing gene embedding across flux clusters.
     """
 
     comp_key = f"{groupby}_comp_stats"
@@ -544,7 +544,7 @@ def plot(
 
     """
 
-    # Set style
+    # Set style TODO just use seaborn styles
     if theme == "dark":
         style = "dark_background"
         facecolor = "black"
@@ -564,79 +564,7 @@ def plot(
     # Convert shape_names to list
     shape_names = [shape_names] if isinstance(shape_names, str) else shape_names
 
-    # Get obs attributes starting with shapes
-    obs_attrs = list(shape_names)
-
-    # Get points
-    points = get_points(adata, key=points_key, asgeo=False)
-
-    # Filter for genes
-    if points_key == "points":
-        points = points[points["gene"].isin(adata.var_names)]
-        # Remove unused categories
-        points["gene"] = (
-            points["gene"].astype("category").cat.remove_unused_categories()
-        )
-
-    # Add functional enrichment if exists
-    if "flow_fe" in adata.uns and adata.uns["flow_fe"].shape[0] == points.shape[0]:
-        points[adata.uns["flow_fe"].columns] = adata.uns["flow_fe"].values
-
-    # This feels weird here; refactor separate flow plotting?
-    if kind == "interpolate":
-        points[["vis1", "vis2", "vis3"]] = adata.uns["flow_vis"]
-
-    # Include col if exists
-    if groupby and (
-        groupby == "cell" or (groupby in adata.obs.columns or groupby in points.columns)
-    ):
-        obs_attrs.append(groupby)
-
-        # TODO bug, col typeerror
-        if groupby not in points.columns:
-            points = points.set_index("cell").join(adata.obs[[groupby]]).reset_index()
-    else:
-        groupby = None
-
-    # Transfer obs hue to points
-    if hue and hue in adata.obs.columns and hue not in points.columns:
-        points = points.set_index("cell").join(adata.obs[[hue]]).reset_index()
-        obs_attrs.append(hue)
-
-    obs_attrs = list(set(obs_attrs))
-
-    # Get shapes
-    shapes = adata.obs.reset_index()[obs_attrs]
-    if "cell_shape" in shapes.columns:
-        shapes = shapes.set_geometry("cell_shape")
-
-    if groupby:
-        # Make sure col is same type across points and shapes
-        # if points[col].dtype != shapes[col].dtype:
-        points[groupby] = points[groupby].astype(str)
-        shapes[groupby] = shapes[groupby].astype(str)
-
-        # Subset to specified col values only; less filtering = faster plotting
-        if group_order:
-            points = points[points[groupby].isin(group_order)]
-            shapes = shapes[shapes[groupby].isin(group_order)]
-
-        group_names, pt_groups = zip(*points.groupby(groupby))
-        group_names, shape_groups = zip(*shapes.groupby(groupby))
-        # Get subplot grid shape
-        if group_wrap is not None:
-            ncols = group_wrap
-            nrows = int(np.ceil(len(group_names) / group_wrap))
-        else:
-            ncols = len(group_names)
-            nrows = 1
-    else:
-        group_names = [""]
-        pt_groups = [points]
-        shape_groups = [shapes]
-
-        ncols = 1
-        nrows = 1
+    _setup_plot_data(adata, points_key, shape_names, groupby, hue)
 
     with plt.style.context(style):
         print("Plotting layers:")
@@ -788,6 +716,79 @@ def plot(
 
         plt.setp(fig.patch, facecolor=facecolor)
         print("Done.")
+
+
+def _setup_plot_data(adata, points_key, shape_names, groupby, hue):
+    """Setup data for plotting. Returns grouped points and shapes with attached metadata."""
+    # Get obs attributes starting with shapes
+    obs_attrs = list(shape_names)
+
+    # Get points
+    points = get_points(adata, key=points_key, asgeo=False)
+
+    # Concatenate point metadata matrices to points
+    for metadata_key in adata.uns["point_sets"][points_key]:
+        metadata = adata.uns["metadata_key"]
+
+        # Convert metadata matrix to dataframe
+        if isinstance(metadata, pd.DataFrame):
+            meta_cols = metadata.columns
+            points[meta_cols] = metadata.values
+        else:
+            meta_cols = [f"{metadata_key}_{i}" for i in range(metadata.shape[1])]
+            points[meta_cols] = metadata
+
+    # Include col if exists
+    if groupby and (
+        groupby == "cell" or (groupby in adata.obs.columns or groupby in points.columns)
+    ):
+        obs_attrs.append(groupby)
+
+        # TODO bug, col typeerror
+        if groupby not in points.columns:
+            points = points.set_index("cell").join(adata.obs[[groupby]]).reset_index()
+    else:
+        groupby = None
+
+    # Transfer obs hue to points
+    if hue and hue in adata.obs.columns and hue not in points.columns:
+        points = points.set_index("cell").join(adata.obs[[hue]]).reset_index()
+        obs_attrs.append(hue)
+
+    obs_attrs = list(set(obs_attrs))
+
+    # Get shapes
+    shapes = adata.obs.reset_index()[obs_attrs]
+    if "cell_shape" in shapes.columns:
+        shapes = shapes.set_geometry("cell_shape")
+
+    if groupby:
+        # Make sure col is same type across points and shapes
+        # if points[col].dtype != shapes[col].dtype:
+        points[groupby] = points[groupby].astype(str)
+        shapes[groupby] = shapes[groupby].astype(str)
+
+        # Subset to specified col values only; less filtering = faster plotting
+        if group_order:
+            points = points[points[groupby].isin(group_order)]
+            shapes = shapes[shapes[groupby].isin(group_order)]
+
+        group_names, pt_groups = zip(*points.groupby(groupby))
+        group_names, shape_groups = zip(*shapes.groupby(groupby))
+        # Get subplot grid shape
+        if group_wrap is not None:
+            ncols = group_wrap
+            nrows = int(np.ceil(len(group_names) / group_wrap))
+        else:
+            ncols = len(group_names)
+            nrows = 1
+    else:
+        group_names = [""]
+        pt_groups = [points]
+        shape_groups = [shapes]
+
+        ncols = 1
+        nrows = 1
 
 
 def _plot_points(
