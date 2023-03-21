@@ -306,6 +306,5 @@ def get_points_metadata(
     Series
         Returns `data.uns[key][metadata_key]` as a `Series`
     """
-    pt_index = sync(data, copy=True).uns[points_key]
-    metadata = data.uns[metadata_key]
+    metadata = sync(data, copy=True).uns[metadata_key]
     return metadata

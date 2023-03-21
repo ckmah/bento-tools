@@ -9,29 +9,25 @@ class TestFlux(unittest.TestCase):
         bento.tl.flux(data, method="radius", radius=50, render_resolution=0.5)
 
         self.assertTrue(
-            key in data.uns.keys() for key in ["flux", "flux_embed", "flux_vis"]
+            key in data.uns.keys() for key in ["flux", "flux_embed", "color"]
         )
         self.assertTrue(data.uns["flux"].shape[0] == data.uns["cell_raster"].shape[0])
         self.assertTrue(
             data.uns["flux_embed"].shape[0] == data.uns["cell_raster"].shape[0]
         )
-        self.assertTrue(
-            data.uns["flux_vis"].shape[0] == data.uns["cell_raster"].shape[0]
-        )
+        self.assertTrue(data.uns["flux_color"].flatten()[0][0] == "#")
 
     def test_flux_knn(self):
         bento.tl.flux(data, method="knn", n_neighbors=20, render_resolution=0.5)
 
         self.assertTrue(
-            key in data.uns.keys() for key in ["flux", "flux_embed", "flux_vis"]
+            key in data.uns.keys() for key in ["flux", "flux_embed", "flux_color"]
         )
         self.assertTrue(data.uns["flux"].shape[0] == data.uns["cell_raster"].shape[0])
         self.assertTrue(
             data.uns["flux_embed"].shape[0] == data.uns["cell_raster"].shape[0]
         )
-        self.assertTrue(
-            data.uns["flux_vis"].shape[0] == data.uns["cell_raster"].shape[0]
-        )
+        self.assertTrue(data.uns["flux_color"].flatten()[0][0] == "#")
 
     def test_fluxmap(self):
         bento.tl.flux(data, method="radius", radius=50, render_resolution=0.5)
