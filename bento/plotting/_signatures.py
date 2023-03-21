@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from scipy.stats import zscore
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 
 from .._constants import PATTERN_COLORS, PATTERN_PROBS
 from ._colors import red2blue, red_light
@@ -95,7 +94,7 @@ def colocation(
     show_labels=[True, False, False],
     cluster=[False, True, True],
     self_pairs=True,
-    figsize=(12, 6),
+    figsize=(10, 6),
     fname=None,
 ):
     """Plot colocation of signatures for specified rank across each dimension.
@@ -205,9 +204,9 @@ def factor(
         figsize=figsize,
         gridspec_kw=dict(
             width_ratios=[1] + [4] * (n_factors - 1),
-            wspace=0.15,
-            # height_ratios=[1, 8]
+            wspace=0.05,
         ),
+        layout="constrained",
     )
 
     for i, name in enumerate(names):
@@ -254,8 +253,6 @@ def factor(
             ax=axes[i],
             square=square,
         )
-
-    # plt.tight_layout()
 
 
 def _plot_loading(df, name, n_top, cut, show_labels, cluster, ax, **kwargs):
@@ -319,7 +316,6 @@ def _plot_loading(df, name, n_top, cut, show_labels, cluster, ax, **kwargs):
         center=center,
         cmap=cmap,
         cbar_kws=dict(shrink=0.5, aspect=10),
-        # cbar_ax=cbar_ax,
         yticklabels=show_labels,
         vmin=vmin,
         vmax=vmax,
