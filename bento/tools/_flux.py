@@ -32,8 +32,9 @@ def flux(
     data: AnnData,
     method: Literal["knn", "radius"] = "radius",
     n_neighbors: Optional[int] = None,
-    radius: Optional[int] = None,
-    render_resolution: int = 0.1,
+    radius: Optional[int] = 40,
+    res: int = 0.05,
+    random_state: int = 11,
     copy: bool = False,
 ):
     """
@@ -51,8 +52,8 @@ def flux(
         Number of neighbors to use for local neighborhood.
     radius : float
         Radius to use for local neighborhood.
-    render_resolution : float
-        Resolution to use for rendering embedding. Default 0.1 samples at 10% original resolution (10 units between pixels)
+    res : float
+        Resolution to use for rendering embedding. Default 0.05 samples at 5% original resolution (5 units between pixels)
     copy : bool
         Whether to return a copy the AnnData object. Default False.
 
@@ -82,7 +83,7 @@ def flux(
     # embeds points on a uniform grid
     pbar = tqdm(total=3)
     pbar.set_description(emoji.emojize("Embedding"))
-    step = 1 / render_resolution
+    step = 1 / res
     # Get grid rasters
     analyze_shapes(
         adata,
@@ -142,15 +143,17 @@ def flux(
 
         cell_fluxs.append(cflux)
 
+    # Stack all cells
     cell_fluxs = vstack(cell_fluxs) if len(cell_fluxs) > 1 else cell_fluxs[0]
     cell_fluxs.data = np.nan_to_num(cell_fluxs.data)
     pbar.update()
 
+    # todo: Slow step, try algorithm="randomized" may be faster
     pbar.set_description(emoji.emojize("Reducing"))
     n_components = min(n_genes - 1, 10)
-    pca_model = TruncatedSVD(n_components=n_components, algorithm="arpack").fit(
-        cell_fluxs
-    )
+    pca_model = TruncatedSVD(
+        n_components=n_components, algorithm="randomized", random_state=random_state
+    ).fit(cell_fluxs)
     flux_embed = pca_model.transform(cell_fluxs)
     variance_ratio = pca_model.explained_variance_ratio_
 
@@ -198,7 +201,7 @@ def fluxmap(
     n_clusters: Union[Iterable[int], int] = range(2, 9),
     num_iterations: int = 1000,
     train_size: float = 0.2,
-    render_resolution: float = 0.1,
+    res: float = 0.05,
     random_state: int = 11,
     plot_error: bool = True,
     copy: bool = False,
@@ -216,8 +219,8 @@ def fluxmap(
         Number of iterations to use for SOM training.
     train_size : float
         Fraction of cells to use for SOM training. Default 0.2.
-    render_resolution : float
-        Resolution used for rendering embedding. Default 0.1.
+    res : float
+        Resolution used for rendering embedding. Default 0.05.
     random_state : int
         Random state to use for SOM training. Default 11.
     plot_error : bool
@@ -258,7 +261,6 @@ def fluxmap(
     if train_size == 1:
         flux_train = flux_embed
     if train_size < 1:
-
         flux_train = resample(
             flux_embed,
             n_samples=int(train_size * flux_embed.shape[0]),
@@ -312,7 +314,7 @@ def fluxmap(
     pbar.set_description(emoji.emojize("Vectorizing domains"))
     cells = raster_points["cell"].unique().tolist()
     # Scale down to render resolution
-    # raster_points[["x", "y"]] = raster_points[["x", "y"]] * render_resolution
+    # raster_points[["x", "y"]] = raster_points[["x", "y"]] * res
 
     # Cast to int
     raster_points[["x", "y", "fluxmap"]] = raster_points[["x", "y", "fluxmap"]].astype(
@@ -330,8 +332,8 @@ def fluxmap(
                 (
                     rpoints["fluxmap"],
                     (
-                        (rpoints["y"] * render_resolution).astype(int),
-                        (rpoints["x"] * render_resolution).astype(int),
+                        (rpoints["y"] * res).astype(int),
+                        (rpoints["x"] * res).astype(int),
                     ),
                 )
             )
@@ -363,7 +365,7 @@ def fluxmap(
     # Upscale to match original resolution
     fluxmap_df = fluxmap_df.apply(
         lambda col: gpd.GeoSeries(col).scale(
-            xfact=1 / render_resolution, yfact=1 / render_resolution, origin=(0, 0)
+            xfact=1 / res, yfact=1 / res, origin=(0, 0)
         )
     )
     pbar.update()
@@ -384,158 +386,5 @@ def fluxmap(
     pbar.update()
     pbar.set_description("Done")
     pbar.close()
-
-    return adata if copy else None
-
-
-def fe_fazal2019(
-    data: AnnData, batch_size: int = 10000, min_n: int = 5, copy: bool = False
-) -> Optional[AnnData]:
-    """Compute enrichment scores from subcellular compartment gene sets from Fazal et al. 2019 (APEX-seq).
-    Wrapper for `bento.tl.fe`.
-
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData object.
-    batch_size : int
-        Number of points to process in each batch. Default 10000.
-    min_n : int
-        Minimum number of targets per source. If less, sources are removed.
-    copy : bool
-        Return a copy instead of writing to `adata`. Default False.
-    Returns
-    -------
-    DataFrame
-        Enrichment scores for each gene set.
-    """
-    adata = data.copy() if copy else data
-
-    stream = pkg_resources.resource_stream(__name__, "gene_sets/fazal2019.csv")
-    gene_sets = pd.read_csv(stream)
-
-    # Compute enrichment scores
-    fe(adata, gene_sets, batch_size=batch_size, min_n=min_n)
-
-    return adata if copy else None
-
-
-@track
-@register_points("cell_raster", ["flux_fe"])
-def fe(
-    data: AnnData,
-    net: pd.DataFrame,
-    groupby: Optional[str] = None,
-    source: Optional[str] = None,
-    target: Optional[str] = None,
-    weight: Optional[str] = None,
-    batch_size: int = 10000,
-    min_n: int = 0,
-    copy: bool = False,
-) -> Optional[AnnData]:
-    """
-    Perform functional enrichment on point embeddings. Wrapper for decoupler wsum function.
-
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData object.
-    net : DataFrame
-        DataFrame with columns "source", "target", and "weight". See decoupler API for more details.
-    groupby : str, optional
-        Column in `adata.uns["cell_raster"]` to group by. Default None.
-    source : str, optional
-        Column name for source nodes in `net`. Default "source".
-    target : str, optional
-        Column name for target nodes in `net`. Default "target".
-    weight : str, optional
-        Column name for weights in `net`. Default "weight".
-    batch_size : int
-        Number of points to process in each batch. Default 10000.
-    min_n : int
-        Minimum number of targets per source. If less, sources are removed.
-    copy : bool
-        Return a copy instead of writing to `adata`. Default False.
-
-    Returns
-    -------
-    adata : AnnData
-        uns["flux_fe"] : DataFrame
-            Enrichment scores for each gene set.
-    """
-
-    adata = data.copy() if copy else data
-
-    # Make sure embedding is run first
-    if "flux" not in data.uns:
-        print("Run bento.tl.flux first.")
-        return
-
-    mat = adata.uns["flux"]  # sparse matrix in csr format
-    zero_rows = mat.getnnz(1) == 0
-
-    samples = adata.uns["cell_raster"].index.astype(str)
-    features = adata.uns["flux_genes"]
-
-    enrichment = dc.run_wsum(
-        mat=[mat, samples, features],
-        net=net,
-        source=source,
-        target=target,
-        weight=weight,
-        batch_size=batch_size,
-        min_n=min_n,
-        verbose=True,
-    )
-
-    scores = enrichment[1].reindex(index=samples)
-
-    if groupby:
-        scores = scores.groupby(
-            adata.uns["cell_raster"][groupby].reset_index(drop=True)
-        ).mean()
-        scores = adata.uns["cell_raster"].merge(
-            scores, left_on="flux", right_index=True, how="left"
-        )[scores.columns]
-
-    adata.uns["flux_fe"] = scores
-    _fe_stats(adata, net, source=source, target=target, copy=copy)
-
-    return adata if copy else None
-
-
-def _fe_stats(
-    data: AnnData,
-    net: pd.DataFrame,
-    source: str = "source",
-    target: str = "target",
-    copy: bool = False,
-):
-
-    adata = data.copy() if copy else data
-
-    # rows = cells, columns = pathways, values = count of genes in pathway
-    expr_binary = adata.to_df() >= 5
-    # {cell : present gene list}
-    expr_genes = expr_binary.apply(lambda row: adata.var_names[row], axis=1)
-
-    # Count number of genes present in each pathway
-    net_ngenes = net.groupby(source).size().to_frame().T.rename(index={0: "n_genes"})
-
-    sources = []
-    # common_genes = {}  # list of [cells: gene set overlaps]
-    common_ngenes = []  # list of [cells: overlap sizes]
-    for source, group in net.groupby(source):
-        sources.append(source)
-        common = expr_genes.apply(lambda genes: set(genes).intersection(group[target]))
-        # common_genes[source] = np.array(common)
-        common_ngenes.append(common.apply(len))
-
-    fe_stats = pd.concat(common_ngenes, axis=1)
-    fe_stats.columns = sources
-
-    adata.uns["fe_stats"] = fe_stats
-    # adata.uns["fe_genes"] = common_genes
-    adata.uns["fe_ngenes"] = net_ngenes
 
     return adata if copy else None

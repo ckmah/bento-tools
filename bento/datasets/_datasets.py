@@ -24,7 +24,6 @@ def get_dataset_info():
 
 
 def load_dataset(name, cache=True, data_home="~/bento-data", **kws):
-
     datainfo = get_dataset_info()
 
     # Check if dataset name exists
@@ -52,35 +51,6 @@ def load_dataset(name, cache=True, data_home="~/bento-data", **kws):
     adata = read_h5ad(cache_path, **kws)
 
     return adata
-
-
-gene_sets = dict(
-    fazal2019="fazal2019.csv",
-)
-
-
-def load_gene_sets(name):
-    """Load a gene set from bento.
-
-    Parameters
-    ----------
-    name : str
-        Name of gene set to load.
-
-    Returns
-    -------
-    DataFrame
-        Gene set.
-    """
-    global pkg_resources
-    if pkg_resources is None:
-        import pkg_resources
-
-    fname = gene_sets[name]
-    stream = pkg_resources.resource_stream(__name__, f"gene_sets/{fname}")
-    gs = pd.read_csv(stream)
-
-    return gs
 
 
 # Taken from https://github.com/theislab/scanpy/blob/master/scanpy/readwrite.py
@@ -128,5 +98,5 @@ def sample_data():
     if pkg_resources is None:
         import pkg_resources
 
-    stream = pkg_resources.resource_stream(__name__, "seqfish_sample.h5ad")
+    stream = pkg_resources.resource_stream(__name__, "merfish_sample.h5ad")
     return read_h5ad(stream)
