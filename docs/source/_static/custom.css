@@ -1,12 +1,8 @@
 @font-face {
-    font-family: "Hind";
-    src: url('Hind.ttf') format('truetype');
+    font-family: "Inter";
+    src: url('Inter-VariableFont.ttf') format('truetype');
 }
 
-@font-face {
-    font-family: "Nunito";
-    src: url('Nunito.ttf') format('truetype');
-}
 
 @font-face {
     font-family: "RobotoMono";
@@ -15,18 +11,18 @@
 
 
 :root {
-    --pst-font-family-base: Hind, var(--pst-font-family-base-system) !important;
-    --pst-font-family-heading: Nunito, var(--pst-font-family-base-system) !important;
+    --pst-font-family-base: Inter, var(--pst-font-family-base-system) !important;
+    --pst-font-family-heading: Inter, var(--pst-font-family-base-system) !important;
     --pst-font-family-monospace: RobotoMono, var(--pst-font-family-monospace-system) !important;
 }
 
 /* Font size */
---pst-font-size-base: 15px; /* base font size - applied at body / html level */
+--pst-font-size-base: 14px; /* base font size - applied at body / html level */
 
 /* heading font sizes */
---pst-font-size-h1: 36px;
---pst-font-size-h2: 32px;
---pst-font-size-h3: 26px;
---pst-font-size-h4: 21px;
---pst-font-size-h5: 18px;
---pst-font-size-h6: 16px;
+--pst-font-size-h1: 32px;
+--pst-font-size-h2: 26px;
+--pst-font-size-h3: 21px;
+--pst-font-size-h4: 18px;
+--pst-font-size-h5: 16px;
+--pst-font-size-h6: 14px;
