@@ -4,6 +4,7 @@
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/bento-tools)
 [![GitHub stars](https://badgen.net/github/stars/ckmah/bento-tools)](https://GitHub.com/Naereen/ckmah/bento-tools) 
 
+> ### :warning: Significant upgrades coming soon, with additional analysis and data ingestion methods!
 
 <img src="docs/source/_static/bento-name.png" alt="Bento Logo" width=350>
 
