@@ -375,8 +375,6 @@ def obs_stats(
     ----------
     data : AnnData
         Spatial formatted AnnData
-    shape_name : str
-        Name of shape column in `data.obs` to compute features for. Default is `cell_shape`.
     feature_names : list
         List of features to compute. See list of available features in `bento.tl.shape_features`.
     copy : bool, optional
@@ -394,6 +392,8 @@ def obs_stats(
 
     # Compute features
     analyze_shapes(adata, "cell_shape", feature_names, copy=copy)
+    if "nucleus_shape" in adata.obs.columns:
+        analyze_shapes(adata, "nucleus_shape", feature_names, copy=copy)
 
     return adata if copy else None
 
