@@ -62,7 +62,6 @@ def track(func):
 
         modified = False
         for attr in old_attr.keys():
-
             if attr == "n_obs" or attr == "n_vars":
                 continue
 
@@ -166,7 +165,6 @@ def sync(data, copy=False):
 
     # Iterate over point sets
     for point_key in adata.uns["point_sets"]:
-
         points = adata.uns[point_key]
 
         # Subset for cells
@@ -180,7 +178,7 @@ def sync(data, copy=False):
             in_genes = points["gene"].isin(genes)
 
         # Combine boolean masks
-        valid_mask = in_cells & in_genes
+        valid_mask = (in_cells & in_genes).values
 
         # Sync points using mask
         points = points.loc[valid_mask]
@@ -197,11 +195,57 @@ def sync(data, copy=False):
             metadata = adata.uns[metadata_key]
 
             if isinstance(metadata, pd.DataFrame):
-                adata.uns[metadata_key] = metadata.loc[valid_mask]
+                adata.uns[metadata_key] = metadata.loc[valid_mask, :]
             else:
                 adata.uns[metadata_key] = adata.uns[metadata_key][valid_mask]
 
     return adata if copy else None
+
+
+def _register_points(data, point_key, metadata_keys):
+    required_cols = ["x", "y", "cell"]
+
+    if point_key not in data.uns.keys():
+        raise ValueError(f"Key {point_key} not found in data.uns")
+
+    points = data.uns[point_key]
+
+    if not all([col in points.columns for col in required_cols]):
+        raise ValueError(
+            f"Point DataFrame must have columns {', '.join(required_cols)}"
+        )
+
+    # Check for valid cells
+    cells = data.obs_names.tolist()
+    if not points["cell"].isin(cells).all():
+        raise ValueError("Invalid cells in point DataFrame")
+
+    # Initialize/add to point registry
+    if "point_sets" not in data.uns.keys():
+        data.uns["point_sets"] = dict()
+
+    if point_key not in data.uns["point_sets"].keys():
+        data.uns["point_sets"][point_key] = []
+
+    if len(metadata_keys) < 0:
+        return
+
+    # Register metadata
+    for key in metadata_keys:
+        # Check for valid metadata
+        if key not in data.uns.keys():
+            raise ValueError(f"Key {key} not found in data.uns")
+
+        n_points = data.uns[point_key].shape[0]
+        metadata_len = data.uns[key].shape[0]
+        if metadata_len != n_points:
+            raise ValueError(
+                f"Metadata {key} must have same length as points {point_key}"
+            )
+
+        # Add metadata key to registry
+        if key not in data.uns["point_sets"][point_key]:
+            data.uns["point_sets"][point_key].append(key)
 
 
 def register_points(point_key: str, metadata_keys: list):
@@ -225,49 +269,7 @@ def register_points(point_key: str, metadata_keys: list):
             func(*args, **kwds)
             data = args[0]
             # Check for required columns
-            required_cols = ["x", "y", "cell"]
-
-            if point_key not in data.uns.keys():
-                raise ValueError(f"Key {point_key} not found in data.uns")
-
-            points = data.uns[point_key]
-
-            if not all([col in points.columns for col in required_cols]):
-                raise ValueError(
-                    f"Point DataFrame must have columns {', '.join(required_cols)}"
-                )
-
-            # Check for valid cells
-            cells = data.obs_names.tolist()
-            if not points["cell"].isin(cells).all():
-                raise ValueError("Invalid cells in point DataFrame")
-
-            # Initialize/add to point registry
-            if "point_sets" not in data.uns.keys():
-                data.uns["point_sets"] = dict()
-
-            if point_key not in data.uns["point_sets"].keys():
-                data.uns["point_sets"][point_key] = []
-
-            if len(metadata_keys) < 0:
-                return
-
-            # Register metadata
-            for key in metadata_keys:
-                # Check for valid metadata
-                if key not in data.uns.keys():
-                    raise ValueError(f"Key {key} not found in data.uns")
-
-                n_points = data.uns[point_key].shape[0]
-                metadata_len = data.uns[key].shape[0]
-                if metadata_len != n_points:
-                    raise ValueError(
-                        f"Metadata {key} must have same length as points {point_key}"
-                    )
-
-                # Add metadata key to registry
-                if key not in data.uns["point_sets"][point_key]:
-                    data.uns["point_sets"][point_key].append(key)
+            return _register_points(data, point_key, metadata_keys)
 
         return wrapper
 
