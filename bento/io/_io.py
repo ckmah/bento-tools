@@ -84,12 +84,15 @@ def prepare(
     ----------
     molecules : DataFrame
         Molecule coordinates and annotations.
-    cell_seg : np.array
+    cell_seg : np.array or gpd.GeoDataFrame
         Cell segmentation masks represented as 2D numpy array where 1st and 2nd
         dimensions correspond to x and y respectively. Connected regions must
         have same value to be considered a valid shape. Data type must be one
         of rasterio.int16, rasterio.int32, rasterio.uint8, rasterio.uint16, or
         rasterio.float32. See rasterio.features.shapes for more details.
+        
+        Alternatively, if cell segmentations are already shapely objects, they can
+        be appended to one single GeoDataFrame as and used as the input.
     x : str
         Column name for x coordinates, by default 'x'.
     y : str
@@ -336,6 +339,8 @@ def _index_points(points, shapes):
     Series
         Return list of mask indices corresponding to each point.
     """
+    # TODO: #1. Parallelize across shapes. #2. crop points to each shape's min/max x,y vals to speed up indexing
+    
     index = gpd.sjoin(points.reset_index(), shapes, how="left", op="intersects")
 
     # remove multiple cells assigned to same point
@@ -451,3 +456,54 @@ def to_scanpy(data):
     sc_data = anndata.AnnData(expression)
 
     return sc_data
+
+def read_xenium(
+    data_dir,
+    data_prefix
+):
+    """Prepare AnnData from Xenium data. Wrapper around prepare()
+
+    Parameters
+    ----------
+    data_dir : String
+        Directory containing Xenium generated files (parquet files used).
+    data_prefix : String
+        Prefix of all file names.
+    Returns
+    -------
+        AnnData object
+    """
+    molecules = pd.read_parquet(data_dir + data_prefix + '_transcripts.parquet',
+                                engine='fastparquet')
+    def convert_to_shapely(vertex_df):
+        return Polygon(zip(vertex_df['vertex_x'],vertex_df['vertex_y'])).buffer(0)
+    all_cell_coords = pd.read_parquet(data_dir + data_prefix + '_cell_boundaries.parquet',
+                                engine='fastparquet')
+    all_cell_ids = list(np.unique(all_cell_coords['cell_id']))
+    cell_polys = []
+    print("Converting cell boundaries to polygons")
+    # TODO: Parallelize this loop
+    for i in tqdm(all_cell_ids):
+        df = all_cell_coords[all_cell_coords['cell_id']==i]
+        cell_polys.append(convert_to_shapely(df))
+    # convert to GeoDataFrame
+    cell_gdf = gpd.GeoDataFrame(geometry=cell_polys)
+    
+    # Do same thing for nuclei
+    all_nuc_coords = pd.read_parquet(data_dir + data_prefix + '_nucleus_boundaries.parquet',
+                                engine='fastparquet')
+    all_nuc_ids = list(np.unique(all_nuc_coords['cell_id']))
+    nuc_polys = []
+    print("Converting nuclear boundaries to polygons")
+    # TODO: Parallelize this loop
+    for i in tqdm(all_nuc_ids):
+        df = all_nuc_coords[all_nuc_coords['cell_id']==i]
+        nuc_polys.append(convert_to_shapely(df))
+    # convert to GeoDataFrame
+    nuc_gdf = gpd.GeoDataFrame(geometry=nuc_polys)
+    return prepare(molecules,
+                   cell_seg=cell_gdf,
+                   x='x_location',
+                   y='y_location',
+                   gene='feature_name',
+                   other_seg=dict(nucleus=nuc_gdf))
