@@ -204,12 +204,13 @@ def prepare(
         uns_points[shape_name] = uns_points[shape_name].astype("category")
 
     adata.uns = {"points": uns_points}
+    adata.obs['batch'] = [0]*len(adata.obs) #initialize batch column in case it's needed
 
     pbar.set_description(emoji.emojize(":bento_box: Finished!"))
     pbar.update()
     pbar.close()
     return adata
-
+    
 
 def _load_shapes_np(seg_img):
     """Extract shapes from segmentation image.
@@ -501,9 +502,40 @@ def read_xenium(
         nuc_polys.append(convert_to_shapely(df))
     # convert to GeoDataFrame
     nuc_gdf = gpd.GeoDataFrame(geometry=nuc_polys)
-    return prepare(molecules,
+    adata =  prepare(molecules,
                    cell_seg=cell_gdf,
                    x='x_location',
                    y='y_location',
                    gene='feature_name',
                    other_seg=dict(nucleus=nuc_gdf))
+    adata.obs['batch'] = [0]*len(adata.obs)
+    return adata
+
+def read_cosmx_smi(
+    data_dir,
+    data_prefix
+):
+    """Prepare AnnData from Xenium data. Wrapper around prepare()
+
+    Parameters
+    ----------
+    data_dir : String
+        Directory containing Xenium generated files (parquet files used).
+    data_prefix : String
+        Prefix of all file names.
+    Returns
+    -------
+        AnnData object
+    """
+    fov_positions = pd.read_csv(data_dir + data_prefix + '_fov_positions_file.csv,
+                                index_col='fov')
+                                
+    molecules = pd.read_csv(data_dir + data_prefix + '_tx_file.csv')
+    
+    num_fovs = len(fov_positions)
+    # TODO: parallelize this
+    print("Converting cells and nuclei to polygons for each FOV")
+    for fov in tqdm(num_fovs):
+        print('STILL IN PROGRESS')
+    
+    return adata
