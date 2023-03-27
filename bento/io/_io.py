@@ -560,7 +560,7 @@ def read_cosmx_smi(
         x_adjust = fov_positions.loc[fov]['x_global_px']
         y_adjust = fov_positions.loc[fov]['y_global_px']
         for prop in cell_props:
-            cell_poly = Polygon(prop.coords + np.array([x_adjust,y_adjust])).buffer(0)
+            cell_poly = Polygon(prop.coords + np.array([x_adjust,y_adjust])).buffer(5).buffer(-5).buffer(0)
             cell_polys.append(cell_poly)
         all_cell_polys += cell_polys
     cell_gdf = gpd.GeoDataFrame(geometry=all_cell_polys)
@@ -571,7 +571,7 @@ def read_cosmx_smi(
         fov_str = str(fov)
         fov_str = '0'*(3-len(fov_str)) + fov_str
         overlay_file = data_dir + 'CellOverlay/CellOverlay_F' + fov_str + '.jpg'
-        overlay = cv2.imread(compooverlay_filesite_file,-1)
+        overlay = cv2.imread(overlay_file,-1)
         color1 = np.asarray([0,0,0])
         color2 = np.asarray([200,200,200])
         mask = cv2.inRange(overlay,color1,color2)
@@ -586,7 +586,7 @@ def read_cosmx_smi(
         x_adjust = fov_positions.loc[fov]['x_global_px']
         y_adjust = fov_positions.loc[fov]['y_global_px']
         for prop in nuc_props:
-            nuc_poly = Polygon(prop.coords + np.array([x_adjust,y_adjust])).buffer(0)
+            nuc_poly = Polygon(prop.coords + np.array([x_adjust,y_adjust])).buffer(5).buffer(-5).buffer(0)
             nuc_polys.append(nuc_poly)
         all_nuc_polys += nuc_polys
     nuc_gdf = gpd.GeoDataFrame(geometry=all_nuc_polys)
