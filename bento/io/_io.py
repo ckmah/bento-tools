@@ -12,6 +12,9 @@ import anndata
 import rasterio
 import rasterio.features
 import emoji
+import cv2
+from skimage.measure import regionprops
+import alphashape
 
 from .._utils import sc_format
 
@@ -429,6 +432,11 @@ def _to_spliced_expression(expression):
 
     return spliced, unspliced
 
+def _alphashape_poly_generate(molecules,x_label='x',y_label='y',alpha=0.05):
+    points =  np.array([molecules[x_label],molecules[y_label]]).T
+    poly = alphashape.alphashape(points, alpha).buffer(0)
+    poly = poly.buffer(5).buffer(-5).buffer(0) # get rid of weird self-intersections
+
 
 def to_scanpy(data):
     # Extract points
@@ -508,7 +516,6 @@ def read_xenium(
                    y='y_location',
                    gene='feature_name',
                    other_seg=dict(nucleus=nuc_gdf))
-    adata.obs['batch'] = [0]*len(adata.obs)
     return adata
 
 def read_cosmx_smi(
@@ -527,7 +534,7 @@ def read_cosmx_smi(
     -------
         AnnData object
     """
-    fov_positions = pd.read_csv(data_dir + data_prefix + '_fov_positions_file.csv,
+    fov_positions = pd.read_csv(data_dir + data_prefix + '_fov_positions_file.csv',
                                 index_col='fov')
                                 
     molecules = pd.read_csv(data_dir + data_prefix + '_tx_file.csv')
@@ -538,4 +545,55 @@ def read_cosmx_smi(
     for fov in tqdm(num_fovs):
         print('STILL IN PROGRESS')
     
+    #return adata
+    
+def read_clustermap(
+    clustermap_path,
+    nuclear_path,
+    save_name=None,
+):
+    """Prepare AnnData from Xenium data. Wrapper around prepare()
+
+    Parameters
+    ----------
+    clustermap_path : String
+        Path to clustermap results.
+    nuclear_path : String
+        path to nuclear segmentations as a labelled 2D numpy array where 1st and 2nd dimensions
+        correspond to x and y, and pixel value are labels for each unique nuclei.
+    save_name : String
+        Optional; path to save anndata object
+    Returns
+    -------
+        AnnData object
+    """
+    clustermap_results = pd.read_csv(clustermap_path)
+    nuc_segs = cv2.imread(nuclear_path,-1)
+    props = regionprops(nuc_segs)
+    nuc_polys = []
+    print("Converting nuclei to polygons")
+    for prop in tqdm(props):
+        nuc_poly = Polygon(prop.coords)
+        nuc_polys.append(nuc_poly)
+    nuc_gdf = gpd.GeoDataFrame(geometry=nuc_polys)
+    cell_polys = []
+    print("Converting clustermap results to alphashape polygons")
+    cell_idxs = list(np.unique(clustermap_results['clustermap']))
+    # TODO: parallelize this
+    for cell in tqdm(cell_idxs[1:]): # ignore -1 label as that means unclustered
+        df = clustermap_results[clustermap_results['clustermap']==cell]
+        cell_poly = _alphashape_poly_generate(df,
+                                              x_label='spot_location_1',
+                                              y_label='spot_location_2')
+        cell_polys.append(cell_poly)
+    cell_gdf = gpd.GeoDataFrame(geometry=cell_polys)
+    adata = prepare(clustermap_results,
+                    cell_seg=cell_gdf,
+                    x='spot_location_1',
+                    y='spot_location_2',
+                    gene='gene_name',
+                    other_seg=dict(nucleus=nuc_gdf))
+    if save_name is not None:
+        write_h5ad(adata,save_name)
+        
     return adata

@@ -1,1 +1,1 @@
-from ._io import read_h5ad, write_h5ad, concatenate, prepare, read_xenium
+from ._io import read_h5ad, write_h5ad, concatenate, prepare, read_xenium, read_cosmx_smi, read_clustermap
