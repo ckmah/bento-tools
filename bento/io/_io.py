@@ -14,6 +14,7 @@ import rasterio.features
 import emoji
 import cv2
 from skimage.measure import regionprops
+from scipy.ndimage import binary_erosion, label
 import alphashape
 
 from .._utils import sc_format
@@ -520,7 +521,9 @@ def read_xenium(
 
 def read_cosmx_smi(
     data_dir,
-    data_prefix
+    data_prefix,
+    nucleus_label=1,
+    save=None
 ):
     """Prepare AnnData from Xenium data. Wrapper around prepare()
 
@@ -530,6 +533,10 @@ def read_cosmx_smi(
         Directory containing Xenium generated files (parquet files used).
     data_prefix : String
         Prefix of all file names.
+    nucleus_label: int
+        label value for nuclei in CompartmentLabels image to use. Default = 1
+    save: String
+        Optional. path and filename to save anndata once written
     Returns
     -------
         AnnData object
@@ -541,11 +548,61 @@ def read_cosmx_smi(
     
     num_fovs = len(fov_positions)
     # TODO: parallelize this
-    print("Converting cells and nuclei to polygons for each FOV")
-    for fov in tqdm(num_fovs):
-        print('STILL IN PROGRESS')
+    print("Converting cells to polygons for each FOV")
+    all_cell_polys = []
+    for fov in tqdm(range(1,num_fovs+1)):
+        fov_str = str(fov)
+        fov_str = '0'*(3-len(fov_str)) + fov_str
+        cell_file = data_dir + 'CellLabels/CellLabels_F' + fov_str + '.tif'
+        cell_labels = cv2.imread(cell_file,-1)
+        cell_props = regionprops(cell_labels)
+        cell_polys = []
+        x_adjust = fov_positions.loc[fov]['x_global_px']
+        y_adjust = fov_positions.loc[fov]['y_global_px']
+        for prop in cell_props:
+            cell_poly = Polygon(prop.coords + np.array([x_adjust,y_adjust])).buffer(0)
+            cell_polys.append(cell_poly)
+        all_cell_polys += cell_polys
+    cell_gdf = gpd.GeoDataFrame(geometry=all_cell_polys)
     
-    #return adata
+    print("Converting nuclei to polygons for each FOV")
+    all_nuc_polys = []
+    for fov in tqdm(range(1,num_fovs+1)):
+        fov_str = str(fov)
+        fov_str = '0'*(3-len(fov_str)) + fov_str
+        overlay_file = data_dir + 'CellOverlay/CellOverlay_F' + fov_str + '.jpg'
+        overlay = cv2.imread(compooverlay_filesite_file,-1)
+        color1 = np.asarray([0,0,0])
+        color2 = np.asarray([200,200,200])
+        mask = cv2.inRange(overlay,color1,color2)
+        compartment_labeled_file = data_dir + 'CompartmentLabels/CompartmentLabels_F' + fov_str + '.tif'
+        compartment_labeled = cv2.imread(compartment_labeled_file,-1)
+        nuc_comp = np.where(compartment_labeled==nucleus_label,1,0)
+        nuc_divided = cv2.bitwise_and(nuc_comp,nuc_comp,mask=mask)
+        nuc_divided = binary_erosion(nuc_divided,structure=np.ones((5,5))).astype(int)
+        nuc_labeled, num_nucs = label(nuc_divided)
+        nuc_props = regionprops(nuc_labeled)
+        nuc_polys = []
+        x_adjust = fov_positions.loc[fov]['x_global_px']
+        y_adjust = fov_positions.loc[fov]['y_global_px']
+        for prop in nuc_props:
+            nuc_poly = Polygon(prop.coords + np.array([x_adjust,y_adjust])).buffer(0)
+            nuc_polys.append(nuc_poly)
+        all_nuc_polys += nuc_polys
+    nuc_gdf = gpd.GeoDataFrame(geometry=all_nuc_polys)
+    
+    adata = prepare(molecules,
+                    cell_seg=cell_gdf,
+                    x='x_global_px',
+                    y='y_global_px',
+                    gene='target',
+                    other_seg=dict(nucleus=nuc_gdf))
+    if save is not None:
+        write_h5ad(adata,save)
+    else:
+        pass
+        
+    return cell_gdf
     
 def read_clustermap(
     clustermap_path,
@@ -573,7 +630,7 @@ def read_clustermap(
     nuc_polys = []
     print("Converting nuclei to polygons")
     for prop in tqdm(props):
-        nuc_poly = Polygon(prop.coords)
+        nuc_poly = Polygon(prop.coords).buffer(0)
         nuc_polys.append(nuc_poly)
     nuc_gdf = gpd.GeoDataFrame(geometry=nuc_polys)
     cell_polys = []
@@ -595,5 +652,7 @@ def read_clustermap(
                     other_seg=dict(nucleus=nuc_gdf))
     if save_name is not None:
         write_h5ad(adata,save_name)
+    else:
+        pass
         
     return adata
