@@ -436,7 +436,7 @@ def _to_spliced_expression(expression):
 def _alphashape_poly_generate(molecules,x_label='x',y_label='y',alpha=0.05):
     points =  np.array([molecules[x_label],molecules[y_label]]).T
     poly = alphashape.alphashape(points, alpha).buffer(0)
-    poly = poly.buffer(5).buffer(-5).buffer(0) # get rid of weird self-intersections
+    poly = poly.buffer(1).buffer(-1).buffer(0) # get rid of weird self-intersections
 
 
 def to_scanpy(data):
@@ -547,6 +547,7 @@ def read_cosmx_smi(
     molecules = pd.read_csv(data_dir + data_prefix + '_tx_file.csv')
     
     num_fovs = len(fov_positions)
+
     # TODO: parallelize this
     print("Converting cells to polygons for each FOV")
     all_cell_polys = []
@@ -560,11 +561,14 @@ def read_cosmx_smi(
         x_adjust = fov_positions.loc[fov]['x_global_px']
         y_adjust = fov_positions.loc[fov]['y_global_px']
         for prop in cell_props:
-            cell_poly = Polygon(prop.coords + np.array([x_adjust,y_adjust])).buffer(5).buffer(-5).buffer(0)
-            cell_polys.append(cell_poly)
+            if prop.coords.shape[0] > 3 and prop.area > 50:
+                cell_poly = Polygon(prop.coords + np.array([x_adjust,y_adjust])).buffer(1).buffer(-1).buffer(0)
+                cell_polys.append(cell_poly)
+            else:
+                pass
         all_cell_polys += cell_polys
     cell_gdf = gpd.GeoDataFrame(geometry=all_cell_polys)
-    
+
     print("Converting nuclei to polygons for each FOV")
     all_nuc_polys = []
     for fov in tqdm(range(1,num_fovs+1)):
@@ -586,8 +590,11 @@ def read_cosmx_smi(
         x_adjust = fov_positions.loc[fov]['x_global_px']
         y_adjust = fov_positions.loc[fov]['y_global_px']
         for prop in nuc_props:
-            nuc_poly = Polygon(prop.coords + np.array([x_adjust,y_adjust])).buffer(5).buffer(-5).buffer(0)
-            nuc_polys.append(nuc_poly)
+            if prop.coords.shape[0] > 3 and prop.area > 50:
+                nuc_poly = Polygon(prop.coords + np.array([x_adjust,y_adjust])).buffer(1).buffer(-1).buffer(0)
+                nuc_polys.append(nuc_poly)
+            else:
+                pass
         all_nuc_polys += nuc_polys
     nuc_gdf = gpd.GeoDataFrame(geometry=all_nuc_polys)
     
@@ -602,7 +609,7 @@ def read_cosmx_smi(
     else:
         pass
         
-    return cell_gdf
+    return adata
     
 def read_clustermap(
     clustermap_path,
