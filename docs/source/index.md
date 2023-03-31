@@ -11,7 +11,7 @@
 Bento is a Python toolkit for performing subcellular analysis of spatial transcriptomics data.
 
 # Get started
-Install with Python >=3.8 and <3.11:
+Install with Python 3.8 or 3.9:
 ```bash
 pip install bento-tools
 ```
@@ -21,21 +21,21 @@ Check out the [documentation](https://bento-tools.readthedocs.io/en/latest/) for
 
 # Main Features
 
-<img src="_static/tutorial_img/bento_workflow.png" alt="Bento Analysis Workflow" width=800>
-
+<img src="_static/tutorial_img/bento_tools.png" alt="Bento Workflow" width="800">
 
 - Store molecular coordinates and segmentation masks
-- Visualize spatial transcriptomics data at subcellular resolution
-- Compute subcellular spatial features
-- Predict localization patterns and signatures
-- Factor decomposition for high-dimensional spatial feature sets
+- Compute geospatial features
+- `RNAflux`: Data-driven molecular embeddings
+- `RNAforest`: Predict localization patterns
+- Native Python visualization of single-molecule resolution spatial data
+- Tensor decomposition for high-dimensional spatial feature sets
 
 ---
 [![GitHub license](https://img.shields.io/github/license/ckmah/bento-tools.svg)](https://github.com/ckmah/bento-tools/blob/master/LICENSE)
 
 
 ```{toctree}
-:maxdepth: 1
+:maxdepth: 2
 :hidden: true
    
 installation

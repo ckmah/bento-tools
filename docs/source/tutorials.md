@@ -1,12 +1,30 @@
 # Tutorials
 
-```{eval-rst}
-.. nbgallery::
-    :caption: This is a thumbnail gallery:
-    :glob:
+:::{toctree}
+:maxdepth: 2
+:hidden: true
+   
+tutorial_gallery/Bento_Tutorial
+tutorial_gallery/Data_Visualization
+tutorial_gallery/Spatial_Features
+:::
 
-    <!-- tutorial_gallery/Subcellular_Localization
-    tutorial_gallery/Spatial_Plotting
-    tutorial_gallery/Subcellular_Features
-    tutorial_gallery/Tensor_Decomposition -->
-```
+::::{grid} 3
+:::{grid-item-card}  Bento Tutorial
+:link: tutorial_gallery/Bento_Tutorial.html
+
+This tutorial will walk you through how to load, visualize data, and perform subcellular analysis.
+:::
+
+:::{grid-item-card}  Data Visualization
+:link: tutorial_gallery/Data_Visualization.html
+
+This tutorial will cover how to visualize spatial data using Bento.
+:::
+
+:::{grid-item-card}  Subcellular Spatial Features
+:link: tutorial_gallery/Spatial_Features.html
+
+Learn how to compute spatial features across cells, domains, and molecular distributions.
+:::
+::::

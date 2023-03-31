@@ -24,8 +24,9 @@ class TestGeometry(unittest.TestCase):
         )
 
     def test_rename_cells(self):
-        bento.tl.flux(data, method="radius", radius=200, render_resolution=1)
-        bento.tl.fluxmap(data, 2, train_size=1, render_resolution=1)
+        res=0.02
+        bento.tl.flux(data, method="radius", radius=200, res=res)
+        bento.tl.fluxmap(data, 2, train_size=1, res=res)
         bento.geo.rename_shapes(
             data,
             {"fluxmap1_shape": "fluxmap3_shape", "fluxmap2_shape": "fluxmap4_shape"},

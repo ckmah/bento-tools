@@ -2,14 +2,32 @@
 
 ## Data Structure
 
-More info coming soon!
+Datasets are stored as `AnnData` objects, where observations are cells, variables are genes, and the X is the count matrix. Bento additionally stores molecular coordinates in `uns['points']` and polygons as columns in `obs`. 
 
-## Localization Patterns
+```{figure}  _static/tutorial_img/bento_data_structure.png
+:class: p-2
 
-More info coming soon!
+AnnData adapted to hold spatial data
+``` 
 
-### Spatial Features
+### Shapes
+
+Currently, shapes are stored as `GeoSeries` columns according to which cell they belong to. These columns are identified with the suffix `"_shape"`. Each element in the `GeoSeries` is either a shapely `Polygon` or `MultiPolygon`. Shape properties are also stored as columns and identified with the corresponding shape name as the prefix e.g. `"cell"`, `"nucleus"`, etc.
+
+### Points
+For fast spatial queries, Bento indexes points to shape layers upfront, and saves them as columns `points`, denoted as `"shape index"` above. For example, `"cell"` and `"nucleus"` columns are added to indicate whether points are within the shape.
+
+Metadata for points are stored as matrices `uns`. These metadata matrices are the same length as `points`, which makes it easy to query points and associated metadata. All metadata keys are registered to `uns['points_metadata']`, which is used to keep them in sync.
+
+## RNAflux
+
+RNAflux is a method for quantifying spatial composition gradients in the cell.
+
+
+## RNAforest input features
     
+The following describes input features of the RNAforest model.
+
 | **Categories** | **Features** |
 | -------------- | ------------ |
 | Distance       | **Cell inner proximity**: The average distance between all points within the cell to the cell boundary normalized by cell radius. Values closer to 0 denote farther from the cell boundary, values closer to 1 denote closer to the cell boundary.<br>**Nucleus inner proximity**: The average distance between all points within the nucleus to the nucleus boundary normalized by cell radius. Values closer to 0 denote farther from the nucleus boundary, values closer to 1 denote closer to the nucleus boundary.<br>**Nucleus outer proximity**: The average distance between all points within the cell and outside the nucleus to the nucleus boundary normalized by cell radius. Values closer to 0 denote farther from the nucleus boundary, values closer to 1 denote closer to the nucleus boundary. |

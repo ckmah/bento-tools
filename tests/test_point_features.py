@@ -2,12 +2,13 @@ import unittest
 import bento
 import numpy as np
 
-data = bento.datasets.sample_data()
+data = bento.ds.sample_data()[:2]
+bento.sync(data)
 
 
 class TestPointFeatures(unittest.TestCase):
     def test_analyze(self):
-        features = list(bento.tl.point_features.keys())
+        features = list(bento.tl.list_point_features().keys())
 
         # Simplest case, single parameters
         bento.tl.analyze_points(data, "cell_shape", features[0], groupby=None)

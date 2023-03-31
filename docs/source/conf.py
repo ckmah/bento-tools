@@ -35,10 +35,11 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
-    "myst_parser",
-    "nbsphinx",
-    "sphinx_gallery.load_style",
+    "myst_nb",
+    "sphinx_design",
 ]
+
+myst_enable_extensions = ["colon_fence", "html_image"]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -60,8 +61,10 @@ html_theme_options = {
     "use_repository_button": True,
     "use_edit_page_button": True,
     "path_to_docs": "docs",
-    "logo_only": True
+    "logo_only": True,
 }
+
+html_context = {"default_mode": "auto"}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -85,11 +88,4 @@ html_logo = "_static/bento-name.png"
 
 # -- Options for extensions -------------------------------------------------------------------------------
 
-# nb_execution_mode = "off"
-# myst_enable_extensions = ["colon_fence"]
-nbsphinx_execute = "never"
-
-nbsphinx_prolog = """
-.. image:: https://mybinder.org/badge_logo.svg
- :target: https://mybinder.org/v2/gh/ckmah/bento-tools/HEAD?labpath={{ env.doc2path(env.docname, base=None) }}
-"""
+nb_execution_mode = "off"

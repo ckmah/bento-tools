@@ -13,7 +13,7 @@ Import Bento with:
 import bento
 ```
 
-Bento takes inspiration from the success of other tools in the python single-cell omics ecosystem. The API is organized under a set of modules including:
+Bento's API structure takes inspiration from other libraries in the Scverse ecosystem. It is organized under a set of modules including:
 
 - `bento.tl`: subcellular spatial analyses
 - `bento.pl`: conveniently plot spatial data and embeddings
@@ -52,7 +52,7 @@ A list of available cell features and their names is stored in the dict `bento.t
 .. currentmodule:: bento
 
 .. autosummary::
-    :toctree: api/ev
+    :toctree: api/
 
     tl.analyze_shapes
     tl.register_shape_feature
@@ -123,9 +123,9 @@ These are convenient functions for quick 2D visualizations of cells, molecules, 
 
     pl.points
     pl.density
+    pl.shapes
     pl.flux
     pl.fluxmap
-    pl.batch
 
 ```
 
