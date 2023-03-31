@@ -9,7 +9,7 @@ import numpy as np
 import seaborn as sns
 from scipy.interpolate import griddata
 from shapely.geometry import Polygon
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from ..geometry import get_points, get_shape, get_points_metadata
 
@@ -149,5 +149,6 @@ def _raster(adata, res, color, points_key="cell_raster", cbar=False, ax=None, **
     ax.autoscale(False)
 
     if cbar:
-        cax = make_axes_locatable(ax).append_axes("right", size="5%", pad=0.05)
-        cbar = plt.colorbar(im, cax=cax)
+        cax = inset_axes(ax, width="20%", height="4%", loc="upper right", borderpad=1.5)
+        cbar = plt.colorbar(im, orientation="horizontal", cax=cax)
+        # cbar.ax.tick_params(axis="x", direction="in", pad=-12)
