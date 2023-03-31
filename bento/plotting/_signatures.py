@@ -88,8 +88,8 @@ def signatures_error(adata, fname=None):
 def colocation(
     adata,
     rank,
-    n_top=(None, None, 5),
-    z_score=(False, True, True),
+    n_top=[None, None, 5],
+    z_score=[False, True, True],
     cut=None,
     show_labels=[True, False, True],
     cluster=[False, True, False],

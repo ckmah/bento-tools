@@ -224,6 +224,7 @@ def fe(
     gs,
     batch=None,
     res=0.05,
+    shapes=None,
     cmap=None,
     cbar=True,
     hide_outside=True,
@@ -262,7 +263,7 @@ def fe(
             cmap = red2blue_dark
 
     _raster(adata, res=res, color=gs, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
-    _shapes(adata, hide_outside=hide_outside, ax=ax, **shape_kws)
+    _shapes(adata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shape_kws)
 
 
 @savefig
@@ -357,13 +358,13 @@ def _shapes(
         warnings.warn("Shapes not found in data: " + ", ".join(missing_names))
 
     geo_kws = dict(edgecolor="none", facecolor="none")
-    geo_kws.update(**kwargs)
     if color_style == "outline":
         geo_kws["edgecolor"] = color
         geo_kws["facecolor"] = "none"
     elif color_style == "fill":
         geo_kws["facecolor"] = color
         geo_kws["edgecolor"] = "black"
+    geo_kws.update(**kwargs)
 
     for name in shape_names:
         hide = False
@@ -412,7 +413,7 @@ def fluxmap(
         colors = sns.color_palette(palette, n_colors=len(fluxmap_shapes))
         colormap = dict(zip(fluxmap_shapes, colors))
 
-    shape_kws = dict(color_style="fill", hide_outside=False)
+    shape_kws = dict(color_style="fill")
     shape_kws.update(kwargs)
 
     for s, c in colormap.items():
