@@ -8,6 +8,7 @@ from astropy.stats.spatial import RipleysKEstimator
 from scipy.spatial import distance
 from scipy.stats.stats import spearmanr
 from tqdm.auto import tqdm
+import re
 
 from .. import tools as tl
 from .._utils import track
@@ -729,6 +730,25 @@ def _second_moment(centroid, pts):
     radii = distance.cdist(centroid, pts)
     second_moment = np.sum(radii * radii / len(pts))
     return second_moment
+
+
+def list_point_features():
+    """Return a DataFrame of available point features. Pulls descriptions from function docstrings.
+
+    Returns
+    -------
+    list
+        List of available point features.
+    """
+
+    # Get point feature descriptions from docstrings
+    df = dict()
+    for k, v in point_features.items():
+        description = v.__doc__.split("Attributes")[0].strip()
+        description = re.sub("\s +", " ", description)
+        df[k] = description
+
+    return df
 
 
 point_features = dict(

@@ -350,6 +350,24 @@ def _span(data, shape_name):
     data.obs[f"{shape_prefix}_span"] = span
 
 
+def list_shape_features():
+    """Return a DataFrame of available shape features. Pulls descriptions from function docstrings.
+
+    Returns
+    -------
+    list
+        List of available shape features.
+    """
+
+    # Get shape feature descriptions from docstrings
+    df = dict()
+    for k, v in shape_features.items():
+        description = v.__doc__.split("Parameters")[0].strip()
+        df[k] = description
+
+    return df
+
+
 shape_features = dict(
     area=_area,
     aspect_ratio=_aspect_ratio,
