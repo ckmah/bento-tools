@@ -10,6 +10,7 @@ from ..geometry import get_points
 from ._layers import _raster, _scatter, _hist, _kde, _polygons
 from ._utils import savefig
 from .._utils import sync
+from ._colors import red2blue, red2blue_dark
 
 
 def _prepare_points_df(adata, semantic_vars=None):
@@ -54,11 +55,15 @@ def _setup_ax(
     if ax is None:
         ax = plt.gca()
 
+    # Infer font color from theme
+    edgecolor = sns.axes_style()["axes.edgecolor"]
+
     scalebar = ScaleBar(
         dx,
         units,
         location="lower right",
         box_alpha=0,
+        color=edgecolor,
         frameon=False,
         scale_loc="top",
     )
@@ -250,8 +255,11 @@ def fe(
         title=title,
     )
 
-    if not cmap:
-        cmap = "viridis"
+    if cmap is None:
+        if sns.axes_style()["axes.facecolor"] == "white":
+            cmap = red2blue
+        elif sns.axes_style()["axes.facecolor"] == "black":
+            cmap = red2blue_dark
 
     _raster(adata, res=res, color=gs, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
     _shapes(adata, hide_outside=hide_outside, ax=ax, **shape_kws)
@@ -300,7 +308,6 @@ def shapes(
         color=color,
         color_style=color_style,
         hide_outside=hide_outside,
-        frame_visible=frame_visible,
         ax=ax,
         **kwargs,
     )
@@ -350,13 +357,13 @@ def _shapes(
         warnings.warn("Shapes not found in data: " + ", ".join(missing_names))
 
     geo_kws = dict(edgecolor="none", facecolor="none")
+    geo_kws.update(**kwargs)
     if color_style == "outline":
         geo_kws["edgecolor"] = color
         geo_kws["facecolor"] = "none"
     elif color_style == "fill":
         geo_kws["facecolor"] = color
         geo_kws["edgecolor"] = "black"
-    geo_kws.update(**kwargs)
 
     for name in shape_names:
         hide = False
@@ -372,51 +379,52 @@ def _shapes(
         )
 
 
-@savefig
 def fluxmap(
     data,
     batch=None,
     palette="tab10",
     hide_outside=True,
-    axis_visible=False,
-    frame_visible=True,
-    title=None,
-    dx=0.1,
-    units="um",
-    square=False,
     ax=None,
-    fname=None,
     **kwargs,
 ):
-    # Default use first obs batch
-    if batch is None:
-        batch = data.obs["batch"].iloc[0]
-    adata = data[data.obs["batch"] == batch]
-    title = f"batch {batch}" if not title else title
+    """Plot fluxmap shapes in different colors.
 
-    ax = _setup_ax(
-        ax=ax,
-        dx=dx,
-        units=units,
-        square=square,
-        axis_visible=axis_visible,
-        frame_visible=frame_visible,
-        title=title,
-    )
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData
+    batch : str, optional
+        Batch to plot, by default None. If None, will use first batch.
+    palette : str or dict, optional
+        Color palette, by default "tab10". If dict, will use dict to map shape names to colors.
+    ax : matplotlib.axes.Axes, optional
+        Axis to plot on, by default None. If None, will use current axis.
+    fname : str, optional
 
-    # Plot base cell and nucleus shapes
-    _shapes(adata, hide_outside=hide_outside, ax=ax, linewidth=1)
+    """
 
     # Plot fluxmap shapes
-    fluxmap_shapes = [s for s in adata.obs.columns if s.startswith("fluxmap")]
-    for s, c in zip(
-        fluxmap_shapes, sns.color_palette(palette, n_colors=len(fluxmap_shapes))
-    ):
-        _shapes(
-            adata,
+    if isinstance(palette, dict):
+        colormap = palette
+    else:
+        fluxmap_shapes = [s for s in data.obs.columns if s.startswith("fluxmap")]
+        fluxmap_shapes.sort()
+        colors = sns.color_palette(palette, n_colors=len(fluxmap_shapes))
+        colormap = dict(zip(fluxmap_shapes, colors))
+
+    shape_kws = dict(color_style="fill", hide_outside=False)
+    shape_kws.update(kwargs)
+
+    for s, c in colormap.items():
+        shapes(
+            data,
+            batch=batch,
             shapes=s,
             color=c,
-            hide_outside=False,
+            hide_outside=hide_outside,
             ax=ax,
-            **kwargs,
+            **shape_kws,
         )
+
+    # Plot base cell and nucleus shapes
+    shapes(data, batch=batch, ax=ax)

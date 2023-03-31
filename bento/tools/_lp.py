@@ -51,7 +51,7 @@ def lp(data: AnnData, groupby: str = "gene", copy: bool = False):
 
     # Compute features
     feature_key = f"cell_{'_'.join(groupby)}_features"
-    if not feature_key in adata.uns.keys() or not all(
+    if feature_key not in adata.uns.keys() or not all(
         f in adata.uns[feature_key].columns for f in PATTERN_FEATURES
     ):
         bento.tl.analyze_points(
@@ -71,15 +71,15 @@ def lp(data: AnnData, groupby: str = "gene", copy: bool = False):
 
     pattern_prob = pd.DataFrame(
         model.predict_proba(X_df.values),
-        index=X_df.index,
         columns=PATTERN_NAMES,
     )
+    pattern_prob.index = adata.uns[feature_key].set_index(["cell", *groupby]).index
     thresholds = [0.45300, 0.43400, 0.37900, 0.43700, 0.50500]
 
     indicator_df = (pattern_prob >= thresholds).replace({True: 1, False: 0})
 
-    adata.uns["lp"] = indicator_df
-    adata.uns["lpp"] = pattern_prob
+    adata.uns["lp"] = indicator_df.reset_index()
+    adata.uns["lpp"] = pattern_prob.reset_index()
     return adata if copy else None
 
 
@@ -100,9 +100,13 @@ def lp_stats(data: AnnData, copy: bool = False):
     """
     adata = data.copy() if copy else data
 
-    lp = adata.uns["lp"][PATTERN_NAMES]
+    lp = adata.uns["lp"]
 
-    g_pattern_counts = lp.groupby("gene").apply(lambda df: df.sum())
+    cols = lp.columns
+    groupby = list(cols[~cols.isin(PATTERN_NAMES)])
+    groupby.remove("cell")
+
+    g_pattern_counts = lp.groupby(groupby).apply(lambda df: df[PATTERN_NAMES].sum())
     adata.uns["lp_stats"] = g_pattern_counts
 
     return adata if copy else None

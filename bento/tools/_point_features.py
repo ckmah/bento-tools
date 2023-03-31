@@ -144,9 +144,9 @@ def analyze_points(
     print("Saving results...")
     output_key = "_".join([*groupby, "features"])
     if output_key in adata.uns:
-        adata.uns[output_key][output.columns] = output
+        adata.uns[output_key][output.columns] = output.reset_index(drop=True)
     else:
-        adata.uns[output_key] = output
+        adata.uns[output_key] = output.reset_index()
 
     print("Done.")
     return adata if copy else None
@@ -191,12 +191,14 @@ class ShapeProximity(PointFeature):
     the average absolute distance to the specified `shape_name` normalized by cell
     radius. Values closer to 0 denote farther from the `shape_name`, values closer
     to 1 denote closer to the `shape_name`.
+
     Attributes
     ----------
     cell_features : int
         Set of cell-level features needed for computing sample-level features
     attributes : int
         Names (keys) used to store computed cell-level features
+
     Returns
     -------
     dict
@@ -207,7 +209,7 @@ class ShapeProximity(PointFeature):
     def __init__(self, shape_name):
         super().__init__(shape_name)
         self.cell_features.add("radius")
-        self.attributes.add(f"cell_radius")
+        self.attributes.add("cell_radius")
         self.shape_name = shape_name
 
     def extract(self, df):
@@ -258,6 +260,7 @@ class ShapeAsymmetry(PointFeature):
     the offset between the centroid of points to the centroid of the specified
     `shape_name`, normalized by cell radius. Values closer to 0 denote symmetry,
     values closer to 1 denote asymmetry.
+
     Attributes
     ----------
     cell_features : int
@@ -266,6 +269,7 @@ class ShapeAsymmetry(PointFeature):
         Names (keys) used to store computed cell-level features
     shape_name : str
         Name of shape to use, must be column name in input DataFrame
+
     Returns
     -------
     dict
@@ -325,12 +329,14 @@ class PointDispersionNorm(PointFeature):
     """For a set of points, calculates the second moment of all points in a cell
     relative to the centroid of the total RNA signal. This value is normalized by
     the second moment of a uniform distribution within the cell boundary.
+
     Attributes
     ----------
     cell_features : int
         Set of cell-level features needed for computing sample-level features
     cell_attributes : int
         Names (keys) used to store computed cell-level features
+
     Returns
     -------
     dict
@@ -365,12 +371,14 @@ class ShapeDispersionNorm(PointFeature):
     """For a set of points, calculates the second moment of all points in a cell relative to the
     centroid of `shape_name`. This value is normalized by the second moment of a uniform
     distribution within the cell boundary.
+
     Attributes
     ----------
     cell_features : int
         Set of cell-level features needed for computing sample-level features
     cell_attributes : int
         Names (keys) used to store computed cell-level features
+
     Returns
     -------
     dict

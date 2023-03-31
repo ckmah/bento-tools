@@ -88,13 +88,13 @@ def signatures_error(adata, fname=None):
 def colocation(
     adata,
     rank,
-    n_top=None,
-    z_score=False,
+    n_top=(None, None, 5),
+    z_score=(False, True, True),
     cut=None,
-    show_labels=[True, False, False],
-    cluster=[False, True, True],
-    self_pairs=True,
-    figsize=(10, 6),
+    show_labels=[True, False, True],
+    cluster=[False, True, False],
+    self_pairs=False,
+    figsize=(8, 6),
     fname=None,
 ):
     """Plot colocation of signatures for specified rank across each dimension.

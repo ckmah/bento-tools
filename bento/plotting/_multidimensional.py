@@ -16,13 +16,23 @@ from ._colors import red_light
 from ._utils import savefig
 
 
-def _quantiles(data, x, **kwargs):
+def _quantiles(data: pd.DataFrame, x: str, **kwargs):
+    """Plot quantiles on top of a stripplot.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Dataframe with x column
+    x : str
+        Column to plot quantiles for
+    """
     ax = plt.gca()
 
     ylims = ax.get_ylim()
     ymargin = 0.3 * (ylims[1] - ylims[0])
-    quants = np.percentile(data[x], [0, 1, 25, 50, 75, 99, 100])
+    quants = np.percentile(data[x], [0, 25, 50, 75, 100])
     palette = sns.color_palette("red2blue", n_colors=len(quants) - 1)
+    linecolor = sns.axes_style()["axes.edgecolor"]
 
     xys = [(q, ylims[0]) for q in quants[:-1]]
     widths = [quants[i + 1] - quants[i] for i in range(len(quants) - 1)]
@@ -35,7 +45,7 @@ def _quantiles(data, x, **kwargs):
             facecolor=c,
             alpha=0.8,
             linewidth=1,
-            edgecolor="black",
+            edgecolor=linecolor,
             clip_on=False,
         )
         for xy, w, c in zip(xys, widths, palette)
@@ -56,7 +66,7 @@ def obs_stats(
         "nucleus_aspect_ratio",
         "nucleus_density",
     ],
-    s=5,
+    s=3,
     alpha=0.3,
     rug=False,
     fname=None,
@@ -77,23 +87,27 @@ def obs_stats(
         lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=100).flatten()
     )
 
-    # TODO test
     stats_long["shape"] = stats_long["variable"].apply(lambda x: x.split("_")[0])
+    stats_long["var"] = stats_long["variable"].apply(
+        lambda x: "_".join(x.split("_")[1:])
+    )
+
+    linecolor = sns.axes_style()["axes.edgecolor"]
 
     g = sns.FacetGrid(
         data=stats_long,
-        row="variable",
+        row="var",
         col="shape",
         height=1.2,
         aspect=2,
         sharex=False,
         sharey=False,
-        margin_titles=False,
+        margin_titles=True,
     )
     g.map_dataframe(
         sns.stripplot,
         x="value",
-        color="black",
+        color=linecolor,
         s=s,
         alpha=alpha,
         rasterized=True,
@@ -107,12 +121,12 @@ def obs_stats(
         ax.set_yticks([])
         ax.ticklabel_format(axis="x", style="sci", scilimits=(-2, 4))
         sns.despine(ax=ax, left=True)
-    g.set_titles(template="{row_name}", row_template="", col_template="")
+    g.set_titles(row_template="{row_name}", col_template="{col_name}")
 
     def plot_median(data, **kwargs):
         plt.axvline(data.median(), **kwargs)
 
-    g.map(plot_median, "value", c="black", lw=1.5, zorder=3)
+    g.map(plot_median, "value", c=linecolor, lw=1.5, zorder=3)
 
 
 @savefig
@@ -123,7 +137,7 @@ def flux_summary(
     annotate=None,
     adjust=True,
     palette=red_light,
-    annot_color="black",
+    annot_color=None,
     sizes=(5, 30),
     size_norm=(10, 100),
     dim_order=None,
@@ -187,7 +201,7 @@ def _radviz(
     annotate=None,
     adjust=True,
     palette=red_light,
-    annot_color="black",
+    annot_color=None,
     sizes=None,
     size_norm=None,
     dim_order="auto",
@@ -219,10 +233,14 @@ def _radviz(
         # RADVIZ plot
         if not ax:
             figsize = (5, 5)
-            fig = plt.figure(figsize=figsize)
+            plt.figure(figsize=figsize)
             ax = plt.gca()
-        else:
-            fig = ax.get_figure()
+
+        edgecolor = sns.axes_style()["axes.edgecolor"]
+
+        # Infer annot_color from theme
+        if annot_color is None:
+            annot_color = edgecolor
 
         # Remove unexpressed genes
         ndims = comp_stats.columns.get_loc("logcounts") - 1
@@ -244,7 +262,7 @@ def _radviz(
 
         # Plot the "circular" axis, labels and point positions
         comp_stats["_"] = ""
-        pd.plotting.radviz(comp_stats[[*dims, "_"]], "_", s=20, ax=ax)
+        pd.plotting.radviz(comp_stats[[*dim_order, "_"]], "_", s=0, ax=ax)
         ax.get_legend().remove()
 
         # Get points
@@ -263,7 +281,7 @@ def _radviz(
         poly = plt.Polygon(
             [v.center for v in vertices],
             facecolor="none",
-            edgecolor="black",
+            edgecolor=edgecolor,
             zorder=1,
         )
         ax.add_patch(poly)
@@ -277,7 +295,7 @@ def _radviz(
                     line_xy[:, 1],
                     linestyle=":",
                     linewidth=1,
-                    color="black",
+                    color=edgecolor,
                     zorder=1,
                     alpha=0.4,
                 )
@@ -366,6 +384,12 @@ def _radviz(
             )
 
             # Add text labels
+            if annot_color == "black":
+                stroke_color = "white"
+            elif annot_color == "white":
+                stroke_color = "black"
+            else:
+                stroke_color = "black"
             texts = [
                 ax.text(
                     row[0],
@@ -373,7 +397,7 @@ def _radviz(
                     i,
                     fontsize=8,
                     weight="medium",
-                    path_effects=[pe.withStroke(linewidth=2, foreground="white")],
+                    path_effects=[pe.withStroke(linewidth=2, foreground=stroke_color)],
                 )
                 for i, row in top_xy.iterrows()
             ]
@@ -385,7 +409,7 @@ def _radviz(
                     texts,
                     expand_points=(2, 2),
                     add_objects=[scatter],
-                    arrowprops=dict(arrowstyle="-", color="black", lw=1),
+                    arrowprops=dict(arrowstyle="-", color=edgecolor, lw=1),
                     ax=ax,
                 )
 

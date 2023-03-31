@@ -160,6 +160,7 @@ def _opening(data, proportion):
 def _second_moment_polygon(centroid, pts):
     """
     Calculate second moment of points with centroid as reference.
+
     Parameters
     ----------
     centroid : [1 x 2] float

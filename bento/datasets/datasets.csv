@@ -1,5 +1,9 @@
 name,n_cells,n_genes,n_points,url,description
-merfish_raw,1153,135,16907948,https://ndownloader.figshare.com/files/29046861,U2-OS cell line profiled with MERFISH
-merfish,1022,135,15315044,https://figshare.com/ndownloader/files/35596979,precomputed version of the U2-OS cell line profiled with MERFISH
-seqfish_raw,211,9506,5306521,https://ndownloader.figshare.com/files/29046873,3T3 cell line profiled with seqFISH+
-seqfish,179,3726,4680210,https://figshare.com/ndownloader/files/35596982,precomputed version of the 3T3 cell line profiled with seqFISH+
+merfish,1153,135,16907948,https://ndownloader.figshare.com/files/29046861,U2-OS cell line profiled with MERFISH
+merfish_processed,1022,135,15315044,https://figshare.com/ndownloader/files/35596979,precomputed version of the U2-OS cell line profiled with MERFISH
+seqfish,211,9506,5306521,https://ndownloader.figshare.com/files/29046873,3T3 cell line profiled with seqFISH+
+seqfish_processed,179,3726,4680210,https://figshare.com/ndownloader/files/35596982,precomputed version of the 3T3 cell line profiled with seqFISH+
+cardio_control1,,,,https://figshare.com/ndownloader/files/39850386,"vehicle replicate 1, iPSC-derived cardiomyocytes profiled with Molecular Cartography"
+cardio_control2,,,,https://figshare.com/ndownloader/files/39850383,"vehicle replicate 2, iPSC-derived cardiomyocytes profiled with Molecular Cartography"
+cardio_dox1,,,,https://figshare.com/ndownloader/files/39850470,"treatment replicate 1, doxorubicin-treated iPSC-derived cardiomyocytes profiled with Molecular Cartography"
+cardio_dox2,,,,https://figshare.com/ndownloader/files/39850613,"treatment replicate 2, doxorubicin-treated iPSC-derived cardiomyocytes profiled with Molecular Cartography"

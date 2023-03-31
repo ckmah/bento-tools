@@ -6,23 +6,17 @@ import pandas as pd
 import pkg_resources
 from anndata import AnnData
 
-from bento._utils import register_points, track, _register_points
+from bento._utils import track, _register_points
 
 
-def fe_fazal2019(
-    data: AnnData, batch_size: int = 10000, min_n: int = 5, copy: bool = False
-) -> Optional[AnnData]:
+def fe_fazal2019(data: AnnData, copy: bool = False, **kwargs) -> Optional[AnnData]:
     """Compute enrichment scores from subcellular compartment gene sets from Fazal et al. 2019 (APEX-seq).
-    Wrapper for `bento.tl.fe`.
+    See `bento.tl.fe` docs for parameter details.
 
     Parameters
     ----------
     data : AnnData
         Spatial formatted AnnData object.
-    batch_size : int
-        Number of points to process in each batch. Default 10000.
-    min_n : int
-        Minimum number of targets per source. If less, sources are removed.
     copy : bool
         Return a copy instead of writing to `adata`. Default False.
     Returns
@@ -33,9 +27,30 @@ def fe_fazal2019(
     adata = data.copy() if copy else data
 
     gene_sets = load_gene_sets("fazal2019")
+    fe(adata, net=gene_sets, **kwargs)
 
-    # Compute enrichment scores
-    fe(adata, gene_sets, batch_size=batch_size, min_n=min_n)
+    return adata if copy else None
+
+
+def fe_xia2019(data: AnnData, copy: bool = False, **kwargs) -> Optional[AnnData]:
+    """Compute enrichment scores from subcellular compartment gene sets from Xia et al. 2019 (MERFISH 10k U2-OS).
+    See `bento.tl.fe` docs for parameters details.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object.
+    copy : bool
+        Return a copy instead of writing to `adata`. Default False.
+    Returns
+    -------
+    DataFrame
+        Enrichment scores for each gene set.
+    """
+    adata = data.copy() if copy else data
+
+    gene_sets = load_gene_sets("xia2019")
+    fe(adata, gene_sets, **kwargs)
 
     return adata if copy else None
 
@@ -44,7 +59,6 @@ def fe_fazal2019(
 def fe(
     data: AnnData,
     net: pd.DataFrame,
-    groupby: Optional[str] = None,
     source: Optional[str] = "source",
     target: Optional[str] = "target",
     weight: Optional[str] = "weight",
@@ -61,8 +75,6 @@ def fe(
         Spatial formatted AnnData object.
     net : DataFrame
         DataFrame with columns "source", "target", and "weight". See decoupler API for more details.
-    groupby : str, optional
-        Column in `adata.uns["cell_raster"]` to group by. Default None.
     source : str, optional
         Column name for source nodes in `net`. Default "source".
     target : str, optional
@@ -108,14 +120,6 @@ def fe(
     )
 
     scores = enrichment[1].reindex(index=samples)
-
-    if groupby:
-        scores = scores.groupby(
-            adata.uns["cell_raster"][groupby].reset_index(drop=True)
-        ).mean()
-        scores = adata.uns["cell_raster"].merge(
-            scores, left_on="flux", right_index=True, how="left"
-        )[scores.columns]
 
     for col in scores.columns:
         score_key = f"flux_{col}"
@@ -167,6 +171,7 @@ def _fe_stats(
 
 gene_sets = dict(
     fazal2019="fazal2019.csv",
+    xia2019="xia2019.csv",
 )
 
 

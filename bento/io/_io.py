@@ -50,7 +50,7 @@ def read_h5ad(filename, backed=None):
 
 
 def write_h5ad(data, filename):
-    """Write AnnData to h5ad. Casts each GeoDataFrame in adata.uns['masks'] for h5ad compatibility.
+    """Write AnnData to h5ad.
 
     Parameters
     ----------
@@ -361,7 +361,7 @@ def concatenate(adatas):
         if "batch" not in points.columns:
             points["batch"] = i
 
-        points["cell"] = points["cell"].astype(str) + "-" + points["batch"].astype(str)
+        points["cell"] = points["cell"].astype(str) + "-" + str(i)
 
         uns_points.append(points)
 
