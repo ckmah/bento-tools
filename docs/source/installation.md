@@ -1,4 +1,4 @@
-# Installation
+# {octicon}`terminal` Installation 
 Bento requires Python version 3.8 or 3.9. Only Python 3.8 is supported for Windows.
 
 
@@ -30,7 +30,7 @@ conda install -c TBD bento-tools
 
 ### Install with pip
 
-You can also install Bento with pip but you will need to install dependencies manually. See the [dependencies](#dependencies) section for more details.
+You can also install Bento with pip but you will need to install dependencies manually. See the [dependencies](#Dependencies) section for more details.
 
 ```bash
 pip install bento-tools

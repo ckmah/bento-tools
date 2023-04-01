@@ -39,7 +39,7 @@ extensions = [
     "sphinx_design",
 ]
 
-myst_enable_extensions = ["colon_fence", "html_image"]
+myst_enable_extensions = ["colon_fence", "html_image", "dollarmath"]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -61,7 +61,9 @@ html_theme_options = {
     "use_repository_button": True,
     "use_edit_page_button": True,
     "path_to_docs": "docs",
-    "logo_only": True,
+    "logo": {
+        "alt_text": "Bento Logo",
+    },
 }
 
 html_context = {"default_mode": "auto"}

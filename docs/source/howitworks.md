@@ -1,4 +1,4 @@
-# How it Works
+# {octicon}`gear` How it Works
 
 ## Data Structure
 

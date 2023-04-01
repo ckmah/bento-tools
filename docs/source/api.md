@@ -5,22 +5,22 @@
    :noindex:
 ```
 
-# API
+# {octicon}`code-square` API
 
 Import Bento with:
 
 ```python
-import bento
+import bento as bt
 ```
 
 Bento's API structure takes inspiration from other libraries in the Scverse ecosystem. It is organized under a set of modules including:
 
-- `bento.tl`: subcellular spatial analyses
-- `bento.pl`: conveniently plot spatial data and embeddings
-- `bento.io`: reading and writing spatial data to `AnnData` as `h5ad` files
-- `bento.geo`: functions for manipulating spatial data
-- `bento.datasets`: included spatial transcriptomics datasets
-- `bento.ut`: utility functions
+- `bt.tl`: subcellular spatial analyses
+- `bt.pl`: conveniently plot spatial data and embeddings
+- `bt.io`: reading and writing spatial data to `AnnData` as `h5ad` files
+- `bt.geo`: functions for manipulating spatial data
+- `bt.datasets`: included spatial transcriptomics datasets
+- `bt.ut`: utility functions
 
 # Tools
 
