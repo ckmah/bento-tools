@@ -18,12 +18,12 @@ sys.path.insert(0, os.path.abspath(".."))  # Source code dir relative to this fi
 # -- Project information -----------------------------------------------------
 
 project = "bento-tools"
-copyright = "Clarence Mah. 2021"
+copyright = " Carter Lab & Yeo Lab. 2023"
 author = "Clarence Mah"
 html_favicon = "favicon.ico"
 
 # The full version, including alpha/beta/rc tags
-release = "0.1"
+release = "2.0.0a0"
 
 
 # -- General configuration ---------------------------------------------------
