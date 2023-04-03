@@ -40,8 +40,9 @@ pip install bento-tools
 
 Bento makes use of several packages for spatial analyses that require addtional non-Python dependencies. These dependencies are automatically installed when using the conda package. If you are installing with pip, you will need to install these dependencies manually.
 
-gdal
-cmake
+1. [gdal](https://gdal.org/) (see docs for [geopandas dependencies](https://geopandas.org/en/stable/getting_started/install.html#dependencies))
+2. [cmake](https://cmake.org/) ([xgboost](https://xgboost.readthedocs.io/en/latest/install.html))
+3. [pandoc](https://pandoc.org/installing.html) (for sphinx documentation)
 
 ---
 ## GPU Support (Optional)

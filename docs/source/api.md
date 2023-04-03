@@ -28,7 +28,7 @@ Bento's API structure takes inspiration from other libraries in the Scverse ecos
 
 Compute spatial summary statistics describing groups of molecules e.g. distance to the cell membrane, relative symmetry, dispersion, etc.
 
-A list of available cell features and their names is stored in the dict `bento.tl.point_features`.
+A list of available cell features and their names is stored in the dict :func:`bt.tl.point_features`.
 
 ```{eval-rst}
 .. module:: bento.tl
@@ -45,7 +45,7 @@ A list of available cell features and their names is stored in the dict `bento.t
 
 Compute spatial properties of shape features e.g. area, aspect ratio, etc. of the cell, nucleus, or other region of interest.
 
-A list of available cell features and their names is stored in the dict `bento.tl.shape_features`.
+A list of available cell features and their names is stored in the dict :func:`bt.tl.shape_features`.
 
 ```{eval-rst}
 .. module:: bento.tl
@@ -188,7 +188,7 @@ These are convenient functions for quick 2D visualizations of cells, molecules, 
 
 # Manipulating spatial data
 
-Convenient methods for setting, getting, and reformatting data for `bento-tools`.
+Convenient methods for setting, getting, and reformatting data.
 
 ```{eval-rst}
 .. module:: bento.geo

@@ -24,6 +24,19 @@ def get_dataset_info():
 
 
 def load_dataset(name, cache=True, data_home="~/bento-data", **kws):
+    """Load a builtin dataset.
+
+    Parameters
+    ----------
+    name : str
+        Name of the dataset to load.
+    cache : bool (default: True)
+        If True, try to load from local cache first, download as needed.
+    data_home : str (default: "~/bento-data")
+        Path to directory where datasets are stored.
+    **kws
+        Keyword arguments passed to :func:`bento.io.read_h5ad`.
+    """
     datainfo = get_dataset_info()
 
     # Check if dataset name exists

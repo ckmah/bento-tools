@@ -148,14 +148,14 @@ def lp_genes(
 @savefig
 def lp_diff(data: AnnData, phenotype: str, fname: str = None):
     """Visualize gene pattern frequencies between groups of cells by plotting
-    log2 fold change and -log10p, similar to volcano plot. Run after `bento.tl.lp_diff()`
+    log2 fold change and -log10p, similar to volcano plot. Run after :func:`bento.tl.lp_diff()`
 
     Parameters
     ----------
     data : AnnData
         Spatial formatted AnnData
     phenotype : str
-        Variable used to group cells when calling `bento.tl.lp_diff()`.
+        Variable used to group cells when calling :func:`bento.tl.lp_diff()`.
     fname : str, optional
         Save the figure to specified filename, by default None
     """

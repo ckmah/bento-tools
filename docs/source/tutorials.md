@@ -11,7 +11,7 @@ tutorial_gallery/Spatial_Features
 
 ::::{grid} 3
 :::{grid-item-card}  Main Guide
-:link: tutorial_gallery/Bento_Guide.html
+:link: tutorial_gallery/Main_Guide.html
 
 This tutorial will walk you through how to load, visualize data, and perform subcellular analysis.
 :::

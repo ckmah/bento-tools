@@ -8,9 +8,11 @@
 
 # Bento
 
+<img src="_static/tutorial_img/bento_tools.png" alt="Bento Workflow" width="800">
+
+
 Bento is a Python toolkit for performing subcellular analysis of spatial transcriptomics data. The package is part of the [Scverse ecosystem](https://scverse.org/packages/#ecosystem). Check out the [documentation](https://bento-tools.readthedocs.io/en/latest/) for installation instructions, tutorials, and API. Cite [our preprint](https://doi.org/10.1101/2022.06.10.495510) if you use Bento in your work. Thanks!
 
-<img src="_static/tutorial_img/bento_tools.png" alt="Bento Workflow" width="800">
 
 ::::{grid} 2
 :::{grid-item-card} {octicon}`terminal` Installation

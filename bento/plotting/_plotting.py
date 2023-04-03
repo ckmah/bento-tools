@@ -389,7 +389,7 @@ def fluxmap(
     fname=None,
     **kwargs,
 ):
-    """Plot fluxmap shapes in different colors. Wrapper for `bt.pl.shapes()`.
+    """Plot fluxmap shapes in different colors. Wrapper for :func:`bt.pl.shapes()`.
 
     Parameters
     ----------
