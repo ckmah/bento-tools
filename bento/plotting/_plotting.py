@@ -386,9 +386,10 @@ def fluxmap(
     palette="tab10",
     hide_outside=True,
     ax=None,
+    fname=None,
     **kwargs,
 ):
-    """Plot fluxmap shapes in different colors.
+    """Plot fluxmap shapes in different colors. Wrapper for `bt.pl.shapes()`.
 
     Parameters
     ----------
@@ -401,7 +402,7 @@ def fluxmap(
     ax : matplotlib.axes.Axes, optional
         Axis to plot on, by default None. If None, will use current axis.
     fname : str, optional
-
+        Filename to save figure to, by default None. If None, will not save figure.
     """
 
     # Plot fluxmap shapes
@@ -428,4 +429,4 @@ def fluxmap(
         )
 
     # Plot base cell and nucleus shapes
-    shapes(data, batch=batch, ax=ax)
+    shapes(data, batch=batch, ax=ax, fname=fname)
