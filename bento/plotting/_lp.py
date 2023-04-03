@@ -1,12 +1,12 @@
+from typing import List, Tuple, Union
 import warnings
 
 warnings.filterwarnings("ignore")
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import seaborn as sns
-from pandas.plotting import radviz
+from anndata import AnnData
 from upsetplot import UpSet, from_indicators
 
 from .._constants import PATTERN_COLORS, PATTERN_NAMES
@@ -87,14 +87,15 @@ def lp_gene_dist(data, fname=None):
     sns.despine()
 
 
+@savefig
 def lp_genes(
-    data,
-    groupby="gene",
-    annotate=None,
-    sizes=(2, 200),
-    size_norm=(0, 100),
-    ax=None,
-    fname=None,
+    data: AnnData,
+    groupby: str = "gene",
+    annotate: Union[int, List[str], None] = None,
+    sizes: Tuple[int] = (2, 100),
+    size_norm: Tuple[int] = (0, 100),
+    ax: plt.Axes = None,
+    fname: str = None,
     **kwargs,
 ):
     """
@@ -108,10 +109,14 @@ def lp_genes(
         Spatial formatted AnnData
     groupby : str
         Grouping variable, default "gene"
+    annotate : int, list of str, optional
+        Annotate the top n genes or a list of genes, by default None
     sizes : tuple
         Minimum and maximum point size to scale points, default (2, 100)
-    gridsize : int
-        Number of hex bins along each axis, default 20
+    size_norm : tuple
+        Minimum and maximum data values to scale point size, default (0, 100)
+    ax : matplotlib.Axes, optional
+        Axis to plot on, by default None
     fname : str, optional
         Save the figure to specified filename, by default None
     **kwargs
@@ -123,7 +128,6 @@ def lp_genes(
 
     n_cells = data.n_obs
     gene_frac = data.uns["lp_stats"][PATTERN_NAMES] / n_cells
-    # gene_frac["Pattern"] = gene_frac.idxmax(axis=1)
 
     gene_logcount = data.X.mean(axis=0, where=data.X > 0)
     gene_logcount = np.log2(gene_logcount + 1)
@@ -142,7 +146,7 @@ def lp_genes(
 
 
 @savefig
-def lp_diff(data, phenotype, fname=None):
+def lp_diff(data: AnnData, phenotype: str, fname: str = None):
     """Visualize gene pattern frequencies between groups of cells by plotting
     log2 fold change and -log10p, similar to volcano plot. Run after `bento.tl.lp_diff()`
 
