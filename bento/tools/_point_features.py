@@ -1,3 +1,9 @@
+import warnings
+from shapely.errors import ShapelyDeprecationWarning
+
+warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
+
+
 from abc import ABCMeta, abstractmethod
 from typing import List, Optional, Union
 

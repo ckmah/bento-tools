@@ -1,10 +1,11 @@
 import unittest
 import bento
 
-data = bento.datasets.sample_data()
+data = bento.ds.sample_data()
 radius = 50
 n_neighbors = 20
 res = 0.02
+
 
 class TestFlux(unittest.TestCase):
     def test_flux_radius(self):
@@ -33,9 +34,7 @@ class TestFlux(unittest.TestCase):
 
     def test_fluxmap(self):
         bento.tl.flux(data, method="radius", radius=radius, res=res)
-        bento.tl.fluxmap(
-            data, n_clusters=range(2, 4), train_size=0.2, res=res
-        )
+        bento.tl.fluxmap(data, n_clusters=range(2, 4), train_size=0.2, res=res)
         bento.tl.fluxmap(data, n_clusters=3, train_size=1, res=res)
         self.assertTrue("fluxmap" in data.uns["cell_raster"])
         self.assertTrue(

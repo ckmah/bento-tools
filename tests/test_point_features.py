@@ -2,7 +2,7 @@ import unittest
 import bento
 import numpy as np
 
-data = bento.ds.sample_data()[:2]
+data = bento.ds.sample_data()[:5, :5]
 bento.sync(data)
 
 

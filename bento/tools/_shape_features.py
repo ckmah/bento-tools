@@ -1,3 +1,9 @@
+import warnings
+from shapely.errors import ShapelyDeprecationWarning
+
+warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
+
+
 from typing import Callable, Dict, List, Union
 
 import matplotlib.path as mplPath
