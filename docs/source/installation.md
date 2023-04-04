@@ -18,37 +18,29 @@ conda config --env --add channels conda-forge
 
 conda activate bento
 ```
-## 2. Install Bento
+## 2. Dependencies
 
-We recommend installing the Bento conda package from the [TBD channel](TBD). This will install all dependencies and Bento.
-
-### Install with conda
+Bento makes use of several packages for spatial analyses that require addtional non-Python dependencies.
 
 ```bash
-conda install -c TBD bento-tools
+conda install -c conda-forge gdal cmake
 ```
 
-### Install with pip
-
-You can also install Bento with pip but you will need to install dependencies manually. See the [dependencies](#Dependencies) section for more details.
+For developing docs, you will also need pandoc:
 
 ```bash
-pip install bento-tools
+conda install -c conda-forge pandoc
 ```
 
-## Dependencies
+## 3. Install Bento
 
-Bento makes use of several packages for spatial analyses that require addtional non-Python dependencies. These dependencies are automatically installed when using the conda package. If you are installing with pip, you will need to install these dependencies manually.
+All that's left is the package itself. Install with pip:
 
-1. [gdal](https://gdal.org/) (see docs for [geopandas dependencies](https://geopandas.org/en/stable/getting_started/install.html#dependencies))
-2. [cmake](https://cmake.org/) ([xgboost](https://xgboost.readthedocs.io/en/latest/install.html))
-3. [pandoc](https://pandoc.org/installing.html) (for sphinx documentation)
+```bash
+pip install bento-tools==2.0.0a0
+```
 
 ---
-## GPU Support (Optional)
-Bento currently only uses GPUs to accelerate tensor decomposition (via [Tensorly](https://tensorly.org/stable/index.html)) GPU support can be enabled by installing PyTorch. We recommend the [PyTorch installation instructions](https://pytorch.org/get-started/locally/) for more details as installation varies by platform.
-
-
 ## Development
 The package and its dependencies are built using [Poetry](https://python-poetry.org/).
 
@@ -64,8 +56,16 @@ The package and its dependencies are built using [Poetry](https://python-poetry.
 
     For updating documentation locally, install extra dependencies and launch a live server to preview doc builds:
 
+    First install pandoc (see [dependencies](#Dependencies) section for more details).
+
     ```bash
     poetry install --extras "docs"
+    pip install -e .\[docs\]
     cd docs
     make livehtml # See output for URL
     ```
+
+---
+## GPU Support (Optional)
+Bento currently only uses GPUs to accelerate tensor decomposition (via [Tensorly](https://tensorly.org/stable/index.html)) GPU support can be enabled by installing PyTorch. We recommend the [PyTorch installation instructions](https://pytorch.org/get-started/locally/) for more details as installation varies by platform.
+
