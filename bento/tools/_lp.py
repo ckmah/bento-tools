@@ -142,7 +142,6 @@ def _lp_logfc(data, phenotype=None):
 
     gene_fc_stats = []
     for c in PATTERN_NAMES:
-
         # save pattern frequency to new column, one for each group
         group_freq = (
             pattern_df.pivot(index="cell", columns=groups_name, values=c)
@@ -294,7 +293,7 @@ def lp_diff(
                 ["cell", groups_name]
             ]
             p_labels = p_labels.pivot(index="cell", columns="gene", values=p)
-            p_corr = p_df.corrwith(phenotype_vector, drop=True)
+            p_corr = p_labels.corrwith(phenotype_vector, drop=True)
             pattern_dfs[p] = p_labels
 
     else:
