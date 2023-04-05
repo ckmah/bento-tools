@@ -1,7 +1,7 @@
 import unittest
-import bento
+import bento as bt
 
-data = bento.ds.sample_data()
+data = bt.ds.sample_data()
 radius = 50
 n_neighbors = 20
 res = 0.02
@@ -9,7 +9,7 @@ res = 0.02
 
 class TestFlux(unittest.TestCase):
     def test_flux_radius(self):
-        bento.tl.flux(data, method="radius", radius=radius, res=res)
+        bt.tl.flux(data, method="radius", radius=radius, res=res)
 
         self.assertTrue(
             key in data.uns.keys() for key in ["flux", "flux_embed", "color"]
@@ -21,7 +21,7 @@ class TestFlux(unittest.TestCase):
         self.assertTrue(data.uns["flux_color"].flatten()[0][0] == "#")
 
     def test_flux_knn(self):
-        bento.tl.flux(data, method="knn", n_neighbors=n_neighbors, res=res)
+        bt.tl.flux(data, method="knn", n_neighbors=n_neighbors, res=res)
 
         self.assertTrue(
             key in data.uns.keys() for key in ["flux", "flux_embed", "flux_color"]
@@ -33,9 +33,9 @@ class TestFlux(unittest.TestCase):
         self.assertTrue(data.uns["flux_color"].flatten()[0][0] == "#")
 
     def test_fluxmap(self):
-        bento.tl.flux(data, method="radius", radius=radius, res=res)
-        bento.tl.fluxmap(data, n_clusters=range(2, 4), train_size=0.2, res=res)
-        bento.tl.fluxmap(data, n_clusters=3, train_size=1, res=res)
+        bt.tl.flux(data, method="radius", radius=radius, res=res)
+        bt.tl.fluxmap(data, n_clusters=range(2, 4), train_size=0.2, res=res)
+        bt.tl.fluxmap(data, n_clusters=3, train_size=1, res=res)
         self.assertTrue("fluxmap" in data.uns["cell_raster"])
         self.assertTrue(
             [

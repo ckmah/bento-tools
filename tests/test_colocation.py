@@ -1,7 +1,7 @@
 import unittest
 import bento as bt
 
-data = bt.datasets.sample_data()
+data = bt.ds.sample_data()
 
 rank = 3
 

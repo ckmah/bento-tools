@@ -1,17 +1,17 @@
 import unittest
-import bento
+import bento as bt
 
-data = bento.datasets.sample_data()
+data = bt.ds.sample_data()
 
 
 class TestGeometry(unittest.TestCase):
     def test_crop(self):
 
         # Get bounds of first cell
-        cell_shape = bento.geo.get_shape(data, "cell_shape")
+        cell_shape = bt.geo.get_shape(data, "cell_shape")
         xmin, ymin, xmax, ymax = cell_shape.bounds.iloc[0]
 
-        adata_crop = bento.geo.crop(data, (xmin, xmax), (ymin, ymax), copy=True)
+        adata_crop = bt.geo.crop(data, (xmin, xmax), (ymin, ymax), copy=True)
 
         # Check that cropped data only contains first cell
         self.assertTrue(adata_crop.obs.shape[0] == 1)
@@ -25,9 +25,9 @@ class TestGeometry(unittest.TestCase):
 
     def test_rename_cells(self):
         res=0.02
-        bento.tl.flux(data, method="radius", radius=200, res=res)
-        bento.tl.fluxmap(data, 2, train_size=1, res=res)
-        bento.geo.rename_shapes(
+        bt.tl.flux(data, method="radius", radius=200, res=res)
+        bt.tl.fluxmap(data, 2, train_size=1, res=res)
+        bt.geo.rename_shapes(
             data,
             {"fluxmap1_shape": "fluxmap3_shape", "fluxmap2_shape": "fluxmap4_shape"},
             points_key=["points", "cell_raster"],
