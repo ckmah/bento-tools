@@ -27,6 +27,7 @@ def analyze_points(
     shape_names: List[str],
     feature_names: List[str],
     groupby: Optional[Union[str, List[str]]] = None,
+    progress: bool = False,
     copy: bool = False,
 ):
     """Calculate the set of specified `features` for each point group. Groups are within each cell.
@@ -91,7 +92,7 @@ def analyze_points(
     obs_attrs = list(obs_attrs)
 
     print("Calculating cell features...")
-    tl.analyze_shapes(adata, "cell_shape", cell_features, progress=True)
+    tl.analyze_shapes(adata, "cell_shape", cell_features, progress=progress)
 
     # Make sure attributes are present
     attrs_found = set(obs_attrs).intersection(set(adata.obs.columns.tolist()))
@@ -141,7 +142,11 @@ def analyze_points(
 
     output = []
     print("Processing point features...")
-    for start, end in tqdm(zip(group_loc, end_loc), total=len(cells)):
+    if progress:
+        group_locs = tqdm(zip(group_loc, end_loc), total=len(cells))
+    else:
+        group_locs = zip(group_loc, end_loc)
+    for start, end in group_locs:
         cell_points = points_df.iloc[start:end]
         output.append(process_partition(cell_points))
     output = pd.concat(output)
