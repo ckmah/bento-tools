@@ -18,7 +18,7 @@ from .._utils import sync, track
 from ..geometry import get_points, get_shape
 
 
-def _area(data: AnnData, shape_name: str):
+def _area(data: AnnData, shape_name: str, overwrite: bool = False):
     """Compute the area of each shape.
 
     Parameters
@@ -34,15 +34,22 @@ def _area(data: AnnData, shape_name: str):
             Area of each polygon
     """
 
+    feature_key = f"{shape_name.split('_')[0]}_area"
+    if feature_key in data.obs.keys() and not overwrite:
+        return
+
     # Calculate pixel-wise area
     area = get_shape(data, shape_name).area
 
-    shape_prefix = shape_name.split("_")[0]
-    data.obs[f"{shape_prefix}_area"] = area
+    data.obs[feature_key] = area
 
 
 def _poly_aspect_ratio(poly):
     """Compute the aspect ratio of the minimum rotated rectangle that contains a polygon."""
+
+    if not poly:
+        return np.nan
+
     # get coordinates of min bounding box vertices around polygon
     x, y = poly.minimum_rotated_rectangle.exterior.coords.xy
 
@@ -59,7 +66,7 @@ def _poly_aspect_ratio(poly):
     return length / width
 
 
-def _aspect_ratio(data: AnnData, shape_name: str):
+def _aspect_ratio(data: AnnData, shape_name: str, overwrite: bool = False):
     """Compute the aspect ratio of the minimum rotated rectangle that contains each shape.
 
     Parameters
@@ -75,12 +82,15 @@ def _aspect_ratio(data: AnnData, shape_name: str):
             Ratio of major to minor axis for each polygon
     """
 
+    feature_key = f"{shape_name.split('_')[0]}_aspect_ratio"
+    if feature_key in data.obs.keys() and not overwrite:
+        return
+
     ar = get_shape(data, shape_name).apply(_poly_aspect_ratio)
-    shape_prefix = shape_name.split("_")[0]
-    data.obs[f"{shape_prefix}_aspect_ratio"] = ar
+    data.obs[feature_key] = ar
 
 
-def _bounds(data, shape_name):
+def _bounds(data: AnnData, shape_name: str, overwrite: bool = False):
     """Compute the minimum and maximum coordinate values that bound each shape.
 
     Parameters
@@ -102,17 +112,22 @@ def _bounds(data, shape_name):
             y-axis upper bound of each polygon
     """
 
+    feature_keys = [
+        f"{shape_name.split('_')[0]}_{k}" for k in ["minx", "miny", "maxx", "maxy"]
+    ]
+    if all([k in data.obs.keys() for k in feature_keys]) and not overwrite:
+        return
+
     bounds = get_shape(data, shape_name).bounds
 
-    shape_prefix = shape_name.split("_")[0]
-    data.obs[f"{shape_prefix}_minx"] = bounds["minx"]
-    data.obs[f"{shape_prefix}_miny"] = bounds["miny"]
-    data.obs[f"{shape_prefix}_maxx"] = bounds["maxx"]
-    data.obs[f"{shape_prefix}_maxy"] = bounds["maxy"]
+    data.obs[feature_keys[0]] = bounds["minx"]
+    data.obs[feature_keys[1]] = bounds["miny"]
+    data.obs[feature_keys[2]] = bounds["maxx"]
+    data.obs[feature_keys[3]] = bounds["maxy"]
 
 
 # TODO move to point_features
-def _density(data, shape_name):
+def _density(data: AnnData, shape_name: str, overwrite: bool = False):
     """Compute the RNA density of each shape.
 
     Parameters
@@ -129,13 +144,17 @@ def _density(data, shape_name):
     """
 
     shape_prefix = shape_name.split("_")[0]
+    feature_key = f"{shape_prefix}_density"
+    if feature_key in data.obs.keys() and not overwrite:
+        return
+
     count = get_points(data).query(f"{shape_prefix} != '-1'")["cell"].value_counts()
     _area(data, shape_name)
 
-    data.obs[f"{shape_prefix}_density"] = count / data.obs[f"{shape_prefix}_area"]
+    data.obs[feature_key] = count / data.obs[f"{shape_prefix}_area"]
 
 
-def _opening(data, proportion):
+def _opening(data: AnnData, proportion: float, overwrite: bool = False):
     """Compute the opening (morphological) of distance d for each cell.
 
     Parameters
@@ -153,6 +172,9 @@ def _opening(data, proportion):
     """
 
     shape_name = f"cell_open_{proportion}_shape"
+
+    if shape_name in data.obs.keys() and not overwrite:
+        return
 
     _radius(data, "cell_shape")
 
@@ -178,7 +200,7 @@ def _second_moment_polygon(centroid, pts):
     return second_moment
 
 
-def _second_moment(data, shape_name):
+def _second_moment(data: AnnData, shape_name: str, overwrite: bool = False):
     """Compute the second moment of each shape.
 
     Parameters
@@ -196,8 +218,11 @@ def _second_moment(data, shape_name):
     """
 
     shape_prefix = shape_name.split("_")[0]
-    if f"{shape_prefix}_raster" not in data.obs:
-        _raster(data, shape_name)
+    feature_key = f"{shape_prefix}_moment"
+    if feature_key in data.obs.keys() and not overwrite:
+        return
+
+    _raster(data, shape_name, overwrite=overwrite)
 
     rasters = data.obs[f"{shape_prefix}_raster"]
     shape_centroids = get_shape(data, shape_name).centroid
@@ -242,7 +267,7 @@ def _raster_polygon(poly, step=1):
     return xy
 
 
-def _raster(data, shape_name, step=1):
+def _raster(data: AnnData, shape_name: str, step: int = 1, overwrite: bool = False):
     """Generate a grid of points contained within each shape. The points lie on
     a 2D grid, with vertices spaced `step` distance apart.
 
@@ -260,11 +285,16 @@ def _raster(data, shape_name, step=1):
             Long DataFrame of points annotated by shape from `obs['{shape_name}']`
     """
 
+    shape_prefix = shape_name.split("_")[0]
+    feature_key = f"{shape_prefix}_raster"
+
+    if feature_key in data.obs.keys() and not overwrite:
+        return
+
     raster = data.obs[f"{shape_name}"].apply(
         lambda poly: _raster_polygon(poly, step=step)
     )
 
-    shape_prefix = shape_name.split("_")[0]
     raster_all = []
     for s, r in raster.items():
         raster_df = pd.DataFrame(r, columns=["x", "y"])
@@ -272,14 +302,14 @@ def _raster(data, shape_name, step=1):
         raster_all.append(raster_df)
 
     # Add raster to data.obs as 2d array per cell (for point_features compatibility)
-    data.obs[f"{shape_prefix}_raster"] = [df[["x", "y"]].values for df in raster_all]
+    data.obs[feature_key] = [df[["x", "y"]].values for df in raster_all]
 
     # Add raster to data.uns as long dataframe (for flux compatibility)
     raster_all = pd.concat(raster_all).reset_index(drop=True)
-    data.uns[f"{shape_prefix}_raster"] = raster_all
+    data.uns[feature_key] = raster_all
 
 
-def _perimeter(data, shape_name):
+def _perimeter(data: AnnData, shape_name: str, overwrite: bool = False):
     """Compute the perimeter of each shape.
 
     Parameters
@@ -297,10 +327,15 @@ def _perimeter(data, shape_name):
     """
 
     shape_prefix = shape_name.split("_")[0]
-    data.obs[f"{shape_prefix}_perimeter"] = get_shape(data, shape_name).length
+    feature_key = f"{shape_prefix}_perimeter"
+
+    if feature_key in data.obs.keys() and not overwrite:
+        return
+
+    data.obs[feature_key] = get_shape(data, shape_name).length
 
 
-def _radius(data, shape_name):
+def _radius(data: AnnData, shape_name: str, overwrite: bool = False):
     """Compute the radius of each cell.
 
     Parameters
@@ -317,6 +352,12 @@ def _radius(data, shape_name):
             Radius of each polygon in `obs['cell_shape']`
     """
 
+    shape_prefix = shape_name.split("_")[0]
+    feature_key = f"{shape_prefix}_radius"
+
+    if feature_key in data.obs.keys() and not overwrite:
+        return
+
     shapes = get_shape(data, shape_name)
 
     # Get average distance from boundary to centroid
@@ -326,11 +367,10 @@ def _radius(data, shape_name):
         ).mean()
     )
 
-    shape_prefix = shape_name.split("_")[0]
-    data.obs[f"{shape_prefix}_radius"] = shape_radius
+    data.obs[feature_key] = shape_radius
 
 
-def _span(data, shape_name):
+def _span(data: AnnData, shape_name: str, overwrite: bool = False):
     """Compute the length of the longest diagonal of each shape.
 
     Parameters
@@ -347,14 +387,22 @@ def _span(data, shape_name):
             Length of longest diagonal for each polygon
     """
 
+    shape_prefix = shape_name.split("_")[0]
+    feature_key = f"{shape_prefix}_span"
+
+    if feature_key in data.obs.keys() and not overwrite:
+        return
+
     def get_span(poly):
+        if not poly:
+            return np.nan
+
         shape_coo = np.array(poly.coords.xy).T
         return int(distance_matrix(shape_coo, shape_coo).max())
 
     span = get_shape(data, shape_name).exterior.apply(get_span)
 
-    shape_prefix = shape_name.split("_")[0]
-    data.obs[f"{shape_prefix}_span"] = span
+    data.obs[feature_key] = span
 
 
 def list_shape_features():
@@ -472,10 +520,11 @@ def analyze_shapes(
 
     # Analyze each feature x shape combination
     for feature, shape in combos:
+        kws = dict(overwrite=False)
         if feature_kws and feature in feature_kws:
-            shape_features[feature](adata, shape, **feature_kws[feature])
-        else:
-            shape_features[feature](adata, shape)
+            kws.update(feature_kws[feature])
+
+        shape_features[feature](adata, shape, **kws)
 
     return adata if copy else None
 

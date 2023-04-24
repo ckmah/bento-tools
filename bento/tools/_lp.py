@@ -41,14 +41,6 @@ def lp(data: AnnData, groupby: str = "gene", copy: bool = False):
     if isinstance(groupby, str):
         groupby = [groupby]
 
-    # Load trained model
-    model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"
-    model = pickle.load(open(f"{model_dir}/rf_calib_20220514.pkl", "rb"))
-
-    # Compatibility with newer versions of scikit-learn
-    for cls in model.calibrated_classifiers_:
-        cls.estimator = cls.base_estimator
-
     # Compute features
     feature_key = f"cell_{'_'.join(groupby)}_features"
     if feature_key not in adata.uns.keys() or not all(
@@ -66,16 +58,27 @@ def lp(data: AnnData, groupby: str = "gene", copy: bool = False):
             ["proximity", "asymmetry", "shape_dispersion_norm"],
             groupby=groupby,
         )
-
     X_df = adata.uns[feature_key][PATTERN_FEATURES]
+    
+    # Load trained model
+    model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"
+    model = pickle.load(open(f"{model_dir}/rf_calib_20220514.pkl", "rb"))
 
+    # Compatibility with newer versions of scikit-learn
+    for cls in model.calibrated_classifiers_:
+        cls.estimator = cls.base_estimator
+
+    # Predict patterns
     pattern_prob = pd.DataFrame(
         model.predict_proba(X_df.values),
         columns=PATTERN_NAMES,
     )
-    pattern_prob.index = adata.uns[feature_key].set_index(["cell", *groupby]).index
-    thresholds = [0.45300, 0.43400, 0.37900, 0.43700, 0.50500]
 
+    # Add cell and groupby identifiers
+    pattern_prob.index = adata.uns[feature_key].set_index(["cell", *groupby]).index
+
+    # Threshold probabilities to get indicator matrix
+    thresholds = [0.45300, 0.43400, 0.37900, 0.43700, 0.50500]
     indicator_df = (pattern_prob >= thresholds).replace({True: 1, False: 0})
 
     adata.uns["lp"] = indicator_df.reset_index()
