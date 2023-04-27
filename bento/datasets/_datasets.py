@@ -42,7 +42,7 @@ def load_dataset(name, cache=True, data_home="~/bento-data", **kws):
     # Check if dataset name exists
     if name not in datainfo.index:
         raise KeyError(
-            f"No builtin dataset named '{name}'. Use :func:`get_dataset_info` to list info about available datasets."
+            f"No builtin dataset named '{name}'. Use :func:`bento.ds.get_dataset_info` to list info about available datasets."
         )
 
     # Sanitize user path

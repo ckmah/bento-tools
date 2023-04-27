@@ -33,27 +33,26 @@ def analyze_points(
 ):
     """Calculate the set of specified `features` for each point group. Groups are within each cell.
 
-    Parameters
-    ----------
-    data : AnnData
-        Spatially formatted AnnData
-    shape_names : str or list of str
-        Names of the shapes to analyze.
-    feature_names : str or list of str
-        Names of the features to analyze.
-    groupby : str or list of str, optional
-        Key(s) in `data.uns['points'] to groupby, by default None. Always treats each cell separately
-    copy : bool
-        Return a copy of `data` instead of writing to data, by default False.
+        Parameters
+        ----------
+        data : AnnData
+            Spatially formatted AnnData
+        shape_names : str or list of str
+            Names of the shapes to analyze.
+        feature_names : str or list of str
+            Names of the features to analyze.
+        groupby : str or list of str, optional
+            Key(s) in `data.uns['points'] to groupby, by default None. Always treats each cell separately
+        copy : bool
+            Return a copy of `data` instead of writing to data, by default False.
 
-    Returns
-    -------
+        Returns
+        -------
     adata : anndata.AnnData
-        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
-        `.layers[`keys`]` if `groupby` == "gene"
-            See the output of each :class:`PointFeature` in `features` for keys added.
-        `.obsm[`point_features`]` if `groupby` != "gene"
-            DataFrame with rows aligned to `adata.obs_names` and `features` as columns.
+            .uns["point_featu]
+                See the output of each :class:`PointFeature` in `features` for keys added.
+            `.obsm[`cell_`]`
+                DataFrame with rows aligned to `adata.obs_names` and `features` as columns.
 
     """
     adata = data.copy() if copy else data

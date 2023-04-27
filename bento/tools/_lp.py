@@ -51,12 +51,14 @@ def lp(data: AnnData, groupby: str = "gene", copy: bool = False):
             "cell_shape",
             ["proximity", "asymmetry", "ripley", "point_dispersion_norm"],
             groupby=groupby,
+            recompute=True,
         )
         bento.tl.analyze_points(
             adata,
             "nucleus_shape",
             ["proximity", "asymmetry", "shape_dispersion_norm"],
             groupby=groupby,
+            recompute=True,
         )
     X_df = adata.uns[feature_key][PATTERN_FEATURES]
 
