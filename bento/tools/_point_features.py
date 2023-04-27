@@ -27,6 +27,7 @@ def analyze_points(
     shape_names: List[str],
     feature_names: List[str],
     groupby: Optional[Union[str, List[str]]] = None,
+    recompute=False,
     progress: bool = False,
     copy: bool = False,
 ):
@@ -50,7 +51,7 @@ def analyze_points(
     adata : anndata.AnnData
         Returns `adata` if `copy=True`, otherwise adds fields to `data`:
         `.layers[`keys`]` if `groupby` == "gene"
-            See the output of each :class:`SampleFeature` in `features` for keys added.
+            See the output of each :class:`PointFeature` in `features` for keys added.
         `.obsm[`point_features`]` if `groupby` != "gene"
             DataFrame with rows aligned to `adata.obs_names` and `features` as columns.
 
@@ -91,8 +92,10 @@ def analyze_points(
     cell_features = list(cell_features)
     obs_attrs = list(obs_attrs)
 
-    print("Calculating cell features...")
-    tl.analyze_shapes(adata, "cell_shape", cell_features, progress=progress)
+    print("Crunching shape features...")
+    tl.analyze_shapes(
+        adata, "cell_shape", cell_features, progress=progress, recompute=recompute
+    )
 
     # Make sure attributes are present
     attrs_found = set(obs_attrs).intersection(set(adata.obs.columns.tolist()))
@@ -141,7 +144,7 @@ def analyze_points(
     end_loc = np.append(group_loc[1:], points_df.shape[0])
 
     output = []
-    print("Processing point features...")
+    print("Crunching point features...")
     if progress:
         group_locs = tqdm(zip(group_loc, end_loc), total=len(cells))
     else:
@@ -229,6 +232,13 @@ class ShapeProximity(PointFeature):
         # Get shape polygon
         shape = df[self.shape_name].values[0]
 
+        # Skip if no shape
+        if not shape:
+            return {
+                f"{self.shape_prefix}_inner_proximity": 0,
+                f"{self.shape_prefix}_outer_proximity": 0,
+            }
+
         # Get points
         points_geo = df["geometry"]
 
@@ -300,6 +310,13 @@ class ShapeAsymmetry(PointFeature):
         # Get shape polygon
         shape = df[self.shape_name].values[0]
 
+        # Skip if no shape
+        if shape is None:
+            return {
+                f"{self.shape_prefix}_inner_asymmetry": 0,
+                f"{self.shape_prefix}_outer_asymmetry": 0,
+            }
+
         # Get points
         points_geo = df["geometry"]
 
@@ -368,6 +385,10 @@ class PointDispersionNorm(PointFeature):
         pt_centroid = df[["x", "y"]].values.mean(axis=0).reshape(1, 2)
         cell_raster = df["cell_raster"].values[0]
 
+        # Skip if no raster
+        if not np.array(cell_raster).flatten().any():
+            return {"point_dispersion_norm": np.nan}
+
         # calculate points moment
         point_moment = _second_moment(pt_centroid, df[["x", "y"]].values)
         cell_moment = _second_moment(pt_centroid, cell_raster)
@@ -409,6 +430,10 @@ class ShapeDispersionNorm(PointFeature):
         # Get shape polygon
         shape = df[self.shape_name].values[0]
 
+        # Skip if no shape
+        if not shape:
+            return {f"{self.shape_prefix}_dispersion_norm": np.nan}
+
         # Get precomputed shape centroid and raster
         cell_raster = df["cell_raster"].values[0]
 
@@ -449,6 +474,13 @@ class ShapeDistance(PointFeature):
 
         # Get shape polygon
         shape = df[self.shape_name].values[0]
+
+        # Skip if no shape
+        if not shape:
+            return {
+                f"{self.shape_prefix}_inner_distance": np.nan,
+                f"{self.shape_prefix}_outer_distance": np.nan,
+            }
 
         # Get points
         points_geo = df["geometry"].values
@@ -506,6 +538,13 @@ class ShapeOffset(PointFeature):
 
         # Get shape polygon
         shape = df[self.shape_name].values[0]
+
+        # Skip if no shape
+        if not shape:
+            return {
+                f"{self.shape_prefix}_inner_offset": np.nan,
+                f"{self.shape_prefix}_outer_offset": np.nan,
+            }
 
         # Get points
         points_geo = df["geometry"].values
@@ -591,6 +630,10 @@ class ShapeDispersion(PointFeature):
 
         # Get shape polygon
         shape = df[self.shape_name].values[0]
+
+        # Skip if no shape
+        if not shape:
+            return {f"{self.shape_prefix}_dispersion": np.nan}
 
         # calculate points moment
         point_moment = _second_moment(shape.centroid, df[["x", "y"]].values)

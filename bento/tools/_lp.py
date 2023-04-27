@@ -59,7 +59,7 @@ def lp(data: AnnData, groupby: str = "gene", copy: bool = False):
             groupby=groupby,
         )
     X_df = adata.uns[feature_key][PATTERN_FEATURES]
-    
+
     # Load trained model
     model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"
     model = pickle.load(open(f"{model_dir}/rf_calib_20220514.pkl", "rb"))
