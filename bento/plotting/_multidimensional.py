@@ -30,7 +30,7 @@ def _quantiles(data: pd.DataFrame, x: str, **kwargs):
 
     ylims = ax.get_ylim()
     ymargin = 0.3 * (ylims[1] - ylims[0])
-    quants = np.percentile(data[x], [0, 25, 50, 75, 100])
+    quants = np.nanpercentile(data[x], [0, 25, 50, 75, 100])
     palette = sns.color_palette("red2blue", n_colors=len(quants) - 1)
     linecolor = sns.axes_style()["axes.edgecolor"]
 

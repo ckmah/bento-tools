@@ -18,7 +18,7 @@ Bento's API structure takes inspiration from other libraries in the Scverse ecos
 - `bt.tl`: subcellular spatial analyses
 - `bt.pl`: conveniently plot spatial data and embeddings
 - `bt.io`: reading and writing spatial data to `AnnData` as `h5ad` files
-- `bt.geo`: functions for manipulating spatial data
+- `bt.geo`: manipulating spatial data
 - `bt.datasets`: included spatial transcriptomics datasets
 - `bt.ut`: utility functions
 
@@ -233,5 +233,21 @@ Convenient methods for setting, getting, and reformatting data.
     ds.sample_data
     ds.load_dataset
     ds.get_dataset_info
+    ds.load_gene_sets
 
+```
+
+# Utility functions
+
+```{eval-rst}
+.. module:: bento.ut
+.. currentmodule:: bento
+
+.. autosummary::
+    :toctree: api/
+
+    ut.sync
+    ut.geo_format
+    ut.sc_format
+    ut.pheno_to_color
 ```

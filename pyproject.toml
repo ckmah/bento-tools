@@ -14,7 +14,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.8, <3.10"
-anndata = "^0.7.6"
+anndata = "^0.8"
 astropy = "^5.0"
 geopandas = "^0.10.0"
 matplotlib = "^3.2"

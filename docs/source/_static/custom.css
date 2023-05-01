@@ -1,28 +1,27 @@
 @font-face {
-    font-family: "Inter";
-    src: url('Inter-VariableFont.ttf') format('truetype');
+  font-family: "Inter";
+  src: url("Inter-VariableFont.ttf") format("truetype");
 }
-
 
 @font-face {
-    font-family: "RobotoMono";
-    src: url('RobotoMono.ttf') format('truetype');
+  font-family: "RobotoMono";
+  src: url("RobotoMono.ttf") format("truetype");
 }
 
-
 :root {
-    --pst-font-family-base: Inter, var(--pst-font-family-base-system) !important;
-    --pst-font-family-heading: Inter, var(--pst-font-family-base-system) !important;
-    --pst-font-family-monospace: RobotoMono, var(--pst-font-family-monospace-system) !important;
+  --pst-font-family-base: Inter, var(--pst-font-family-base-system) !important;
+  --pst-font-family-heading: Inter, var(--pst-font-family-base-system) !important;
+  --pst-font-family-monospace: RobotoMono,
+    var(--pst-font-family-monospace-system) !important;
 }
 
 /* Font size */
---pst-font-size-base: 14px; /* base font size - applied at body / html level */
+/* --pst-font-size-base: 14px; base font size - applied at body / html level */
 
 /* heading font sizes */
---pst-font-size-h1: 32px;
+/* --pst-font-size-h1: 32px;
 --pst-font-size-h2: 26px;
 --pst-font-size-h3: 21px;
 --pst-font-size-h4: 18px;
 --pst-font-size-h5: 16px;
---pst-font-size-h6: 14px;
+--pst-font-size-h6: 14px; */

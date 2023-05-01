@@ -1,10 +1,11 @@
 import inspect
-from functools import wraps
-
+import warnings
 import geopandas as gpd
 import pandas as pd
 import seaborn as sns
 from anndata import AnnData
+from functools import wraps
+from typing import Iterable
 from shapely import wkt
 
 
@@ -192,12 +193,26 @@ def sync(data, copy=False):
 
         # Sync point metadata using mask
         for metadata_key in adata.uns["point_sets"][point_key]:
-            metadata = adata.uns[metadata_key]
+            if metadata_key not in adata.uns:
+                warnings.warn(
+                    f"Skipping: metadata {metadata_key} not found in adata.uns"
+                )
+                continue
 
-            if isinstance(metadata, pd.DataFrame):
+            metadata = adata.uns[metadata_key]
+            # Slice DataFrame if not empty
+            if isinstance(metadata, pd.DataFrame) and not metadata.empty:
                 adata.uns[metadata_key] = metadata.loc[valid_mask, :]
-            else:
+
+            # Slice Iterable if not empty
+            elif isinstance(metadata, list) and any(metadata):
+                adata.uns[metadata_key] = [
+                    m for i, m in enumerate(metadata) if valid_mask[i]
+                ]
+            elif isinstance(metadata, Iterable) and metadata.shape[0] > 0:
                 adata.uns[metadata_key] = adata.uns[metadata_key][valid_mask]
+            else:
+                warnings.warn(f"Metadata {metadata_key} is not a DataFrame or Iterable")
 
     return adata if copy else None
 
