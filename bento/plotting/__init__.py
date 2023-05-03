@@ -1,3 +1,5 @@
-from ._plotting import (lp_dist, lp_gene_dist, lp_genes, lp_diff,  # umap,
-                        cellplot, qc_metrics, sig_samples)
-from ._tensor_tools import lp_signatures
+from ._multidimensional import flux_summary, obs_stats
+
+from ._lp import lp_diff, lp_dist, lp_gene_dist, lp_genes
+from ._plotting import points, density, shapes, flux, fluxmap, fe
+from ._signatures import colocation, factor, signatures, signatures_error

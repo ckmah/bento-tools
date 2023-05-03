@@ -1,6 +1,7 @@
 import os
 
 import pandas as pd
+
 pkg_resources = None
 
 from ..io import read_h5ad
@@ -18,19 +19,30 @@ def get_dataset_info():
     if pkg_resources is None:
         import pkg_resources
 
-
     stream = pkg_resources.resource_stream(__name__, "datasets.csv")
     return pd.read_csv(stream, index_col=0)
 
 
 def load_dataset(name, cache=True, data_home="~/bento-data", **kws):
+    """Load a builtin dataset.
 
+    Parameters
+    ----------
+    name : str
+        Name of the dataset to load.
+    cache : bool (default: True)
+        If True, try to load from local cache first, download as needed.
+    data_home : str (default: "~/bento-data")
+        Path to directory where datasets are stored.
+    **kws
+        Keyword arguments passed to :func:`bento.io.read_h5ad`.
+    """
     datainfo = get_dataset_info()
 
     # Check if dataset name exists
     if name not in datainfo.index:
         raise KeyError(
-            f"No builtin dataset named '{name}'. Use :func:`get_dataset_info` to list info about available datasets."
+            f"No builtin dataset named '{name}'. Use :func:`bento.ds.get_dataset_info` to list info about available datasets."
         )
 
     # Sanitize user path
@@ -39,7 +51,6 @@ def load_dataset(name, cache=True, data_home="~/bento-data", **kws):
     # Make data folder if it doesn't exist
     if not os.path.exists(data_home):
         os.makedirs(data_home)
-
 
     # Try to load from local cache first, download as needed
     url = datainfo.loc[name, "url"]
@@ -99,6 +110,6 @@ def sample_data():
     global pkg_resources
     if pkg_resources is None:
         import pkg_resources
-        
-    stream = pkg_resources.resource_stream(__name__, "seqfish_sample.h5ad")
+
+    stream = pkg_resources.resource_stream(__name__, "merfish_sample.h5ad")
     return read_h5ad(stream)

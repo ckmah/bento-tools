@@ -8,38 +8,42 @@
 
 # Bento
 
-Bento is a Python toolkit for performing subcellular analysis of spatial transcriptomics data.
-
-# Get started
-Install with Python >=3.8 and <3.11:
-```bash
-pip install bento-tools
-```
-
-Check out the [documentation](https://bento-tools.readthedocs.io/en/latest/) for the installation guide, tutorials, API and more! Read and cite [our preprint](https://doi.org/10.1101/2022.06.10.495510) if you use Bento in your work.
+<img src="_static/tutorial_img/bento_tools.png" alt="Bento Workflow" width="800">
 
 
-# Main Features
-
-<img src="_static/tutorial_img/bento_workflow.png" alt="Bento Analysis Workflow" width=800>
+Bento is a Python toolkit for performing subcellular analysis of spatial transcriptomics data. The package is part of the [Scverse ecosystem](https://scverse.org/packages/#ecosystem). Check out the [documentation](https://bento-tools.readthedocs.io/en/latest/) for installation instructions, tutorials, and API. Cite [our preprint](https://doi.org/10.1101/2022.06.10.495510) if you use Bento in your work. Thanks!
 
 
-- Store molecular coordinates and segmentation masks
-- Visualize spatial transcriptomics data at subcellular resolution
-- Compute subcellular spatial features
-- Predict localization patterns and signatures
-- Factor decomposition for high-dimensional spatial feature sets
+::::{grid} 2
+:::{grid-item-card} {octicon}`terminal` Installation
+:link: installation.html
+:::
+
+:::{grid-item-card} {octicon}`workflow` Tutorials
+:link: tutorials.html
+:::
+::::
+
+::::{grid} 2
+:::{grid-item-card} {octicon}`gear` How It Works
+:link: howitworks.html
+:::
+
+:::{grid-item-card} {octicon}`code-square` API
+:link: api.html
+:::
+::::
 
 ---
 [![GitHub license](https://img.shields.io/github/license/ckmah/bento-tools.svg)](https://github.com/ckmah/bento-tools/blob/master/LICENSE)
 
 
 ```{toctree}
-:maxdepth: 1
+:maxdepth: 2
 :hidden: true
    
 installation
 tutorials
-api
 howitworks
+api
 ```
