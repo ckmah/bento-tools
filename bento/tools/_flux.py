@@ -34,6 +34,7 @@ def flux(
     n_neighbors: Optional[int] = None,
     radius: Optional[int] = 50,
     res: int = 0.1,
+    train_size: float = 0.2,
     random_state: int = 11,
     copy: bool = False,
 ):
@@ -107,7 +108,8 @@ def flux(
     cell_composition = adata[cells, gene_names].X.toarray()
 
     # Compute cell composition
-    cell_composition = cell_composition / (cell_composition.sum(axis=1).reshape(-1, 1))
+    cell_composition = cell_composition / \
+        (cell_composition.sum(axis=1).reshape(-1, 1))
     cell_composition = np.nan_to_num(cell_composition)
 
     # Embed each cell neighborhood independently
@@ -151,9 +153,12 @@ def flux(
     # todo: Slow step, try algorithm="randomized" may be faster
     pbar.set_description(emoji.emojize("Reducing"))
     n_components = min(n_genes - 1, 10)
+    train_x = resample(cell_fluxs, n_samples=int(
+        train_size * cell_fluxs.shape[0]), random_state=random_state)
+
     pca_model = TruncatedSVD(
         n_components=n_components, algorithm="randomized", random_state=random_state
-    ).fit(cell_fluxs)
+    ).fit(train_x)
     flux_embed = pca_model.transform(cell_fluxs)
     variance_ratio = pca_model.explained_variance_ratio_
 
@@ -191,7 +196,8 @@ def vec2color(
     if fmt == "rgb":
         pass
     elif fmt == "hex":
-        color = np.apply_along_axis(mpl.colors.to_hex, 1, color, keep_alpha=True)
+        color = np.apply_along_axis(
+            mpl.colors.to_hex, 1, color, keep_alpha=True)
     return color
 
 
@@ -275,7 +281,8 @@ def fluxmap(
     for k in tqdm(n_clusters, leave=False):
         som = MiniSom(1, k, flux_train.shape[1], random_seed=random_state)
         som.random_weights_init(flux_train)
-        som.train(flux_train, num_iterations, random_order=False, verbose=False)
+        som.train(flux_train, num_iterations,
+                  random_order=False, verbose=False)
         som_models[k] = som
         quantization_errors.append(som.quantization_error(flux_embed))
 
@@ -343,7 +350,8 @@ def fluxmap(
 
         # Find all the contours
         contours = rasterio.features.shapes(image)
-        polygons = np.array([(shapely.geometry.shape(p), v) for p, v in contours])
+        polygons = np.array([(shapely.geometry.shape(p), v)
+                            for p, v in contours])
         shapes = gpd.GeoDataFrame(
             polygons[:, 1],
             geometry=gpd.GeoSeries(polygons[:, 0]).T,
