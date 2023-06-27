@@ -1,14 +1,11 @@
 from typing import Iterable, Literal, Optional, Union
 
-import decoupler as dc
 import emoji
 import geopandas as gpd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-
 import numpy as np
 import pandas as pd
-import pkg_resources
 import rasterio
 import shapely
 from anndata import AnnData
@@ -19,7 +16,9 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.preprocessing import StandardScaler, minmax_scale, quantile_transform
 from sklearn.utils import resample
 from tqdm.auto import tqdm
+from rich.progress import Progress
 
+from bento._settings import settings
 from bento._utils import register_points, track
 from bento.geometry import get_points, sindex_points
 from bento.tools._neighborhoods import _count_neighbors
@@ -32,7 +31,7 @@ def flux(
     data: AnnData,
     method: Literal["knn", "radius"] = "radius",
     n_neighbors: Optional[int] = None,
-    radius: Optional[int] = 50,
+    radius: Optional[int] = None,
     res: int = 0.1,
     train_size: float = 0.2,
     random_state: int = 11,
@@ -52,7 +51,7 @@ def flux(
     n_neighbors : int
         Number of neighbors to use for local neighborhood.
     radius : float
-        Radius to use for local neighborhood.
+        Radius to use for local neighborhood. Uses cell radius / 2 if None.
     res : float
         Resolution to use for rendering embedding. Default 0.05 samples at 5% original resolution (5 units between pixels)
     copy : bool
@@ -72,18 +71,25 @@ def flux(
         .uns["flux_variance_ratio"] : np.ndarray
             [components] array of explained variance ratio for each component.
     """
-    if n_neighbors is None and radius is None:
-        radius = 50
 
     adata = data.copy() if copy else data
 
-    adata.uns["points"] = get_points(adata).sort_values("cell")
+    settings.log.start("Running flux().")
 
+    adata.uns["points"] = get_points(adata).sort_values("cell")
     points = get_points(adata)[["cell", "gene", "x", "y"]]
 
+    # By default use 50% of average cell radius
+    if method == "radius" and radius is None:
+        analyze_shapes(adata, "cell_shape", "radius", progress=False, recompute=True)
+        radius = adata.obs["cell_radius"].mean() / 2
+        settings.log.info(f"radius = {radius}")
+    else:
+        analyze_shapes(adata, "cell_shape", "radius", progress=False, recompute=True)
+        radius = radius * (adata.obs["cell_radius"].mean() / 2)
+
     # embeds points on a uniform grid
-    pbar = tqdm(total=3)
-    pbar.set_description(emoji.emojize("Embedding"))
+    settings.log.step("Embedding")
     step = 1 / res
     # Get grid rasters
     analyze_shapes(
@@ -105,16 +111,17 @@ def flux(
     rpoints_grouped = raster_points.groupby("cell")
     cells = list(points_grouped.groups.keys())
 
+    # Compute cell composition for each cell
     cell_composition = adata[cells, gene_names].X.toarray()
-
-    # Compute cell composition
-    cell_composition = cell_composition / \
-        (cell_composition.sum(axis=1).reshape(-1, 1))
+    cell_composition = cell_composition / (cell_composition.sum(axis=1).reshape(-1, 1))
     cell_composition = np.nan_to_num(cell_composition)
 
     # Embed each cell neighborhood independently
     cell_fluxs = []
-    for i, cell in enumerate(tqdm(cells, leave=False)):
+    progress = Progress()
+    progress.start()
+    task_embed = progress.add_task("Embedding cells", total=len(cells))
+    for i, cell in progress.track(enumerate(cells), task_id=task_embed):
         cell_points = points_grouped.get_group(cell)
         rpoints = rpoints_grouped.get_group(cell)
         if method == "knn":
@@ -148,13 +155,17 @@ def flux(
     # Stack all cells
     cell_fluxs = vstack(cell_fluxs) if len(cell_fluxs) > 1 else cell_fluxs[0]
     cell_fluxs.data = np.nan_to_num(cell_fluxs.data)
-    pbar.update()
 
-    # todo: Slow step, try algorithm="randomized" may be faster
-    pbar.set_description(emoji.emojize("Reducing"))
+    settings.log.step("SVD")
     n_components = min(n_genes - 1, 10)
-    train_x = resample(cell_fluxs, n_samples=int(
-        train_size * cell_fluxs.shape[0]), random_state=random_state)
+    train_n_samples = max(int(train_size * cell_fluxs.shape[0]), 10000)
+    train_x = resample(
+        cell_fluxs,
+        replace=False,
+        n_samples=train_n_samples,
+        random_state=random_state,
+    )
+    settings.log.step(f"Train size: {train_n_samples}")
 
     pca_model = TruncatedSVD(
         n_components=n_components, algorithm="randomized", random_state=random_state
@@ -164,18 +175,16 @@ def flux(
 
     # For color visualization of flux embeddings
     flux_color = vec2color(flux_embed, fmt="hex", vmin=0.1, vmax=0.9)
-    pbar.update()
 
-    pbar.set_description(emoji.emojize("Saving"))
+    settings.log.step("Saving results")
     adata.uns["flux"] = cell_fluxs  # sparse gene embedding
     adata.uns["flux_genes"] = gene_names  # gene names
     adata.uns["flux_embed"] = flux_embed
     adata.uns["flux_variance_ratio"] = variance_ratio
     adata.uns["flux_color"] = flux_color
 
-    pbar.set_description(emoji.emojize("Done. :bento_box:"))
-    pbar.update()
-    pbar.close()
+    settings.log.end("Done.")
+    progress.stop()
 
     return adata if copy else None
 
@@ -196,8 +205,7 @@ def vec2color(
     if fmt == "rgb":
         pass
     elif fmt == "hex":
-        color = np.apply_along_axis(
-            mpl.colors.to_hex, 1, color, keep_alpha=True)
+        color = np.apply_along_axis(mpl.colors.to_hex, 1, color, keep_alpha=True)
     return color
 
 
@@ -281,8 +289,7 @@ def fluxmap(
     for k in tqdm(n_clusters, leave=False):
         som = MiniSom(1, k, flux_train.shape[1], random_seed=random_state)
         som.random_weights_init(flux_train)
-        som.train(flux_train, num_iterations,
-                  random_order=False, verbose=False)
+        som.train(flux_train, num_iterations, random_order=False, verbose=False)
         som_models[k] = som
         quantization_errors.append(som.quantization_error(flux_embed))
 
@@ -350,8 +357,7 @@ def fluxmap(
 
         # Find all the contours
         contours = rasterio.features.shapes(image)
-        polygons = np.array([(shapely.geometry.shape(p), v)
-                            for p, v in contours])
+        polygons = np.array([(shapely.geometry.shape(p), v) for p, v in contours])
         shapes = gpd.GeoDataFrame(
             polygons[:, 1],
             geometry=gpd.GeoSeries(polygons[:, 0]).T,

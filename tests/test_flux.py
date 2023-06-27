@@ -2,15 +2,17 @@ import unittest
 import bento as bt
 
 data = bt.ds.sample_data()
-radius = 50
+radius = None
 n_neighbors = 20
-res = 0.02
+res = 1
 
 
 class TestFlux(unittest.TestCase):
     def test_flux_radius(self):
+        # Calculate flux using radius method
         bt.tl.flux(data, method="radius", radius=radius, res=res)
 
+        # Check that the flux data is present and in the correct format
         self.assertTrue(
             key in data.uns.keys() for key in ["flux", "flux_embed", "color"]
         )

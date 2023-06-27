@@ -8,6 +8,8 @@ from functools import wraps
 from typing import Iterable
 from shapely import wkt
 
+from ._settings import settings
+
 
 def get_default_args(func):
     signature = inspect.signature(func)
@@ -78,7 +80,7 @@ def track(func):
                     out += f"\n        + {', '.join(added)}"
 
         if modified:
-            print(out)
+            settings.log.info(out)
 
         return out_adata if kwargs["copy"] else None
 
@@ -281,10 +283,15 @@ def register_points(point_key: str, metadata_keys: list):
             kwargs = get_default_args(func)
             kwargs.update(kwds)
 
-            func(*args, **kwds)
-            data = args[0]
+            if kwargs["copy"]:
+                data = func(*args, **kwds)
+            else:
+                func(*args, **kwds)
+                data = args[0]
+
             # Check for required columns
-            return _register_points(data, point_key, metadata_keys)
+            _register_points(data, point_key, metadata_keys)
+            return data
 
         return wrapper
 
