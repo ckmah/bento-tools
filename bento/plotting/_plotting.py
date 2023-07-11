@@ -8,7 +8,7 @@ from matplotlib_scalebar.scalebar import ScaleBar
 
 from ..geometry import get_points
 from ._layers import _raster, _scatter, _hist, _kde, _polygons
-from ._utils import savefig
+from ._utils import savefig, vec2color
 from .._utils import sync
 from ._colors import red2blue, red2blue_dark
 
@@ -119,6 +119,7 @@ def points(
     if batch is None:
         batch = data.obs["batch"].iloc[0]
     adata = data[data.obs["batch"] == batch]
+    sync(adata)
     title = f"batch {batch}" if not title else title
 
     ax = _setup_ax(
@@ -159,6 +160,7 @@ def density(
     if batch is None:
         batch = data.obs["batch"].iloc[0]
     adata = data[data.obs["batch"] == batch]
+    sync(adata)
     title = f"batch {batch}" if title is None else title
 
     ax = _setup_ax(
@@ -183,8 +185,10 @@ def density(
 @savefig
 def flux(
     data,
+    dims=[0,1,2],
+    alpha=True,
     batch=None,
-    res=0.05,
+    res=1,
     shapes=None,
     hide_outside=True,
     axis_visible=False,
@@ -202,6 +206,7 @@ def flux(
     if batch is None:
         batch = data.obs["batch"].iloc[0]
     adata = data[data.obs["batch"] == batch]
+    sync(adata)
     title = f"batch {batch}" if not title else title
 
     ax = _setup_ax(
@@ -214,7 +219,9 @@ def flux(
         title=title,
     )
 
-    _raster(adata, res=res, color="flux_color", ax=ax, **kwargs)
+    adata.uns['flux_color'] = vec2color(adata.uns['flux_embed'][:,dims], alpha_vec=adata.uns["flux_counts"])
+
+    _raster(adata, res=res, color="flux_color", alpha=alpha, ax=ax, **kwargs)
     _shapes(adata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shape_kws)
 
 
@@ -223,7 +230,8 @@ def fe(
     data,
     gs,
     batch=None,
-    res=0.05,
+    res=1,
+    alpha=True,
     shapes=None,
     cmap=None,
     cbar=True,
@@ -262,7 +270,7 @@ def fe(
         elif sns.axes_style()["axes.facecolor"] == "black":
             cmap = red2blue_dark
 
-    _raster(adata, res=res, color=gs, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
+    _raster(adata, res=res, color=gs, alpha=alpha, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
     _shapes(adata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shape_kws)
 
 
@@ -288,6 +296,7 @@ def shapes(
     if batch is None:
         batch = data.obs["batch"].iloc[0]
     adata = data[data.obs["batch"] == batch]
+    sync(adata)
     title = f"batch {batch}" if not title else title
 
     ax = _setup_ax(
