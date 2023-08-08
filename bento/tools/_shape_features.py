@@ -9,40 +9,37 @@ from typing import Callable, Dict, List, Union
 import matplotlib.path as mplPath
 import numpy as np
 import pandas as pd
-from anndata import AnnData
+from spatialdata._core.spatialdata import SpatialData
 from scipy.spatial import distance, distance_matrix
 from shapely.geometry import MultiPolygon, Point
 from tqdm.auto import tqdm
 
-from .._utils import sync, track
 from ..geometry import get_points, get_shape
 
 
-def _area(data: AnnData, shape_name: str, recompute: bool = False):
+def _area(data: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the area of each shape.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    data : SpatialData
+        Spatial formatted SpatialData
     shape_name : str
-        Key in `data.obs` that contains the shape information.
+        Key in `data.shapes[shape_name]` that contains the shape information.
 
     Fields
     ------
-        .obs['{shape}_area'] : float
+        .shapes[shape_name]['{shape}_area'] : float
             Area of each polygon
     """
 
     feature_key = f"{shape_name.split('_')[0]}_area"
-    if feature_key in data.obs.keys() and not recompute:
+    if feature_key in data.shapes[shape_name].keys() and not recompute:
         return
 
     # Calculate pixel-wise area
     area = get_shape(data, shape_name).area
-
-    data.obs[feature_key] = area
-
+    data.shapes[shape_name][feature_key] = area.values
 
 def _poly_aspect_ratio(poly):
     """Compute the aspect ratio of the minimum rotated rectangle that contains a polygon."""
@@ -65,125 +62,119 @@ def _poly_aspect_ratio(poly):
     # return long / short ratio
     return length / width
 
-
-def _aspect_ratio(data: AnnData, shape_name: str, recompute: bool = False):
+def _aspect_ratio(data: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the aspect ratio of the minimum rotated rectangle that contains each shape.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    data : SpatialData
+        Spatial formatted SpatialData
     shape_name : str
-        Key in `data.obs` that contains the shape information.
+        Key in `data.shapes[shape_name]` that contains the shape information.
 
     Fields
     ------
-        .obs['{shape}_aspect_ratio'] : float
+        .shapes[shape_name]['{shape}_aspect_ratio'] : float
             Ratio of major to minor axis for each polygon
     """
 
     feature_key = f"{shape_name.split('_')[0]}_aspect_ratio"
-    if feature_key in data.obs.keys() and not recompute:
+    if feature_key in data.shapes[shape_name].keys() and not recompute:
         return
 
     ar = get_shape(data, shape_name).apply(_poly_aspect_ratio)
-    data.obs[feature_key] = ar
+    data.shapes[shape_name][feature_key] = ar
 
-
-def _bounds(data: AnnData, shape_name: str, recompute: bool = False):
+def _bounds(data: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the minimum and maximum coordinate values that bound each shape.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    data : SpatialData
+        Spatial formatted SpatialData
     shape_name : str
-        Key in `data.obs` that contains the shape information.
+        Key in `data.shapes[shape_name]` that contains the shape information.
 
     Fields
     ------
-        .obs['{shape}_minx'] : float
+        .shapes[shape_name]['{shape}_minx'] : float
             x-axis lower bound of each polygon
-        .obs['{shape}_miny'] : float
+        .shapes[shape_name]['{shape}_miny'] : float
             y-axis lower bound of each polygon
-        .obs['{shape}_maxx'] : float
+        .shapes[shape_name]['{shape}_maxx'] : float
             x-axis upper bound of each polygon
-        .obs['{shape}_maxy'] : float
+        .shapes[shape_name]['{shape}_maxy'] : float
             y-axis upper bound of each polygon
     """
 
     feature_keys = [
         f"{shape_name.split('_')[0]}_{k}" for k in ["minx", "miny", "maxx", "maxy"]
     ]
-    if all([k in data.obs.keys() for k in feature_keys]) and not recompute:
+    if all([k in data.shapes[shape_name].keys() for k in feature_keys]) and not recompute:
         return
 
     bounds = get_shape(data, shape_name).bounds
 
-    data.obs[feature_keys[0]] = bounds["minx"]
-    data.obs[feature_keys[1]] = bounds["miny"]
-    data.obs[feature_keys[2]] = bounds["maxx"]
-    data.obs[feature_keys[3]] = bounds["maxy"]
+    data.shapes[shape_name][feature_keys[0]] = bounds["minx"]
+    data.shapes[shape_name][feature_keys[1]] = bounds["miny"]
+    data.shapes[shape_name][feature_keys[2]] = bounds["maxx"]
+    data.shapes[shape_name][feature_keys[3]] = bounds["maxy"]
 
-
-# TODO move to point_features
-def _density(data: AnnData, shape_name: str, recompute: bool = False):
+def _density(data: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the RNA density of each shape.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    data : SpatialData
+        Spatial formatted SpatialData
     shape_name : str
-        Key in `data.obs` that contains the shape information.
+        Key in `data.shapes[shape_name]` that contains the shape information.
 
     Fields
     ------
-        .obs['{shape}_density'] : float
+        .shapes[shape_name]['{shape}_density'] : float
             Density (molecules / shape area) of each polygon
     """
 
     shape_prefix = shape_name.split("_")[0]
     feature_key = f"{shape_prefix}_density"
-    if feature_key in data.obs.keys() and not recompute:
+    if feature_key in data.shapes[shape_name].keys() and not recompute:
         return
 
-    count = get_points(data).query(f"{shape_prefix} != '-1'")["cell"].value_counts()
+    count = get_points(data).query(f"{shape_prefix} != 'None'")[shape_prefix].value_counts().compute()
     _area(data, shape_name)
 
-    data.obs[feature_key] = count / data.obs[f"{shape_prefix}_area"]
+    data.shapes[shape_name][feature_key] = count / data.shapes[shape_name][f"{shape_prefix}_area"]
 
-
-def _opening(data: AnnData, proportion: float, recompute: bool = False):
+def _opening(data: SpatialData, proportion: float, recompute: bool = False):
     """Compute the opening (morphological) of distance d for each cell.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    data : SpatialData
+        Spatial formatted SpatialData
 
     Returns
     -------
-    data : anndata.AnnData
+    data : spatialdata.SpatialData
         Returns `data` if `copy=True`, otherwise adds fields to `data`:
 
-        `obs['cell_open_{d}_shape']` : Polygons
-            Ratio of long / short axis for each polygon in `obs['cell_shape']`
+        `.shapes[shape_name]['cell_open_{d}_shape']` : Polygons
+            Ratio of long / short axis for each polygon in `.shapes[shape_name]['cell_boundaries']`
     """
 
     shape_name = f"cell_open_{proportion}_shape"
 
-    if shape_name in data.obs.keys() and not recompute:
+    if shape_name in data.shapes["cell_boundaries"].keys() and not recompute:
         return
 
-    _radius(data, "cell_shape")
+    _radius(data, "cell_boundaries")
 
-    cells = get_shape(data, "cell_shape")
-    d = proportion * data.obs["cell_radius"]
+    cells = get_shape(data, "cell_boundaries")
+    d = proportion * data.shapes["cell_boundaries"]["cell_radius"]
 
     # Opening
-    data.obs[shape_name] = cells.buffer(-d).buffer(d)
-
+    data.shapes["cell_boundaries"][shape_name] = cells.buffer(-d).buffer(d)
 
 def _second_moment_polygon(centroid, pts):
     """
@@ -194,39 +185,40 @@ def _second_moment_polygon(centroid, pts):
     centroid : 2D Point object
     pts : [n x 2] float
     """
-    if not centroid or isinstance(pts, np.ndarray):
+
+    if not centroid or not isinstance(pts, np.ndarray):
         return
-    centroid = np.array(centroid).reshape(1, 2)
+    centroid = np.array(centroid.coords).reshape(1, 2)
     radii = distance.cdist(centroid, pts)
     second_moment = np.sum(radii * radii / len(pts))
     return second_moment
 
 
-def _second_moment(data: AnnData, shape_name: str, recompute: bool = False):
+def _second_moment(data: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the second moment of each shape.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    data : SpatialData
+        Spatial formatted SpatialData
 
     Returns
     -------
-    data : anndata.AnnData
+    data : spatialdata.SpatialData
         Returns `data` if `copy=True`, otherwise adds fields to `data`:
 
-        `obs['{shape}_moment']` : float
+        `.shapes[shape_name]['{shape}_moment']` : float
             The second moment for each polygon
     """
 
     shape_prefix = shape_name.split("_")[0]
     feature_key = f"{shape_prefix}_moment"
-    if feature_key in data.obs.keys() and not recompute:
+    if feature_key in data.shapes[shape_name].keys() and not recompute:
         return
 
     _raster(data, shape_name, recompute=recompute)
 
-    rasters = data.obs[f"{shape_prefix}_raster"]
+    rasters = data.shapes[shape_name][f"{shape_prefix}_raster"]
     shape_centroids = get_shape(data, shape_name).centroid
 
     moments = [
@@ -234,8 +226,7 @@ def _second_moment(data: AnnData, shape_name: str, recompute: bool = False):
         for centroid, r in zip(shape_centroids, rasters)
     ]
 
-    data.obs[f"{shape_prefix}_moment"] = moments
-
+    data.shapes[shape_name][feature_key] = moments
 
 def _raster_polygon(poly, step=1):
     """
@@ -271,31 +262,32 @@ def _raster_polygon(poly, step=1):
     return xy
 
 
-def _raster(data: AnnData, shape_name: str, step: int = 1, recompute: bool = False):
+def _raster(data: SpatialData, shape_name: str, step: int = 1, recompute: bool = False):
     """Generate a grid of points contained within each shape. The points lie on
     a 2D grid, with vertices spaced `step` distance apart.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    data : SpatialData
+        Spatial formatted SpatialData
 
     Returns
     -------
-    data : anndata.AnnData
+    data : spatialdata.SpatialData
         Returns `data` if `copy=True`, otherwise adds fields to `data`:
 
-        `uns['{shape}_raster']` : np.array
-            Long DataFrame of points annotated by shape from `obs['{shape_name}']`
+        `.shapes[shape_name]['{shape}_raster']` : np.array
+            Long DataFrame of points annotated by shape from `.shapes[shape_name]['{shape_name}']`
     """
 
     shape_prefix = shape_name.split("_")[0]
     feature_key = f"{shape_prefix}_raster"
 
-    if feature_key in data.obs.keys() and not recompute:
+    if feature_key in data.shapes[shape_name].keys() and not recompute:
         return
 
-    raster = data.obs[f"{shape_name}"].apply(
+    shapes = get_shape(data, shape_name)
+    raster = shapes.apply(
         lambda poly: _raster_polygon(poly, step=step)
     )
 
@@ -306,60 +298,60 @@ def _raster(data: AnnData, shape_name: str, step: int = 1, recompute: bool = Fal
         raster_all.append(raster_df)
 
     # Add raster to data.obs as 2d array per cell (for point_features compatibility)
-    data.obs[feature_key] = [df[["x", "y"]].values for df in raster_all]
+    data.shapes[shape_name][feature_key] = [df[["x", "y"]].values for df in raster_all]
 
+    # What do I do with this??
+    ########################################################################################
+    '''
     # Add raster to data.uns as long dataframe (for flux compatibility)
     raster_all = pd.concat(raster_all).reset_index(drop=True)
-    data.uns[feature_key] = raster_all
+    data.uns[feature_key] = raster_all'''
 
-
-def _perimeter(data: AnnData, shape_name: str, recompute: bool = False):
+def _perimeter(data: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the perimeter of each shape.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    data : SpatialData
+        Spatial formatted SpatialData
 
     Returns
     -------
-    data : anndata.AnnData
+    data : spatialdata.SpatialData
         Returns `data` if `copy=True`, otherwise adds fields to `data`:
 
-        `obs['{shape}_perimeter']` : np.array
+        `.shapes[shape_name]['{shape}_perimeter']` : np.array
             Perimeter of each polygon
     """
 
     shape_prefix = shape_name.split("_")[0]
     feature_key = f"{shape_prefix}_perimeter"
-
-    if feature_key in data.obs.keys() and not recompute:
+    if feature_key in data.shapes[shape_name].keys() and not recompute:
         return
 
-    data.obs[feature_key] = get_shape(data, shape_name).length
+    data.shapes[shape_name][feature_key] = get_shape(data, shape_name).length
 
 
-def _radius(data: AnnData, shape_name: str, recompute: bool = False):
+def _radius(data: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the radius of each cell.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    data : SpatialData
+        Spatial formatted SpatialData
 
     Returns
     -------
-    data : anndata.AnnData
+    data : spatialdata.SpatialData
         Returns `data` if `copy=True`, otherwise adds fields to `data`:
 
-        `obs['{shape}_radius']` : np.array
+        `.shapes[shape_name]['{shape}_radius']` : np.array
             Radius of each polygon in `obs['cell_shape']`
     """
 
     shape_prefix = shape_name.split("_")[0]
     feature_key = f"{shape_prefix}_radius"
-
-    if feature_key in data.obs.keys() and not recompute:
+    if feature_key in data.shapes[shape_name].keys() and not recompute:
         return
 
     shapes = get_shape(data, shape_name)
@@ -367,39 +359,37 @@ def _radius(data: AnnData, shape_name: str, recompute: bool = False):
     # Get average distance from boundary to centroid
     shape_radius = shapes.apply(_shape_radius)
 
-    data.obs[feature_key] = shape_radius
-
+    data.shapes[shape_name][feature_key] = shape_radius
 
 def _shape_radius(poly):
     if not poly:
         return np.nan
 
     return distance.cdist(
-        np.array(poly.centroid).reshape(1, 2), np.array(poly.exterior.xy).T
+        np.array(poly.centroid.coords).reshape(1, 2), np.array(poly.exterior.xy).T
     ).mean()
 
-
-def _span(data: AnnData, shape_name: str, recompute: bool = False):
+def _span(data: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the length of the longest diagonal of each shape.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    data : SpatialData
+        Spatial formatted SpatialData
 
     Returns
     -------
-    data : anndata.AnnData
+    data : spatialdata.SpatialData
         Returns `data` if `copy=True`, otherwise adds fields to `data`:
 
-        `obs['{shape}_span']` : float
+        `.shapes[shape_name]['{shape}_span']` : float
             Length of longest diagonal for each polygon
     """
 
     shape_prefix = shape_name.split("_")[0]
     feature_key = f"{shape_prefix}_span"
 
-    if feature_key in data.obs.keys() and not recompute:
+    if feature_key in data.shapes[shape_name].keys() and not recompute:
         return
 
     def get_span(poly):
@@ -411,8 +401,7 @@ def _span(data: AnnData, shape_name: str, recompute: bool = False):
 
     span = get_shape(data, shape_name).exterior.apply(get_span)
 
-    data.obs[feature_key] = span
-
+    data.shapes[shape_name][feature_key] = span
 
 def list_shape_features():
     """Return a DataFrame of available shape features. Pulls descriptions from function docstrings.
@@ -444,9 +433,8 @@ shape_features = dict(
     span=_span,
 )
 
-
 def obs_stats(
-    data: AnnData,
+    data: SpatialData,
     feature_names: List[str] = ["area", "aspect_ratio", "density"],
     copy=False,
 ):
@@ -455,8 +443,8 @@ def obs_stats(
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    data : SpatialData
+        Spatial formatted SpatialData
     feature_names : list
         List of features to compute. See list of available features in `bento.tl.shape_features`.
     copy : bool, optional
@@ -464,25 +452,25 @@ def obs_stats(
 
     Returns
     -------
-    data : anndata.AnnData
+    data : spatialdata.SpatialData
         Returns `data` if `copy=True`, otherwise adds fields to `data`:
 
-        `obs['{shape}_{feature}']` : np.array
+        `.shapes[shape_name]['{shape}_{feature}']` : np.array
             Feature of each polygon
     """
-    adata = data.copy() if copy else data
+    sdata = data.copy() if copy else data
 
     # Compute features
-    analyze_shapes(adata, "cell_shape", feature_names, copy=copy)
-    if "nucleus_shape" in adata.obs.columns:
-        analyze_shapes(adata, "nucleus_shape", feature_names, copy=copy)
+    analyze_shapes(sdata, "cell_boundaries", feature_names, copy=copy)
+    if "nucleus_boundaries" in sdata.shapes.keys():
+        analyze_shapes(sdata, "nucleus_boundaries", feature_names, copy=copy)
 
-    return adata if copy else None
+    return sdata if copy else None
 
-
-@track
+# Got rid of @track
+#########################################################################################################
 def analyze_shapes(
-    data: AnnData,
+    sdata: SpatialData,
     shape_names: Union[str, List[str]],
     feature_names: Union[str, List[str]],
     feature_kws: Dict[str, Dict] = None,
@@ -494,8 +482,8 @@ def analyze_shapes(
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    data : SpatialData
+        Spatial formatted SpatialData
     shape_names : list of str
         List of shapes to analyze.
     feature_names : list of str
@@ -507,18 +495,17 @@ def analyze_shapes(
 
     Returns
     -------
-    adata : AnnData
+    adata : SpatialData
         See specific feature function docs for fields added.
 
     """
-    adata = data.copy() if copy else data
 
     # Cast to list if not already
     if isinstance(shape_names, str):
         shape_names = [shape_names]
 
     # Add _shape suffix if shape names don't have it
-    shape_names = [s if s.endswith("_shape") else f"{s}_shape" for s in shape_names]
+    shape_names = [s if s.endswith("_boundaries") else f"{s}_boundaries" for s in shape_names]
 
     # Cast to list if not already
     if isinstance(feature_names, str):
@@ -536,11 +523,10 @@ def analyze_shapes(
         kws = dict(recompute=recompute)
         if feature_kws and feature in feature_kws:
             kws.update(feature_kws[feature])
+    
+        shape_features[feature](sdata, shape, **kws)
 
-        shape_features[feature](adata, shape, **kws)
-
-    return adata if copy else None
-
+    return sdata
 
 def register_shape_feature(name: str, func: Callable):
     """Register a shape feature function. The function should take an AnnData object and a shape name as input.
@@ -551,7 +537,7 @@ def register_shape_feature(name: str, func: Callable):
     name : str
         Name of the feature function.
     func : function
-        Function that takes an AnnData object and a shape name as arguments.
+        Function that takes a SpatialData object and a shape name as arguments.
     """
     shape_features[name] = func
 
