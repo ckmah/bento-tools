@@ -3,27 +3,26 @@ from shapely.errors import ShapelyDeprecationWarning
 
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
 
-
 from abc import ABCMeta, abstractmethod
 from typing import List, Optional, Union
 
 import numpy as np
 import pandas as pd
-from anndata import AnnData
+from spatialdata._core.spatialdata import SpatialData
 from astropy.stats.spatial import RipleysKEstimator
 from scipy.spatial import distance
-from scipy.stats.stats import spearmanr
+from scipy.stats import spearmanr
 from tqdm.auto import tqdm
+from math import isnan
 import re
 
 from .. import tools as tl
-from .._utils import track
+#from .._utils import track
 from ..geometry import get_points
 
-
-@track
+# @track
 def analyze_points(
-    data: AnnData,
+    sdata: SpatialData,
     shape_names: List[str],
     feature_names: List[str],
     groupby: Optional[Union[str, List[str]]] = None,
@@ -35,32 +34,34 @@ def analyze_points(
 
         Parameters
         ----------
-        data : AnnData
-            Spatially formatted AnnData
+        data : SpatialData
+            Spatially formatted SpatialData
         shape_names : str or list of str
             Names of the shapes to analyze.
         feature_names : str or list of str
             Names of the features to analyze.
         groupby : str or list of str, optional
-            Key(s) in `data.uns['points'] to groupby, by default None. Always treats each cell separately
+            Key(s) in `data.points['points'] to groupby, by default None. Always treats each cell separately
         copy : bool
             Return a copy of `data` instead of writing to data, by default False.
 
         Returns
         -------
-    adata : anndata.AnnData
-            .uns["point_featu]
+    sdata : spatialdata.SpatialData
+            table.uns["point_feature"]
                 See the output of each :class:`PointFeature` in `features` for keys added.
-            `.obsm[`cell_`]`
-                DataFrame with rows aligned to `adata.obs_names` and `features` as columns.
 
     """
-    adata = data.copy() if copy else data
 
     # Cast to list if not already
     if isinstance(shape_names, str):
         shape_names = [shape_names]
-
+    
+    '''# Make sure all shape names are in sdata.shapes["cell_boundaries"]
+    shapes_found = set(shape_names).intersection(set(sdata.shapes["cell_boundaries"].columns.tolist()))
+    if len(shapes_found) != len(shape_names):
+        raise KeyError(f"sdata.shapes['cell_boundaries'] does not have all shapes: {shape_names}.")'''
+    
     # Cast to list if not already
     if isinstance(feature_names, str):
         feature_names = [feature_names]
@@ -75,9 +76,9 @@ def analyze_points(
 
     # Make sure all groupby keys are in point columns
     for g in groupby:
-        if g not in get_points(adata).columns:
+        if g not in get_points(sdata).columns:
             raise ValueError(f"Groupby key {g} not found in point columns.")
-
+    
     # Generate feature x shape combinations
     feature_combos = [point_features[f](s) for f in feature_names for s in shape_names]
 
@@ -87,36 +88,45 @@ def analyze_points(
     for f in feature_combos:
         cell_features.update(f.cell_features)
         obs_attrs.update(f.attributes)
-
+    
     cell_features = list(cell_features)
     obs_attrs = list(obs_attrs)
-
+    
     print("Crunching shape features...")
     tl.analyze_shapes(
-        adata, "cell_shape", cell_features, progress=progress, recompute=recompute
+        sdata, "cell_boundaries", cell_features, progress=progress, recompute=recompute
     )
-
+    
     # Make sure attributes are present
-    attrs_found = set(obs_attrs).intersection(set(adata.obs.columns.tolist()))
+    attrs_found = set(obs_attrs).intersection(set(sdata.shapes["cell_boundaries"].columns.tolist()))
     if len(attrs_found) != len(obs_attrs):
         raise KeyError(f"df does not have all columns: {obs_attrs}.")
-
+    
     # extract cell attributes
     points_df = (
-        get_points(adata, asgeo=True)
+        get_points(sdata, asgeo=True)
+        .compute()
         .set_index("cell")
-        .join(data.obs[obs_attrs])
-        .reset_index()
+        #.join(sdata.shapes["cell_boundaries"][obs_attrs])
+        #.reset_index()
     )
 
+    points_df = (
+        points_df.loc[points_df.index.values!="None"]
+        .join(sdata.shapes["cell_boundaries"][obs_attrs])
+        .rename_axis("cell")
+        .reset_index()
+    )
+    
+    
     for g in groupby:
         points_df[g] = points_df[g].astype("category")
     # Handle categories as strings to avoid ambiguous cat types
     # for col in points_df.loc[:, (points_df.dtypes == "category").values]:
     #     points_df[col] = points_df[col].astype(str)
-
+   
     # Handle shape indexes as strings to avoid ambiguous types
-    for shape_name in adata.obs.columns[adata.obs.columns.str.endswith("_shape")]:
+    for shape_name in [shape for shape in list(sdata.shapes.keys()) if shape.endswith("_boundaries")]:
         shape_prefix = "_".join(shape_name.split("_")[:-1])
         if shape_prefix in points_df.columns:
             points_df[shape_prefix] = points_df[shape_prefix].astype(str)
@@ -139,7 +149,7 @@ def analyze_points(
         points_df["cell"],
         return_index=True,
     )
-
+    
     end_loc = np.append(group_loc[1:], points_df.shape[0])
 
     output = []
@@ -151,19 +161,18 @@ def analyze_points(
     for start, end in group_locs:
         cell_points = points_df.iloc[start:end]
         output.append(process_partition(cell_points))
-    output = pd.concat(output)
 
+    output = pd.concat(output)
     # Save and overwrite existing
     print("Saving results...")
     output_key = "_".join([*groupby, "features"])
-    if output_key in adata.uns:
-        adata.uns[output_key][output.columns] = output.reset_index(drop=True)
+    if output_key in sdata.table.uns:
+        sdata.table.uns[output_key][output.columns] = output.reset_index(drop=True)
     else:
-        adata.uns[output_key] = output.reset_index()
+        sdata.table.uns[output_key] = output.reset_index()
 
     print("Done.")
-    return adata if copy else None
-
+    return sdata
 
 class PointFeature(metaclass=ABCMeta):
     """Abstract class for calculating sample features. A sample is defined as the set of
@@ -230,8 +239,17 @@ class ShapeProximity(PointFeature):
 
         # Get shape polygon
         shape = df[self.shape_name].values[0]
+        
+        # Skip if no shape or if shape is nan
+        try:
+            if isnan(shape):
+                return {
+                f"{self.shape_prefix}_inner_proximity": 0,
+                f"{self.shape_prefix}_outer_proximity": 0,
+            }
+        except:
+            pass
 
-        # Skip if no shape
         if not shape:
             return {
                 f"{self.shape_prefix}_inner_proximity": 0,
@@ -308,8 +326,17 @@ class ShapeAsymmetry(PointFeature):
 
         # Get shape polygon
         shape = df[self.shape_name].values[0]
+        
+        # Skip if no shape or shape is nan
+        try:
+            if isnan(shape):
+                return {
+                    f"{self.shape_prefix}_inner_asymmetry": 0,
+                    f"{self.shape_prefix}_outer_asymmetry": 0,
+                }
+        except:
+            pass
 
-        # Skip if no shape
         if shape is None:
             return {
                 f"{self.shape_prefix}_inner_asymmetry": 0,
@@ -429,7 +456,13 @@ class ShapeDispersionNorm(PointFeature):
         # Get shape polygon
         shape = df[self.shape_name].values[0]
 
-        # Skip if no shape
+        # Skip if no shape or if shape is nan
+        try:
+            if isnan(shape):
+                return {f"{self.shape_prefix}_dispersion_norm": np.nan}
+        except:
+            pass
+
         if not shape:
             return {f"{self.shape_prefix}_dispersion_norm": np.nan}
 
@@ -474,7 +507,16 @@ class ShapeDistance(PointFeature):
         # Get shape polygon
         shape = df[self.shape_name].values[0]
 
-        # Skip if no shape
+        # Skip if no shape or if shape is nan
+        try:
+            if isnan(shape):
+                return {
+                    f"{self.shape_prefix}_inner_distance": np.nan,
+                    f"{self.shape_prefix}_outer_distance": np.nan,
+                }
+        except:
+            pass
+
         if not shape:
             return {
                 f"{self.shape_prefix}_inner_distance": np.nan,
@@ -539,6 +581,15 @@ class ShapeOffset(PointFeature):
         shape = df[self.shape_name].values[0]
 
         # Skip if no shape
+        try:
+            if isnan(shape):
+                return {
+                    f"{self.shape_prefix}_inner_offset": np.nan,
+                    f"{self.shape_prefix}_outer_offset": np.nan,
+                }
+        except:
+            pass
+        
         if not shape:
             return {
                 f"{self.shape_prefix}_inner_offset": np.nan,
@@ -630,7 +681,13 @@ class ShapeDispersion(PointFeature):
         # Get shape polygon
         shape = df[self.shape_name].values[0]
 
-        # Skip if no shape
+        # Skip if no shape or if shape is nan
+        try:
+            if isnan(shape):
+                return {f"{self.shape_prefix}_dispersion": np.nan}
+        except:
+            pass
+
         if not shape:
             return {f"{self.shape_prefix}_dispersion": np.nan}
 
@@ -787,6 +844,8 @@ def _second_moment(centroid, pts):
     centroid : [1 x 2] float
     pts : [n x 2] float
     """
+    if type(centroid) != np.ndarray:
+        centroid = centroid.coords
     centroid = np.array(centroid).reshape(1, 2)
     radii = distance.cdist(centroid, pts)
     second_moment = np.sum(radii * radii / len(pts))
