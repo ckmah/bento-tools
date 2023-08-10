@@ -89,19 +89,23 @@ def flux(
         points = points[points["gene"].isin(high_var)]
 
     # Extract gene names and codes
-    gene_names = points["gene"].cat.remove_unused_categories()
-    gene_names = gene_names.cat.categories.tolist()
+    points["gene"] = points["gene"].cat.remove_unused_categories()
+    gene_names = points["gene"].cat.categories.tolist()
     n_genes = len(gene_names)
+
 
     # By default use 50% of average cell radius
     if method == "radius":
         analyze_shapes(adata, "cell_shape", "radius", progress=False, recompute=True)
 
+        # Default radius = 50% of average cell radius
         if radius is None:
             radius = adata.obs["cell_radius"].mean() / 2
-        else:
+        # If radius is a fraction, use that fraction of average cell radius
+        elif radius <= 1:
             radius = radius * (adata.obs["cell_radius"].mean())
-            
+        # If radius is an integer, use that as the radius
+
         settings.log.info(f"radius = {radius}")
 
     # embeds points on a uniform grid

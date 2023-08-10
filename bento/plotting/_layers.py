@@ -23,7 +23,7 @@ def _scatter(points, ax, hue=None, size=None, style=None, **kwargs):
     if ax is None:
         ax = plt.gca()
 
-    scatter_kws = dict(s=2, c="grey", linewidth=0)
+    scatter_kws = dict(s=2, c="grey", linewidth=0, zorder=10, rasterized=True)
     scatter_kws.update(kwargs)
 
     # Let matplotlib scatter handle color if it's in hex format
@@ -82,8 +82,13 @@ def _polygons(adata, shape, ax, hue=None, hide_outside=False, **kwargs):
         ymin, ymax = ax.get_ylim()
 
         # get min range
-        # min_range = min(xmax - xmin, ymax - ymin)
-        # buffer_size = 0.0 * (min_range)
+        min_range = min(xmax - xmin, ymax - ymin)
+        buffer_size = 0.01 * (min_range)
+
+        xmin = xmin - buffer_size
+        xmax = xmax + buffer_size
+        ymin = ymin - buffer_size
+        ymax = ymax + buffer_size
 
         # Create shapely polygon from axes limits
         axes_poly = gpd.GeoDataFrame(

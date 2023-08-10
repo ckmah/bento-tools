@@ -28,5 +28,6 @@ bento6 = sns.color_palette(
         "#396270",
         "#f78c6b",
         "#ef476f",
-    ]
+    ],
+    as_cmap=True,
 )

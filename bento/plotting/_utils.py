@@ -31,9 +31,10 @@ def savefig(plot_fn):
 
         fname = kwargs["fname"]
         rc = {
+            "image.interpolation": "none",
             "svg.fonttype": "none",
             "font.family": "sans-serif",
-            "font.sans-serif": "Arial",
+            "font.sans-serif": ["Arial", "Verdana", "DejaVu Sans"],
             "pdf.fonttype": 42,
         }
         if fname:
