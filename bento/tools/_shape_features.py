@@ -2,6 +2,7 @@ import warnings
 from shapely.errors import ShapelyDeprecationWarning
 
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
+warnings.filterwarnings("ignore")
 
 
 from typing import Callable, Dict, List, Union
