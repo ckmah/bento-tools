@@ -7,6 +7,7 @@ import bento
 import numpy as np
 import pandas as pd
 import statsmodels.formula.api as sfm
+from pandas.api.types import is_numeric_dtype
 from patsy import PatsyError
 from statsmodels.tools.sm_exceptions import PerfectSeparationError
 from tqdm.auto import tqdm
@@ -259,7 +260,7 @@ def lp_diff_discrete(
     sdata : SpatialData
         Spatial formatted SpatialData object.
     phenotype : str
-        Variable grouping cells for differential analysis. Must be in data.obs.columns.
+        Variable grouping cells for differential analysis. Must be in sdata.shape["cell_boundaries].columns.
     copy : bool
         Return a copy of `sdata` instead of writing to data, by default False.
 
@@ -274,6 +275,8 @@ def lp_diff_discrete(
 
     # Retrieve cell phenotype
     phenotype_series = sdata.shapes["cell_boundaries"][phenotype]
+    if is_numeric_dtype(phenotype_series):
+        raise KeyError(f"Phenotype dtype must not be numeric | dtype: {phenotype_series.dtype}")
 
     # [Sample by patterns] where sample id = [cell, group] pair
     pattern_df = sdata.table.uns["lp"].copy()
@@ -294,9 +297,9 @@ def lp_diff_discrete(
     results["-log10p"] = -np.log10(results["pvalue"].astype(np.float32))
     results["-log10padj"] = -np.log10(results["padj"].astype(np.float32))
 
-    '''# Cap significance values
-    results.loc[results["-log10p"] > 20, "-log10p"] = 20
-    results.loc[results["-log10padj"] > 12, "-log10padj"] = 12'''
+    # Cap significance values
+    results.loc[results["-log10p"] == np.inf, "-log10p"] = results.loc[results["-log10p"] != np.inf]["-log10p"].max()
+    results.loc[results["-log10padj"] == np.inf, "-log10padj"] = results.loc[results["-log10padj"] != np.inf]["-log10padj"].max()
 
     # Group-wise log2 fold change values
     log2fc_stats = _lp_logfc(sdata, phenotype)
@@ -309,7 +312,57 @@ def lp_diff_discrete(
     )
 
     # Sort results
-    results = results.sort_values("pvalue")
+    results = results.sort_values("pvalue").reset_index(drop=True)
     del results["level_1"]
     # Save back to SpatialData
     sdata.table.uns[f"diff_{phenotype}"] = results
+
+#@track
+def lp_diff_continuous(
+    sdata: SpatialData, phenotype: str = None, copy: bool = False
+):
+    """Gene-wise test for differential localization across phenotype of interest.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial formatted SpatialData object.
+    phenotype : str
+        Variable grouping cells for differential analysis. Must be in sdata.shape["cell_boundaries].columns.
+    copy : bool
+        Return a copy of `sdata` instead of writing to data, by default False.
+
+    Returns
+    -------
+    sdata : SpatialData
+        Spatial formatted SpatialData object.
+        .table.uns['diff_{phenotype}'] : DataFrame
+            Long DataFrame with differential localization test results across phenotype groups.
+    """
+    stats = sdata.table.uns["lp_stats"]
+    lpp = sdata.table.uns["lpp"]
+    # Retrieve cell phenotype
+    phenotype_series = sdata.shapes["cell_boundaries"][phenotype]
+
+
+    pattern_dfs = {}
+    # Compute correlation for each point group along cells
+    for p in PATTERN_NAMES:
+        groups_name = stats.index.name
+        p_labels = lpp.pivot(index="cell", columns=groups_name, values=p)
+        p_corr = p_labels.corrwith(phenotype_series, axis=0, drop=True)
+
+        pattern_df = pd.DataFrame(p_corr).reset_index(drop = False)
+        pattern_df.insert(loc = 1, column = 'pattern', value = p)
+        pattern_df = pattern_df.rename(columns = {0:'pearson_correlation'})
+        pattern_dfs[p] = pattern_df
+    
+    # Concatenate all pattern_dfs into one
+    pattern_dfs = (
+        pd.concat(pattern_dfs.values(), ignore_index=True)
+        .sort_values(by=['pearson_correlation'], ascending=False)
+        .reset_index(drop=True)
+        )
+        
+    pattern_dfs = pattern_dfs.loc[~pattern_dfs['pearson_correlation'].isna()]
+    sdata.table.uns[f"diff_{phenotype}"] = pattern_dfs
