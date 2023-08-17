@@ -161,8 +161,8 @@ def flux_summary(
     Plot RNAflux summary with a radviz plot describing gene embedding across flux clusters.
     """
 
+    comp_key = f"{groupby}_comp_stats"
     if groupby and comp_key in data.uns.keys():
-        comp_key = f"{groupby}_comp_stats"
         comp_stats = data.uns[comp_key]
         if group_order is None:
             groups = list(comp_stats.keys())

@@ -23,7 +23,7 @@ def _scatter(points, ax, hue=None, size=None, style=None, **kwargs):
     if ax is None:
         ax = plt.gca()
 
-    scatter_kws = dict(s=2, c="grey", linewidth=0, zorder=10, rasterized=True)
+    scatter_kws = dict(s=2, linewidth=0, zorder=10, rasterized=True)
     scatter_kws.update(kwargs)
 
     # Let matplotlib scatter handle color if it's in hex format
