@@ -6,7 +6,7 @@ include = [
     "bento/models/**/*",
     "bento/tools/gene_sets/*",
 ]
-version = "2.0.0"
+version = "2.1.0a0"
 description = "A toolkit for subcellular analysis of spatial transcriptomics data"
 authors = ["Clarence Mah <ckmah@ucsd.edu>"]
 license = "BSD-2-Clause"
@@ -44,6 +44,7 @@ pandas = "^1.5.3"
 xgboost = "1.4.0"
 myst-nb = {version = "^0.17.1", extras = ["docs"]}
 sphinx_design = {version = "^0.3.0", extras = ["docs"]}
+rich = "^13.5.2"
 
 [tool.poetry.extras]
 docs = [

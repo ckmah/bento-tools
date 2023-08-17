@@ -9,6 +9,33 @@ from anndata import AnnData
 from bento._utils import track, _register_points
 
 
+def fe_kegg(data: AnnData, copy: bool = False, **kwargs) -> Optional[AnnData]:
+    """Compute enrichment scores from KEGG gene sets.
+    See `bento.tl.fe` docs for parameter details.
+
+    Parameters
+    ----------
+    data : AnnData
+        Spatial formatted AnnData object.
+    copy : bool
+        Return a copy instead of writing to `adata`. Default False.
+    Returns
+    -------
+    DataFrame
+        Enrichment scores for each gene set.
+    """
+    adata = data.copy() if copy else data
+
+    msigdb = dc.get_resource('MSigDB')
+    msigdb = msigdb[msigdb['collection']=='KEGG']
+    msigdb = msigdb[~msigdb.duplicated(['geneset', 'genesymbol'])]
+
+    fe(adata, net=msigdb, weight=None, **kwargs)
+
+    return adata if copy else None
+
+
+
 def fe_fazal2019(data: AnnData, copy: bool = False, **kwargs) -> Optional[AnnData]:
     """Compute enrichment scores from subcellular compartment gene sets from Fazal et al. 2019 (APEX-seq).
     See `bento.tl.fe` docs for parameter details.
@@ -108,16 +135,28 @@ def fe(
     samples = adata.uns["cell_raster"].index.astype(str)
     features = adata.uns["flux_genes"]
 
-    enrichment = dc.run_wsum(
-        mat=[mat, samples, features],
-        net=net,
-        source=source,
-        target=target,
-        weight=weight,
-        batch_size=batch_size,
-        min_n=min_n,
-        verbose=True,
-    )
+    if weight:
+        enrichment = dc.run_wsum(
+            mat=[mat, samples, features],
+            net=net,
+            source=source,
+            target=target,
+            weight=weight,
+            batch_size=batch_size,
+            min_n=min_n,
+            verbose=True,
+        )
+    else:
+        enrichment = dc.run_gsea(
+            mat=[mat, samples, features],
+            net=net,
+            source=source,
+            target=target,
+            times=1000,
+            batch_size=batch_size,
+            min_n=min_n,
+            verbose=True,
+        )
 
     scores = enrichment[1].reindex(index=samples)
 

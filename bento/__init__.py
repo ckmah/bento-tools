@@ -1,3 +1,5 @@
+from ._settings import settings
+
 from . import datasets as ds
 from . import io
 from . import plotting as pl

@@ -67,6 +67,7 @@ def obs_stats(
         "nucleus_density",
     ],
     s=3,
+    color="lightseagreen",
     alpha=0.3,
     rug=False,
     fname=None,
@@ -92,32 +93,43 @@ def obs_stats(
         lambda x: "_".join(x.split("_")[1:])
     )
 
-    linecolor = sns.axes_style()["axes.edgecolor"]
+    # linecolor = sns.axes_style()["axes.edgecolor"]
 
     g = sns.FacetGrid(
         data=stats_long,
         row="var",
         col="shape",
-        height=1.2,
-        aspect=2,
+        height=1.5,
+        aspect=1.7,
         sharex=False,
         sharey=False,
-        margin_titles=True,
+        margin_titles=False,
     )
     g.map_dataframe(
-        sns.stripplot,
+        sns.kdeplot,
         x="value",
-        color=linecolor,
-        s=s,
+        color=color,
+        linewidth=0,
+        fill=True,
         alpha=alpha,
         rasterized=True,
     )
-    g.map_dataframe(_quantiles, x="value")
+    if rug:
+        g.map_dataframe(
+            sns.rugplot,
+            x="value",
+            color=color,
+            height=0.1,
+            alpha=0.5,
+            rasterized=True,
+        )
+    # g.map_dataframe(_quantiles, x="value")
     g.add_legend()
     sns.move_legend(g, "upper left", bbox_to_anchor=(1, 1))
 
     for ax, var in zip(g.axes.flat, stats_long["variable"].unique()):
         ax.set_xlabel("")
+        ax.set_ylabel("")
         ax.set_yticks([])
         ax.ticklabel_format(axis="x", style="sci", scilimits=(-2, 4))
         sns.despine(ax=ax, left=True)
@@ -126,7 +138,7 @@ def obs_stats(
     def plot_median(data, **kwargs):
         plt.axvline(data.median(), **kwargs)
 
-    g.map(plot_median, "value", c=linecolor, lw=1.5, zorder=3)
+    g.map(plot_median, "value", c=color, lw=1.5, zorder=3)
 
 
 @savefig
@@ -183,6 +195,8 @@ def flux_summary(
             )
             ax.set_title(group, fontsize=12)
     else:
+        comp_key = f"comp_stats"
+        comp_stats = data.uns[comp_key]
         return _radviz(
             comp_stats,
             annotate=annotate,
@@ -237,6 +251,8 @@ def _radviz(
             ax = plt.gca()
 
         edgecolor = sns.axes_style()["axes.edgecolor"]
+
+        kde_cmap = "binary" if edgecolor == "black" else "binary_r"
 
         # Infer annot_color from theme
         if annot_color is None:
@@ -308,12 +324,12 @@ def _radviz(
         # Point size ~ percent of cells in group
         cell_fraction = comp_stats["cell_fraction"]
         cell_fraction = cell_fraction.apply(lambda x: round(x, 1))
-        size_key = "Fraction of cells\n in group (%)"
+        size_key = "Fraction of cells (%)"
         xy[size_key] = cell_fraction
 
         # Hue ~ mean log2(count + 1)
         log_count = comp_stats["logcounts"]
-        hue_key = "Mean log2(cnt + 1)\n in group"
+        hue_key = "Mean log2(cnt + 1)"
         xy[hue_key] = log_count
 
         # Remove phantom points
@@ -324,7 +340,7 @@ def _radviz(
             x=0,
             y=1,
             shade=True,
-            cmap="binary",
+            cmap=kde_cmap,
             zorder=0.9,
             ax=ax,
         )
