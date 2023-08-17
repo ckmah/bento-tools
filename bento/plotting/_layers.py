@@ -23,7 +23,7 @@ def _scatter(points, ax, hue=None, size=None, style=None, **kwargs):
     if ax is None:
         ax = plt.gca()
 
-    scatter_kws = dict(s=2, c="grey", linewidth=0)
+    scatter_kws = dict(s=2, c="grey", linewidth=0, zorder=10, rasterized=True)
     scatter_kws.update(kwargs)
 
     # Let matplotlib scatter handle color if it's in hex format
@@ -61,7 +61,7 @@ def _polygons(adata, shape, ax, hue=None, hide_outside=False, **kwargs):
 
     shapes = gpd.GeoDataFrame(geometry=get_shape(adata, shape))
 
-    edge_color = "none"
+    edge_color = sns.axes_style()["axes.edgecolor"]
     face_color = "none"
 
     # If hue is specified, use it to color faces
@@ -82,8 +82,13 @@ def _polygons(adata, shape, ax, hue=None, hide_outside=False, **kwargs):
         ymin, ymax = ax.get_ylim()
 
         # get min range
-        # min_range = min(xmax - xmin, ymax - ymin)
-        # buffer_size = 0.0 * (min_range)
+        min_range = min(xmax - xmin, ymax - ymin)
+        buffer_size = 0.01 * (min_range)
+
+        xmin = xmin - buffer_size
+        xmax = xmax + buffer_size
+        ymin = ymin - buffer_size
+        ymax = ymax + buffer_size
 
         # Create shapely polygon from axes limits
         axes_poly = gpd.GeoDataFrame(
@@ -100,7 +105,7 @@ def _polygons(adata, shape, ax, hue=None, hide_outside=False, **kwargs):
         )
 
 
-def _raster(adata, res, color, points_key="cell_raster", cbar=False, ax=None, **kwargs):
+def _raster(adata, res, color, alpha, points_key="cell_raster", cbar=False, ax=None, **kwargs):
     """Plot gradient."""
 
     if ax is None:
@@ -115,7 +120,10 @@ def _raster(adata, res, color, points_key="cell_raster", cbar=False, ax=None, **
     if isinstance(v1, str) or (
         isinstance(v1, tuple) and v1.min() >= 0 and v1.max() <= 1
     ):
-        rgb = np.array([mpl.colors.to_rgb(c) for c in color_values])
+        if alpha:
+            rgb = np.array([mpl.colors.to_rgba(c) for c in color_values])
+        else:
+            rgb = np.array([mpl.colors.to_rgb(c) for c in color_values])
     else:
         rgb = color_values.reshape(-1, 1)
 

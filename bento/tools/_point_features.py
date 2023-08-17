@@ -49,7 +49,7 @@ def analyze_points(
         Returns
         -------
     adata : anndata.AnnData
-            .uns["point_featu]
+            .uns["point_features"]
                 See the output of each :class:`PointFeature` in `features` for keys added.
             `.obsm[`cell_`]`
                 DataFrame with rows aligned to `adata.obs_names` and `features` as columns.
