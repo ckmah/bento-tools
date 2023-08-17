@@ -301,12 +301,9 @@ def _raster(data: SpatialData, shape_name: str, step: int = 1, recompute: bool =
     # Add raster to data.obs as 2d array per cell (for point_features compatibility)
     data.shapes[shape_name][feature_key] = [df[["x", "y"]].values for df in raster_all]
 
-    # What do I do with this??
-    ########################################################################################
-    '''
     # Add raster to data.uns as long dataframe (for flux compatibility)
     raster_all = pd.concat(raster_all).reset_index(drop=True)
-    data.uns[feature_key] = raster_all'''
+    data.table.uns[feature_key] = raster_all
 
 def _perimeter(data: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the perimeter of each shape.

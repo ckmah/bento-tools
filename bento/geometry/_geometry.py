@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 from spatialdata._core.spatialdata import SpatialData
 
+from .._utils import sync_points
+
 def sindex_points(
     sdata: SpatialData, points_key: str, shape_names: List[str]
 ) -> SpatialData:
@@ -138,15 +140,15 @@ def get_points(
     DataFrame or GeoDataFrame
         Returns `data.points[key]` as a `[Geo]DataFrame`
     """
-    points = sdata.points[key]
-
+    points = sync_points(sdata).points[key]
+    
     if asgeo:
         # Cast to Dask GeoDataFrame
         def as_geo(df):
             return gpd.GeoDataFrame(
-                df, geometry=gpd.points_from_xy(df.x, df.y)
+                df, geometry=gpd.points_from_xy(df.x, df.y), copy=True
             )
-        points = sdata.points[key].map_partitions(as_geo)
+        points = points.map_partitions(as_geo)
         
     return points
     

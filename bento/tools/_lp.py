@@ -19,7 +19,7 @@ from .._constants import PATTERN_NAMES, PATTERN_FEATURES
 tqdm.pandas()
 
 # @track
-def lp(sdata: SpatialData, groupby: str = "feature_name", copy: bool = False):
+def lp(sdata: SpatialData, groupby: str = "gene", copy: bool = False):
     """Predict transcript subcellular localization patterns.
     Patterns include: cell edge, cytoplasmic, nuclear edge, nuclear, none
 

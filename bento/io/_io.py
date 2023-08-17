@@ -35,7 +35,7 @@ def format_sdata(
         if shape_gpd.geometry.name != shape:
             shape_gpd.rename_geometry(shape, inplace=True)
         if type(shape_gpd.index[0]) != str:
-            shape_gpd.index = 'i' + shape_gpd.index.astype(str, copy = False)
+            shape_gpd.index = shape_gpd.index.astype(str, copy = False)
     
     # sindex points and sjoin shapes if they have not been indexed or joined
     point_sjoin = []
