@@ -34,8 +34,8 @@ def flux(
     radius: Optional[int] = 0.5,
     n_components = 100,
     res: float = 1,
-    train_size: float = 0.2,
-    use_highly_variable: bool = True,
+    train_size: float = 1,
+    use_highly_variable: bool = False,
     random_state: int = 11,
     copy: bool = False,
 ):

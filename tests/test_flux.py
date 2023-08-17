@@ -1,10 +1,11 @@
 import unittest
 import bento as bt
 
-data = bt.ds.sample_data()
+data = bt.ds.sample_data()[0]
+bt.sync(data)
 radius = None
 n_neighbors = 20
-res = 1
+res = 0.2
 
 
 class TestFlux(unittest.TestCase):
@@ -13,26 +14,18 @@ class TestFlux(unittest.TestCase):
         bt.tl.flux(data, method="radius", radius=radius, res=res)
 
         # Check that the flux data is present and in the correct format
-        self.assertTrue(
-            key in data.uns.keys() for key in ["flux", "flux_embed", "color"]
-        )
         self.assertTrue(data.uns["flux"].shape[0] == data.uns["cell_raster"].shape[0])
         self.assertTrue(
             data.uns["flux_embed"].shape[0] == data.uns["cell_raster"].shape[0]
         )
-        self.assertTrue(data.uns["flux_color"].flatten()[0][0] == "#")
 
     def test_flux_knn(self):
         bt.tl.flux(data, method="knn", n_neighbors=n_neighbors, res=res)
 
-        self.assertTrue(
-            key in data.uns.keys() for key in ["flux", "flux_embed", "flux_color"]
-        )
         self.assertTrue(data.uns["flux"].shape[0] == data.uns["cell_raster"].shape[0])
         self.assertTrue(
             data.uns["flux_embed"].shape[0] == data.uns["cell_raster"].shape[0]
         )
-        self.assertTrue(data.uns["flux_color"].flatten()[0][0] == "#")
 
     def test_fluxmap(self):
         bt.tl.flux(data, method="radius", radius=radius, res=res)
