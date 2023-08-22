@@ -31,7 +31,7 @@ def sindex_points(
     if isinstance(shape_names, str):
         shape_names = [shape_names]
 
-    meta_dict = {
+    '''meta_dict = {
         "x": np.float32,
         "y": np.float32,
         "z": np.float32,
@@ -41,10 +41,10 @@ def sindex_points(
         "z_location": np.float32,
         "overlaps_nucleus": np.uint8,
         "qv": np.float32,
-    }
+    }'''
     shape_gpds = {}
     for shape in shape_names:
-        meta_dict[shape.split('_')[0]] = "str"
+        #meta_dict[shape.split('_')[0]] = "str"
         shape_gpds[shape] = sdata.shapes[shape]
 
     def sindex(df, shape_gpds):
@@ -56,10 +56,8 @@ def sindex_points(
             sjoined_points.loc[sjoined_points["index_right"].isna(), "index_right"] = "None"
             df[shape.split('_')[0]] = sjoined_points["index_right"].astype(str)
         return df
-    
-    sdata.points[points_key] = sdata.points[points_key].map_partitions(sindex, shape_gpds, meta=meta_dict)
-    
-    return sdata
+    #meta=meta_dict
+    sdata.points[points_key] = sdata.points[points_key].map_partitions(sindex, shape_gpds)
 
 def sjoin_shapes(sdata: SpatialData, shape_names: List[str],):
     """Adds polygon columns sdata.shapes['cell_boundaries'][shape_name] for point feature analysis
@@ -98,7 +96,6 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str],):
                 pass
             
     sdata.shapes["cell_boundaries"] = sjoined_shapes
-    return sdata
 
 def get_shape(sdata: SpatialData, shape_name: str) -> gpd.GeoSeries:
     """Get a GeoSeries of Polygon objects from an SpatialData object.

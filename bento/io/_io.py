@@ -4,6 +4,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 from spatialdata._core.spatialdata import SpatialData
+from dask.dataframe import from_pandas
 
 from ..geometry import sindex_points, sjoin_shapes
 
@@ -47,8 +48,10 @@ def format_sdata(
             shape_sjoin.append(shape_name)
 
     if len(point_sjoin) != 0:
-        sdata = sindex_points(sdata, points_key, shape_names)
+        sindex_points(sdata, points_key, shape_names)
     if len(shape_sjoin) != 0:
-        sdata = sjoin_shapes(sdata, shape_sjoin)
+        sjoin_shapes(sdata, shape_sjoin)
+
+    sdata.points[points_key] = from_pandas(sdata.points[points_key].compute(), npartitions=sdata.points[points_key].npartitions)
 
     return sdata
