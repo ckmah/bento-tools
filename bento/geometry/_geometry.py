@@ -3,13 +3,14 @@ from typing import Dict, List, Literal, Optional, Tuple, Union
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+import dask.dataframe as dd
 from spatialdata._core.spatialdata import SpatialData
 
 from .._utils import sync_points
 
 def sindex_points(
-    sdata: SpatialData, points_key: str, shape_names: List[str]
-) -> SpatialData:
+    sdata: SpatialData, shape_names: List[str], point_key: str = "transcripts"
+):
     """Index points to shapes and add as columns to `data.points[points_key]`.
 
     Parameters
@@ -31,35 +32,26 @@ def sindex_points(
     if isinstance(shape_names, str):
         shape_names = [shape_names]
 
-    '''meta_dict = {
-        "x": np.float32,
-        "y": np.float32,
-        "z": np.float32,
-        "feature_name": "category",
-        "cell_id": np.int32,
-        "transcript_id": np.uint64,
-        "z_location": np.float32,
-        "overlaps_nucleus": np.uint8,
-        "qv": np.float32,
-    }'''
+    # Grab all shape GeoDataFrames to index points to
     shape_gpds = {}
     for shape in shape_names:
-        #meta_dict[shape.split('_')[0]] = "str"
         shape_gpds[shape] = sdata.shapes[shape]
 
-    def sindex(df, shape_gpds):
-        points_gpd = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.x, df.y), copy=True)
-        for shape in shape_gpds:
-            shape_gpd = shape_gpds[shape]
-            sjoined_points = gpd.sjoin(points_gpd, shape_gpd, how="left", predicate="intersects")
-            sjoined_points = sjoined_points[~sjoined_points.index.duplicated(keep='last')]
-            sjoined_points.loc[sjoined_points["index_right"].isna(), "index_right"] = "None"
-            df[shape.split('_')[0]] = sjoined_points["index_right"].astype(str)
-        return df
-    #meta=meta_dict
-    sdata.points[points_key] = sdata.points[points_key].map_partitions(sindex, shape_gpds)
+    # Grab points as GeoDataFrame
+    points = sdata.points['transcripts'].compute()
+    points_gpd = gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points.x, points.y), copy=True)
 
-def sjoin_shapes(sdata: SpatialData, shape_names: List[str],):
+    # Index points to shapes
+    for shape in shape_gpds:
+        shape_gpd = shape_gpds[shape]
+        sjoined_points = gpd.sjoin(points_gpd, shape_gpd, how="left", predicate="intersects")
+        sjoined_points = sjoined_points[~sjoined_points.index.duplicated(keep='last')]
+        sjoined_points.loc[sjoined_points["index_right"].isna(), "index_right"] = "None"
+        sdata.points[point_key][shape.split('_')[0]] = sjoined_points["index_right"].astype(str)
+        
+    sdata.points[point_key] = dd.from_pandas(sdata.points[point_key].compute(), npartitions=sdata.points[point_key].npartitions)
+
+def sjoin_shapes(sdata: SpatialData, shape_names: List[str], cell_shape: str = "cell_boundaries"):
     """Adds polygon columns sdata.shapes['cell_boundaries'][shape_name] for point feature analysis
 
         Parameters
@@ -79,12 +71,12 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str],):
     if isinstance(shape_names, str):
         shape_names = [shape_names]
 
-    shapes_found = set(shape_names).intersection(set(sdata.shapes["cell_boundaries"].columns.tolist()))
+    shapes_found = set(shape_names).intersection(set(sdata.shapes[cell_shape].columns.tolist()))
     if shapes_found == set(shape_names):
         return sdata
     
-    shape_names = list(set(shape_names).difference(set(sdata.shapes["cell_boundaries"].columns.tolist())))
-    sjoined_shapes = sdata.shapes["cell_boundaries"].copy()
+    shape_names = list(set(shape_names).difference(set(sdata.shapes[cell_shape].columns.tolist())))
+    sjoined_shapes = sdata.shapes[cell_shape].copy()
     for shape in shape_names:
         sjoined_shapes = sjoined_shapes.sjoin(sdata.shapes[shape], how='left', predicate='contains')
         sjoined_shapes.rename(columns={"index_right": shape}, inplace=True)
@@ -95,7 +87,7 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str],):
             except:
                 pass
             
-    sdata.shapes["cell_boundaries"] = sjoined_shapes
+    sdata.shapes[cell_shape] = sjoined_shapes
 
 def get_shape(sdata: SpatialData, shape_name: str) -> gpd.GeoSeries:
     """Get a GeoSeries of Polygon objects from an SpatialData object.
@@ -119,8 +111,8 @@ def get_shape(sdata: SpatialData, shape_name: str) -> gpd.GeoSeries:
     return sdata.shapes[shape_name].geometry
 
 def get_points(
-    sdata: SpatialData, key: str = "transcripts", asgeo: bool = False
-) -> Union[pd.DataFrame, gpd.GeoDataFrame]:
+    sdata: SpatialData, key: str = "transcripts", astype: str = "Pandas"
+) -> Union[pd.DataFrame, dd.DataFrame, gpd.GeoDataFrame]:
     """Get points DataFrame synced to AnnData object.
 
     Parameters
@@ -137,15 +129,16 @@ def get_points(
     DataFrame or GeoDataFrame
         Returns `data.points[key]` as a `[Geo]DataFrame`
     """
+    if astype not in ["Pandas", "Dask", "GeoPandas"]:
+        raise ValueError(f"astype must be one of ['Dask', 'Pandas', 'GeoPandas'], not {astype}")
+
     points = sync_points(sdata).points[key]
     
-    if asgeo:
-        # Cast to Dask GeoDataFrame
-        def as_geo(df):
-            return gpd.GeoDataFrame(
-                df, geometry=gpd.points_from_xy(df.x, df.y), copy=True
-            )
-        points = points.map_partitions(as_geo)
-        
-    return points
+    if astype == "Pandas":
+        return points.compute()
+    elif astype == "Dask":
+        return points
+    elif astype == "GeoPandas":
+        points = points.compute()
+        return gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points.x, points.y), copy=True)
     

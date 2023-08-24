@@ -36,6 +36,6 @@ def sync_points(sdata: SpatialData) -> SpatialData:
             if points[col].dtype == "category":
                 points[col].cat.remove_unused_categories(inplace=True)
 
-        sdata.points[point_key] = from_pandas(points, npartitions=sdata.points[point_key].npartitions)
+        sdata.points[point_key] = from_pandas(points.reset_index(drop=True), npartitions=sdata.points[point_key].npartitions)
 
         return sdata

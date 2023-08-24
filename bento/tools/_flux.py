@@ -30,6 +30,7 @@ from bento.tools._shape_features import analyze_shapes
 #@register_points("cell_raster", ["flux", "flux_embed", "flux_color"])
 def flux(
     sdata: SpatialData,
+    point_key: str = "transcripts",
     method: Literal["knn", "radius"] = "radius",
     n_neighbors: Optional[int] = None,
     radius: Optional[int] = 50,
@@ -74,9 +75,9 @@ def flux(
     if n_neighbors is None and radius is None:
         radius = 50
 
-    sdata.points["transcripts"] = get_points(sdata).loc[get_points(sdata)["cell"] != "None"].sort_values("cell")
+    sdata.points[point_key] = get_points(sdata, astype="Dask").loc[get_points(sdata, astype="Dask")["cell"] != "None"].sort_values("cell")
     
-    points = get_points(sdata)[["cell", "gene", "x", "y"]].compute()
+    points = get_points(sdata, astype="Dask")[["cell", "gene", "x", "y"]].compute()
 
     # embeds points on a uniform grid
     pbar = tqdm(total=3)
@@ -192,6 +193,7 @@ def vec2color(
     # @track
 def fluxmap(
     sdata: SpatialData,
+    point_key: str = "transcripts",
     n_clusters: Union[Iterable[int], int] = range(2, 9),
     num_iterations: int = 1000,
     train_size: float = 0.2,
@@ -373,14 +375,14 @@ def fluxmap(
         sdata.shapes[fluxmap] = gpd.GeoDataFrame(geometry=gpd.GeoSeries(fluxmap_df.reindex(sdata.table.obs_names)[fluxmap]))
         sdata.shapes[fluxmap].rename_geometry(fluxmap, inplace=True)
     
-    old_cols = sdata.points["transcripts"].columns[
-        sdata.points["transcripts"].columns.str.startswith("fluxmap")
+    old_cols = sdata.points[point_key].columns[
+        sdata.points[point_key].columns.str.startswith("fluxmap")
     ]
 
-    sdata.points["transcripts"] = sdata.points["transcripts"].drop(old_cols, axis=1)
+    sdata.points[point_key] = sdata.points[point_key].drop(old_cols, axis=1)
 
     # TODO SLOW
-    sindex_points(sdata, "transcripts", fluxmap_df.columns.tolist())
+    sindex_points(sdata=sdata, shape_names=fluxmap_df.columns.tolist(), point_key=point_key)
     pbar.update()
     pbar.set_description("Done")
     pbar.close()

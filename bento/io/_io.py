@@ -9,15 +9,15 @@ from dask.dataframe import from_pandas
 from ..geometry import sindex_points, sjoin_shapes
 
 def format_sdata(
-    sdata: SpatialData, points_key: str, shape_names: List[str]
+    sdata: SpatialData, point_key: str, shape_names: List[str]
 ) -> SpatialData:
-    """Converts shape indices to strings and indexes points to shapes and add as columns to `data.points[points_key]`.
+    """Converts shape indices to strings and indexes points to shapes and add as columns to `data.points[point_key]`.
 
     Parameters
     ----------
     sdata : SpatialData
         Spatial formatted SpatialData object
-    points_key : str
+    point_key : str
         Key for points DataFrame in `data.points`
     shape_names : str, list
         List of shape names to index points to
@@ -27,7 +27,7 @@ def format_sdata(
     -------
     SpatialData
         .shapes[shape_name]: Updated shapes GeoDataFrame with string index
-        .points[points_key]: Updated points DataFrame with boolean column for each shape
+        .points[point_key]: Updated points DataFrame with boolean column for each shape
     """
     # Renames geometry column of shape element to match shape name
     # Changes indices to strings
@@ -42,16 +42,14 @@ def format_sdata(
     point_sjoin = []
     shape_sjoin = []
     for shape_name in shape_names:
-        if shape_name.split("_")[0] not in sdata.points[points_key].columns:
+        if shape_name.split("_")[0] not in sdata.points[point_key].columns:
             point_sjoin.append(shape_name)
         if shape_name != "cell_boundaries" and shape_name not in sdata.shapes["cell_boundaries"].columns:
             shape_sjoin.append(shape_name)
 
     if len(point_sjoin) != 0:
-        sindex_points(sdata, points_key, shape_names)
+        sindex_points(sdata=sdata, shape_names=point_sjoin, point_key=point_key)
     if len(shape_sjoin) != 0:
-        sjoin_shapes(sdata, shape_sjoin)
-
-    sdata.points[points_key] = from_pandas(sdata.points[points_key].compute(), npartitions=sdata.points[points_key].npartitions)
+        sjoin_shapes(sdata=sdata, shape_names=shape_sjoin)
 
     return sdata

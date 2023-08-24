@@ -76,7 +76,7 @@ def analyze_points(
 
     # Make sure all groupby keys are in point columns
     for g in groupby:
-        if g not in get_points(sdata).columns:
+        if g not in get_points(sdata, astype="Dask").columns:
             raise ValueError(f"Groupby key {g} not found in point columns.")
     
     # Generate feature x shape combinations
@@ -104,8 +104,7 @@ def analyze_points(
     
     # extract cell attributes
     points_df = (
-        get_points(sdata, asgeo=True)
-        .compute()
+        get_points(sdata, astype="GeoPandas")
         .set_index("cell")
         #.join(sdata.shapes["cell_boundaries"][obs_attrs])
         #.reset_index()

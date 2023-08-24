@@ -142,7 +142,7 @@ def _density(data: SpatialData, shape_name: str, recompute: bool = False):
     if feature_key in data.shapes[shape_name].keys() and not recompute:
         return
 
-    count = get_points(data).query(f"{shape_prefix} != 'None'")[shape_prefix].value_counts().compute()
+    count = get_points(data, astype="Dask").query(f"{shape_prefix} != 'None'")[shape_prefix].value_counts().compute()
     _area(data, shape_name)
 
     data.shapes[shape_name][feature_key] = count / data.shapes[shape_name][f"{shape_prefix}_area"]
