@@ -1,4 +1,5 @@
 from ._flux import flux, fluxmap
+from ._flux_enrichment import fe, fe_fazal2019, fe_xia2019, gene_sets, load_gene_sets
 from ._lp import lp, lp_stats, lp_diff_discrete, lp_diff_continuous
 from ._point_features import analyze_points, list_point_features, register_point_feature
 from ._shape_features import (

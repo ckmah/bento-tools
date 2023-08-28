@@ -11,6 +11,7 @@ import matplotlib.path as mplPath
 import numpy as np
 import pandas as pd
 from spatialdata._core.spatialdata import SpatialData
+from spatialdata.models import PointsModel
 from scipy.spatial import distance, distance_matrix
 from shapely.geometry import MultiPolygon, Point
 from tqdm.auto import tqdm
@@ -303,7 +304,7 @@ def _raster(data: SpatialData, shape_name: str, step: int = 1, recompute: bool =
 
     # Add raster to data.uns as long dataframe (for flux compatibility)
     raster_all = pd.concat(raster_all).reset_index(drop=True)
-    data.table.uns[feature_key] = raster_all
+    data.points[feature_key] = PointsModel.parse(raster_all, coordinates={'x': 'x', 'y': 'y'})
 
 def _perimeter(data: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the perimeter of each shape.
@@ -465,8 +466,7 @@ def obs_stats(
 
     return sdata if copy else None
 
-# Got rid of @track
-#########################################################################################################
+#@track
 def analyze_shapes(
     sdata: SpatialData,
     shape_names: Union[str, List[str]],

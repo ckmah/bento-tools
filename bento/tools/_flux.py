@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 import pandas as pd
+import dask.dataframe as dd
 import pkg_resources
 import rasterio
 import rasterio.features
@@ -21,13 +22,12 @@ from sklearn.preprocessing import StandardScaler, minmax_scale, quantile_transfo
 from sklearn.utils import resample
 from tqdm.auto import tqdm
 
-#from bento._utils import register_points, track
+#from bento._utils import, track
 from bento.geometry import get_points, sindex_points
 from bento.tools._neighborhoods import _count_neighbors
 from bento.tools._shape_features import analyze_shapes
 
 #@track
-#@register_points("cell_raster", ["flux", "flux_embed", "flux_color"])
 def flux(
     sdata: SpatialData,
     point_key: str = "transcripts",
@@ -92,8 +92,8 @@ def flux(
         feature_kws=dict(raster={"step": step}),
     )
     # Long dataframe of raster points
-    sdata.table.uns["cell_raster"] = sdata.table.uns["cell_raster"].sort_values("cell")
-    raster_points = sdata.table.uns["cell_raster"]
+    sdata.points["cell_raster"] = dd.from_pandas(sdata.points["cell_raster"].compute().sort_values("cell"), npartitions=sdata.points["cell_raster"].npartitions)
+    raster_points = sdata.points["cell_raster"].compute()
 
     # Extract gene names and codes
     gene_names = points["gene"].cat.categories.tolist()
@@ -159,13 +159,14 @@ def flux(
     # For color visualization of flux embeddings
     flux_color = vec2color(flux_embed, fmt="hex", vmin=0.1, vmax=0.9)
     pbar.update()
-
     pbar.set_description(emoji.emojize("Saving"))
-    sdata.table.uns["flux"] = cell_fluxs  # sparse gene embedding
+    cell_raster_points = sdata.points["cell_raster"].compute()
+    cell_raster_points["flux"] = cell_fluxs.todense().tolist()
     sdata.table.uns["flux_genes"] = gene_names  # gene names
-    sdata.table.uns["flux_embed"] = flux_embed
+    cell_raster_points["flux_embed"] = flux_embed.tolist()
     sdata.table.uns["flux_variance_ratio"] = variance_ratio
-    sdata.table.uns["flux_color"] = flux_color
+    cell_raster_points["flux_color"] = flux_color
+    sdata.points["cell_raster"] = dd.from_pandas(cell_raster_points, npartitions=sdata.points["cell_raster"].npartitions)
 
     pbar.set_description(emoji.emojize("Done. :bento_box:"))
     pbar.update()
@@ -190,7 +191,7 @@ def vec2color(
         color = np.apply_along_axis(mpl.colors.to_hex, 1, color, keep_alpha=True)
     return color
 
-    # @track
+#@track
 def fluxmap(
     sdata: SpatialData,
     point_key: str = "transcripts",
@@ -236,13 +237,13 @@ def fluxmap(
     """
 
     # Check if flux embedding has been computed
-    if "flux_embed" not in sdata.table.uns:
+    if "flux_embed" not in sdata.points['cell_raster'].columns:
         raise ValueError(
             "Flux embedding has not been computed. Run `bento.tl.flux()` first."
         )
 
-    flux_embed = sdata.table.uns["flux_embed"]
-    raster_points = sdata.table.uns["cell_raster"]
+    flux_embed = np.array([np.array(array) for array in sdata.points["cell_raster"]["flux_embed"].values.compute()])
+    raster_points = sdata.points["cell_raster"].compute()
 
     if isinstance(n_clusters, int):
         n_clusters = [n_clusters]
@@ -301,7 +302,7 @@ def fluxmap(
     # Indices start at 0, so add 1
     qnt_index = np.ravel_multi_index(winner_coordinates, (1, best_k)) + 1
     raster_points["fluxmap"] = qnt_index
-    sdata.table.uns["cell_raster"] = raster_points.copy()
+    sdata.points["cell_raster"] = dd.from_pandas(raster_points.copy(), npartitions=sdata.points["cell_raster"].npartitions)
 
     pbar.update()
 
