@@ -87,8 +87,8 @@ def fe(
 
     Returns
     -------
-    adata : AnnData
-        uns["flux_fe"] : DataFrame
+    sdata : SpatialData
+        .points["cell_raster"]["flux_fe"] : DataFrame
             Enrichment scores for each gene set.
     """
     # Make sure embedding is run first

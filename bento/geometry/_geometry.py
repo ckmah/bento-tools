@@ -47,7 +47,7 @@ def sindex_points(
         sjoined_points = gpd.sjoin(points_gpd, shape_gpd, how="left", predicate="intersects")
         sjoined_points = sjoined_points[~sjoined_points.index.duplicated(keep='last')]
         sjoined_points.loc[sjoined_points["index_right"].isna(), "index_right"] = "None"
-        sdata.points[point_key][shape.split('_')[0]] = sjoined_points["index_right"].astype(str)
+        sdata.points[point_key][shape.split('_')[0]] = sjoined_points["index_right"].astype('category')
         
     sdata.points[point_key] = dd.from_pandas(sdata.points[point_key].compute(), npartitions=sdata.points[point_key].npartitions)
 

@@ -45,8 +45,8 @@ def flux(
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData object.
+    sdata : SpatialData
+        Spatial formatted SpatialData object.
     method: str
         Method to use for local neighborhood. Either 'knn' or 'radius'.
     n_neighbors : int
@@ -56,20 +56,20 @@ def flux(
     res : float
         Resolution to use for rendering embedding. Default 0.05 samples at 5% original resolution (5 units between pixels)
     copy : bool
-        Whether to return a copy the AnnData object. Default False.
+        Whether to return a copy the SpatialData object. Default False.
 
     Returns
     -------
-    adata : AnnData
-        .uns["flux"] : scipy.csr_matrix
+    sdata : SpatialData
+        .points["cell_raster"]["flux"] : scipy.csr_matrix
             [pixels x genes] sparse matrix of normalized local composition.
-        .uns["flux_embed"] : np.ndarray
+        .points["cell_raster"]["flux_embed"] : np.ndarray
             [pixels x components] array of embedded flux values.
-        .uns["flux_color"] : np.ndarray
+        .points["cell_raster"]["flux_color"] : np.ndarray
             [pixels x 3] array of RGB values for visualization.
-        .uns["flux_genes"] : list
+        .table.uns["flux_genes"] : list
             List of genes used for embedding.
-        .uns["flux_variance_ratio"] : np.ndarray
+        .table.uns["flux_variance_ratio"] : np.ndarray
             [components] array of explained variance ratio for each component.
     """
     if n_neighbors is None and radius is None:
@@ -207,7 +207,7 @@ def fluxmap(
 
     Parameters
     ----------
-    data : SpatialData
+    sdata : SpatialData
         Spatial formatted SpatialData object.
     n_clusters : int or list
         Number of clusters to use. If list, will pick best number of clusters
@@ -223,16 +223,14 @@ def fluxmap(
     plot_error : bool
         Whether to plot quantization error. Default True.
     copy : bool
-        Whether to return a copy the AnnData object. Default False.
+        Whether to return a copy the SpatialData object. Default False.
 
     Returns
     -------
     sdata : SpatialData
-        .table.uns["cell_raster"] : DataFrame
+        .points["points"] : DataFrame
             Adds "fluxmap" column denoting cluster membership.
-        .table.uns["points"] : DataFrame
-            Adds "fluxmap#" columns for each cluster.
-        .table.obs : GeoSeries
+        .shapes["fluxmap#_shape"] : GeoSeries
             Adds "fluxmap#_shape" columns for each cluster rendered as (Multi)Polygon shapes.
     """
 
