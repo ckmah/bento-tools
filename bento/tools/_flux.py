@@ -354,7 +354,7 @@ def fluxmap(
         fluxmap_df[cell] = shapes
 
     fluxmap_df = pd.DataFrame.from_dict(fluxmap_df).T
-    fluxmap_df.columns = "fluxmap" + fluxmap_df.columns.astype(str) + "_shape"
+    fluxmap_df.columns = "fluxmap" + fluxmap_df.columns.astype(str) + "_boundaries"
 
     # Upscale to match original resolution
     fluxmap_df = fluxmap_df.apply(

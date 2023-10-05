@@ -92,7 +92,6 @@ def comp_diff(
             continue
 
         diff_key = f"{group}_diff"
-        return comp_stats
         comp_stats[group][diff_key] = pd.Series(
             paired_distances(
                 comp_stats[group][dims].reindex(ref_comp.index, fill_value=1e-10),

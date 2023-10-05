@@ -89,25 +89,31 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str], cell_shape: str = "
             
     sdata.shapes[cell_shape] = sjoined_shapes
 
-def get_shape(sdata: SpatialData, shape_name: str) -> gpd.GeoSeries:
+def get_shape(sdata: SpatialData, shape_name: str, sync: bool = False) -> gpd.GeoSeries:
     """Get a GeoSeries of Polygon objects from an SpatialData object.
 
     Parameters
     ----------
-    adata : SpatialData
+    sdata : SpatialData
         Spatial formatted SpatialData object
     shape_name : str
         Name of shape column in sdata.shapes
-
+    sync : bool
+        Whether to sync the shape to cell_boundaries. Default False.
+        
     Returns
     -------
     GeoSeries
         GeoSeries of Polygon objects
     """
+    if sync and shape_name != "cell_boundaries":
+        if shape_name not in sdata.shapes["cell_boundaries"].columns:
+            raise ValueError(f"Shape {shape_name} not synced to cell_boundaries. Run sjoin_shapes first.")
+        return sdata.shapes["cell_boundaries"][shape_name]
+        
     if shape_name not in sdata.shapes.keys():
         raise ValueError(f"Shape {shape_name} not found in sdata.shapes")
         
-    sdata.shapes[shape_name].geometry.name = shape_name
     return sdata.shapes[shape_name].geometry
 
 def get_points(
@@ -121,13 +127,13 @@ def get_points(
         Spatial formatted SpatialData object
     key : str, optional
         Key for `data.points` to use, by default "transcripts"
-    asgeo : bool, optional
-        Cast as GeoDataFrame using columns x and y for geometry, by default False
+    astype : str, optional
+        Whether to return a 'Pandas' DataFrame, 'Dask' DataFrame, or 'GeoPandas' GeoDataFrame, by default "Pandas"
 
     Returns
     -------
     DataFrame or GeoDataFrame
-        Returns `data.points[key]` as a `[Geo]DataFrame`
+        Returns `data.points[key]` as a `[Geo]DataFrame` or 'Dask DataFrame'
     """
     if astype not in ["Pandas", "Dask", "GeoPandas"]:
         raise ValueError(f"astype must be one of ['Dask', 'Pandas', 'GeoPandas'], not {astype}")
@@ -141,4 +147,26 @@ def get_points(
     elif astype == "GeoPandas":
         points = points.compute()
         return gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points.x, points.y), copy=True)
+    
+def get_points_metadata(
+    sdata: SpatialData, metadata_key: str, points_key: str = "transcripts"
+):
+    """Get points metadata synced to SpatialData object.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial formatted SpatialData object
+    metadata_key : str
+        Key for `sdata.points[points_key][key]` to use
+    points_key : str, optional
+        Key for `sdata.points` to use, by default "transcripts"
+
+    Returns
+    -------
+    Series
+        Returns `data.uns[key][metadata_key]` as a `Series`
+    """
+    metadata = sync_points(sdata).points[points_key][metadata_key].compute()
+    return metadata
     
