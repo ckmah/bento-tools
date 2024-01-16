@@ -112,9 +112,8 @@ def decompose(
 def rmse(tensor, tensor_mu):
     return np.sqrt((tensor[tensor != 0] - tensor_mu[tensor != 0]) ** 2).mean()
 
-#@track
 def to_tensor(
-    sdata: SpatialData, layers: List[str], scale: bool = False, copy: bool = False
+    sdata: SpatialData, layers: List[str], scale: bool = False
 ):
     """
     Generate tensor from data where dimensions are (layers, cells, genes).
@@ -127,8 +126,6 @@ def to_tensor(
         Keys in data.layers to build tensor.
     scale : bool
         Z scale across cells for each layer, by default False.
-    copy : bool
-        Return a copy of `data` instead of writing to data, by default False.
 
     Returns
     -------

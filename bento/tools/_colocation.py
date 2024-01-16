@@ -15,13 +15,11 @@ from ._neighborhoods import _count_neighbors
 from ._decomposition import decompose
 
 
-#@track
 def colocation(
     sdata: SpatialData,
     ranks: List[int],
     iterations: int = 3,
     plot_error: bool = True,
-    copy: bool = False,
 ):
     """Decompose a tensor of pairwise colocalization quotients into signatures.
 
@@ -35,8 +33,7 @@ def colocation(
         Number of iterations to run the decomposition.
     plot_error : bool
         Whether to plot the error of the decomposition.
-    copy : bool
-        Whether to return a copy of the SpatialData object. Default False.
+
     Returns
     -------
     sdata : SpatialData
@@ -105,14 +102,12 @@ def _colocation_tensor(sdata: SpatialData):
     sdata.table.uns["tensor_labels"] = labels
     sdata.table.uns["tensor_names"] = label_names
 
-#@track
 def coloc_quotient(
     sdata: SpatialData,
     shapes: List[str] = ["cell_boundaries"],
     radius: int = 20,
     min_points: int = 10,
     min_cells: int = 0,
-    copy: bool = False,
 ):
     """Calculate pairwise gene colocalization quotient in each cell.
 
@@ -128,8 +123,7 @@ def coloc_quotient(
         Minimum number of points for sample to be considered for colocalization, default 10
     min_cells : int
         Minimum number of cells for gene to be considered for colocalization, default 0
-    copy : bool
-        Whether to return a copy of the SpatialData object. Default False.
+
     Returns
     -------
     sdata : SpatialData
@@ -139,7 +133,7 @@ def coloc_quotient(
     all_clq = dict()
     for shape in shapes:
         shape_col = "_".join(str(shape).split("_")[:-1])
-        points = get_points(sdata, astype="Pandas")
+        points = get_points(sdata, astype="pandas")
         points[shape_col] = points[shape_col].astype(str)
         points = (
             points.query(f"{shape_col} != '-1'")

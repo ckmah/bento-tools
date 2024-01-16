@@ -121,20 +121,21 @@ def lp_genes(
     **kwargs
         Options to pass to matplotlib plotting method.
     """
-    lp_stats(sdata, groupby)
+    lp_stats(sdata)
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
 
     n_cells = sdata.table.n_obs
     gene_frac = sdata.table.uns["lp_stats"][PATTERN_NAMES] / n_cells
     genes = gene_frac.index
-    gene_logcount = sdata.table[:,genes].X.toarray().mean(axis=0, where=sdata.table[:,genes].X.toarray() > 0)
+    gene_expression_array = sdata.table[:,genes].X.toarray()
+    gene_logcount = gene_expression_array.mean(axis=0, where=gene_expression_array > 0)
     gene_logcount = np.log2(gene_logcount + 1)
     gene_frac["logcounts"] = gene_logcount
     
     cell_fraction = (
         100
-        * get_points(sdata, points_key, astype="Pandas").groupby("gene", observed=True)["cell"].nunique()
+        * get_points(sdata, points_key, astype="pandas").groupby("gene", observed=True)["cell"].nunique()
         / n_cells
     )
     gene_frac["cell_fraction"] = cell_fraction

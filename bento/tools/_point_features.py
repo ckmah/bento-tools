@@ -20,7 +20,6 @@ from .. import tools as tl
 #from .._utils import track
 from ..geometry import get_points
 
-# @track
 def analyze_points(
     sdata: SpatialData,
     shape_names: List[str],
@@ -28,7 +27,6 @@ def analyze_points(
     groupby: Optional[Union[str, List[str]]] = None,
     recompute=False,
     progress: bool = False,
-    copy: bool = False,
 ):
     """Calculate the set of specified `features` for each point group. Groups are within each cell.
 
@@ -42,8 +40,6 @@ def analyze_points(
             Names of the features to analyze.
         groupby : str or list of str, optional
             Key(s) in `data.points['points'] to groupby, by default None. Always treats each cell separately
-        copy : bool
-            Return a copy of `data` instead of writing to data, by default False.
 
         Returns
         -------
@@ -76,7 +72,7 @@ def analyze_points(
 
     # Make sure all groupby keys are in point columns
     for g in groupby:
-        if g not in get_points(sdata, astype="Dask").columns:
+        if g not in get_points(sdata, astype="dask").columns:
             raise ValueError(f"Groupby key {g} not found in point columns.")
     
     # Generate feature x shape combinations
@@ -104,10 +100,8 @@ def analyze_points(
     
     # extract cell attributes
     points_df = (
-        get_points(sdata, astype="GeoPandas")
+        get_points(sdata, astype="geopandas")
         .set_index("cell")
-        #.join(sdata.shapes["cell_boundaries"][obs_attrs])
-        #.reset_index()
     )
 
     points_df = (

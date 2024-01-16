@@ -108,7 +108,7 @@ def _raster(sdata, res, color, points_key="cell_raster", cbar=False, ax=None, **
     if ax is None:
         ax = plt.gca()
 
-    points = get_points(sdata, astype="Pandas", key=points_key)
+    points = get_points(sdata, astype="pandas", key=points_key)
     step = 1 / res
     color_values = np.array(get_points_metadata(sdata, metadata_key=color, points_key=points_key))
     # Infer value format and convert values to rgb

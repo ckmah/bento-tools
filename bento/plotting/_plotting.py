@@ -15,7 +15,7 @@ def _prepare_points_df(sdata, semantic_vars=None, hue=None, hue_order=None):
     """
     Prepare points DataFrame for plotting. This function will concatenate the appropriate semantic variables as columns to points data.
     """
-    points = get_points(sdata, astype="Pandas")
+    points = get_points(sdata, astype="pandas")
     cols = list(set(["x", "y", "cell"]))
 
     if semantic_vars is None or len(semantic_vars) == 0:
@@ -35,10 +35,6 @@ def _prepare_points_df(sdata, semantic_vars=None, hue=None, hue_order=None):
             points[var] = sdata.shapes[var].reindex(points["cell"].values)[var].values
         else:
             raise ValueError(f"Variable {var} not found in points or obs")
-        '''elif var in adata.uns["point_sets"]["points"]:
-            if len(adata.uns[var].shape) > 1:
-                raise ValueError(f"Variable {var} is not 1-dimensional")
-            points[var] = adata.uns[var]'''
     
     return points[cols]
 
@@ -97,7 +93,6 @@ def _setup_ax(
 @savefig
 def points(
     sdata,
-    # batch=None,
     hue=None,
     hue_order=None,
     size=None,
@@ -116,11 +111,6 @@ def points(
     fname=None,
     **kwargs,
 ):
-    '''# Default use first obs batch
-    if batch is None:
-        batch = data.obs["batch"].iloc[0]
-    adata = data[data.obs["batch"] == batch]
-    title = f"batch {batch}" if not title else title'''
     
     ax = _setup_ax(
         ax=ax,
@@ -138,7 +128,6 @@ def points(
 @savefig
 def density(
     sdata,
-    #batch=None,
     kind="hist",
     hue=None,
     hue_order=None,
@@ -156,11 +145,6 @@ def density(
     fname=None,
     **kwargs,
 ):
-    '''# Default use first obs batch
-    if batch is None:
-        batch = data.obs["batch"].iloc[0]
-    adata = data[data.obs["batch"] == batch]
-    title = f"batch {batch}" if title is None else title'''
 
     ax = _setup_ax(
         ax=ax,
@@ -183,7 +167,6 @@ def density(
 @savefig
 def shapes(
     sdata,
-    #batch=None,
     shapes=None,
     color=None,
     color_style="outline",
@@ -199,11 +182,6 @@ def shapes(
     fname=None,
     **kwargs,
 ):
-    '''# Default use first obs batch
-    if batch is None:
-        batch = data.obs["batch"].iloc[0]
-    adata = data[data.obs["batch"] == batch]
-    title = f"batch {batch}" if not title else title'''
 
     ax = _setup_ax(
         ax=ax,
@@ -300,7 +278,6 @@ def _shapes(
 @savefig
 def flux(
     sdata,
-    #batch=None,
     res=0.05,
     shapes=None,
     hide_outside=True,
@@ -316,11 +293,6 @@ def flux(
     fname=None,
     **kwargs,
 ):
-    '''# Default use first obs batch
-    if batch is None:
-        batch = data.obs["batch"].iloc[0]
-    adata = data[data.obs["batch"] == batch]
-    title = f"batch {batch}" if not title else title'''
 
     ax = _setup_ax(
         ax=ax,
@@ -339,7 +311,6 @@ def flux(
 def fe(
     sdata,
     gs,
-    #batch=None,
     res=0.05,
     shapes=None,
     cmap=None,
@@ -357,12 +328,6 @@ def fe(
     fname=None,
     **kwargs,
 ):
-    '''# Default use first obs batch
-    if batch is None:
-        batch = data.obs["batch"].iloc[0]
-    adata = data[data.obs["batch"] == batch]
-    sync(adata)
-    title = f"batch {batch}" if not title else title'''
 
     ax = _setup_ax(
         ax=ax,
@@ -386,7 +351,6 @@ def fe(
 @savefig
 def fluxmap(
     sdata,
-    #batch=None,
     palette="tab10",
     hide_outside=True,
     ax=None,
@@ -400,8 +364,6 @@ def fluxmap(
     ----------
     data : AnnData
         Spatial formatted AnnData
-    batch : str, optional
-        Batch to plot, by default None. If None, will use first batch.
     palette : str or dict, optional
         Color palette, by default "tab10". If dict, will use dict to map shape names to colors.
     ax : matplotlib.axes.Axes, optional
@@ -425,7 +387,6 @@ def fluxmap(
     for s, c in colormap.items():
         shapes(
             sdata,
-            #batch=batch,
             shapes=s,
             color=c,
             hide_outside=hide_outside,

@@ -18,8 +18,7 @@ from .._constants import PATTERN_NAMES, PATTERN_FEATURES
 
 tqdm.pandas()
 
-# @track
-def lp(sdata: SpatialData, groupby: str = "gene", copy: bool = False):
+def lp(sdata: SpatialData, groupby: str = "gene"):
     """Predict transcript subcellular localization patterns.
     Patterns include: cell edge, cytoplasmic, nuclear edge, nuclear, none
 
@@ -29,8 +28,6 @@ def lp(sdata: SpatialData, groupby: str = "gene", copy: bool = False):
         Spatial formatted SpatialData object
     groupby : str or list of str, optional (default: None)
         Key in `data.points['transcripts'] to groupby, by default None. Always treats each cell separately
-    copy : bool
-        Return a copy of `sdata` instead of writing to data, by default False.
 
     Returns
     -------
@@ -90,16 +87,14 @@ def lp(sdata: SpatialData, groupby: str = "gene", copy: bool = False):
     sdata.table.uns["lp"] = indicator_df.reset_index()
     sdata.table.uns["lpp"] = pattern_prob.reset_index()
 
-#@track
-def lp_stats(sdata: SpatialData, copy: bool = False):
+def lp_stats(sdata: SpatialData):
     """Computes frequencies of localization patterns across cells and genes.
 
     Parameters
     ----------
     data : SpatialData
         Spatial formatted SpatialData object.
-    copy : bool
-        Whether to return a copy of the SpatialData object. Default False.
+
     Returns
     -------
     sdata : SpatialData
@@ -249,9 +244,8 @@ def _lp_diff_gene(cell_by_pattern, phenotype_series):
 
     return results if len(results) > 0 else None
 
-#@track
 def lp_diff_discrete(
-    sdata: SpatialData, phenotype: str = None, copy: bool = False
+    sdata: SpatialData, phenotype: str = None
 ):
     """Gene-wise test for differential localization across phenotype of interest.
 
@@ -261,8 +255,6 @@ def lp_diff_discrete(
         Spatial formatted SpatialData object.
     phenotype : str
         Variable grouping cells for differential analysis. Must be in sdata.shape["cell_boundaries].columns.
-    copy : bool
-        Return a copy of `sdata` instead of writing to data, by default False.
 
     Returns
     -------
@@ -317,9 +309,8 @@ def lp_diff_discrete(
     # Save back to SpatialData
     sdata.table.uns[f"diff_{phenotype}"] = results
 
-#@track
 def lp_diff_continuous(
-    sdata: SpatialData, phenotype: str = None, copy: bool = False
+    sdata: SpatialData, phenotype: str = None
 ):
     """Gene-wise test for differential localization across phenotype of interest.
 
@@ -329,8 +320,6 @@ def lp_diff_continuous(
         Spatial formatted SpatialData object.
     phenotype : str
         Variable grouping cells for differential analysis. Must be in sdata.shape["cell_boundaries].columns.
-    copy : bool
-        Return a copy of `sdata` instead of writing to data, by default False.
 
     Returns
     -------

@@ -27,7 +27,6 @@ from bento.geometry import get_points, sindex_points
 from bento.tools._neighborhoods import _count_neighbors
 from bento.tools._shape_features import analyze_shapes
 
-#@track
 def flux(
     sdata: SpatialData,
     point_key: str = "transcripts",
@@ -36,7 +35,6 @@ def flux(
     radius: Optional[int] = 50,
     res: int = 0.1,
     random_state: int = 11,
-    copy: bool = False,
 ):
     """
     RNAflux: Embedding each pixel as normalized local composition normalized by cell composition.
@@ -55,8 +53,6 @@ def flux(
         Radius to use for local neighborhood.
     res : float
         Resolution to use for rendering embedding. Default 0.05 samples at 5% original resolution (5 units between pixels)
-    copy : bool
-        Whether to return a copy the SpatialData object. Default False.
 
     Returns
     -------
@@ -75,9 +71,10 @@ def flux(
     if n_neighbors is None and radius is None:
         radius = 50
 
-    sdata.points[point_key] = get_points(sdata, astype="Dask").loc[get_points(sdata, astype="Dask")["cell"] != "None"].sort_values("cell")
+    dask_points = get_points(sdata, astype="dask")
+    sdata.points[point_key] = dask_points.loc[dask_points["cell"] != "None"].sort_values("cell")
     
-    points = get_points(sdata, astype="Dask")[["cell", "gene", "x", "y"]].compute()
+    points = dask_points[["cell", "gene", "x", "y"]].compute()
 
     # embeds points on a uniform grid
     pbar = tqdm(total=3)
@@ -191,7 +188,6 @@ def vec2color(
         color = np.apply_along_axis(mpl.colors.to_hex, 1, color, keep_alpha=True)
     return color
 
-#@track
 def fluxmap(
     sdata: SpatialData,
     point_key: str = "transcripts",
@@ -201,7 +197,6 @@ def fluxmap(
     res: float = 0.1,
     random_state: int = 11,
     plot_error: bool = True,
-    copy: bool = False,
 ):
     """Cluster flux embeddings using self-organizing maps (SOMs) and vectorize clusters as Polygon shapes.
 
@@ -222,8 +217,6 @@ def fluxmap(
         Random state to use for SOM training. Default 11.
     plot_error : bool
         Whether to plot quantization error. Default True.
-    copy : bool
-        Whether to return a copy the SpatialData object. Default False.
 
     Returns
     -------

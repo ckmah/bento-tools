@@ -57,9 +57,8 @@ def _get_compositions(points: pd.DataFrame, shape_names: list) -> pd.DataFrame:
     return comp_stats
 
 
-#@track
 def comp_diff(
-    sdata: SpatialData, shape_names: list, groupby: str, ref_group: str, copy: bool = False
+    sdata: SpatialData, shape_names: list, groupby: str, ref_group: str
 ):
     """Calculate the average difference in gene composition for shapes across batches of cells. Uses the Wasserstein distance.
 
@@ -73,11 +72,9 @@ def comp_diff(
         Key in `sdata.points['transcripts]` to group cells by.
     ref_group : str
         Reference group to compare other groups to.
-    copy : bool
-        Return a copy of `sdata` instead of writing to data, by default False.
 
     """
-    points = get_points(sdata, astype="Pandas")
+    points = get_points(sdata, astype="pandas")
 
     # Get average gene compositions for each batch
     comp_stats = dict()

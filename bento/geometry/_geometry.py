@@ -21,8 +21,7 @@ def sindex_points(
         Key for points DataFrame in `data.points`
     shape_names : str, list
         List of shape names to index points to
-    copy : bool, optional
-        Whether to return a copy the SpatialData object. Default False.
+        
     Returns
     -------
     SpatialData
@@ -46,7 +45,7 @@ def sindex_points(
         shape_gpd = shape_gpds[shape]
         sjoined_points = gpd.sjoin(points_gpd, shape_gpd, how="left", predicate="intersects")
         sjoined_points = sjoined_points[~sjoined_points.index.duplicated(keep='last')]
-        sjoined_points.loc[sjoined_points["index_right"].isna(), "index_right"] = "None"
+        sjoined_points.loc[sjoined_points["index_right"].isna(), "index_right"] = ""
         sdata.points[point_key][shape.split('_')[0]] = sjoined_points["index_right"].astype('category')
         
     sdata.points[point_key] = dd.from_pandas(sdata.points[point_key].compute(), npartitions=sdata.points[point_key].npartitions)
@@ -117,7 +116,7 @@ def get_shape(sdata: SpatialData, shape_name: str, sync: bool = False) -> gpd.Ge
     return sdata.shapes[shape_name].geometry
 
 def get_points(
-    sdata: SpatialData, key: str = "transcripts", astype: str = "Pandas"
+    sdata: SpatialData, key: str = "transcripts", astype: str = "pandas"
 ) -> Union[pd.DataFrame, dd.DataFrame, gpd.GeoDataFrame]:
     """Get points DataFrame synced to AnnData object.
 
@@ -128,23 +127,23 @@ def get_points(
     key : str, optional
         Key for `data.points` to use, by default "transcripts"
     astype : str, optional
-        Whether to return a 'Pandas' DataFrame, 'Dask' DataFrame, or 'GeoPandas' GeoDataFrame, by default "Pandas"
+        Whether to return a 'pandas' DataFrame, 'dask' DataFrame, or 'geopandas' GeoDataFrame, by default "pandas"
 
     Returns
     -------
     DataFrame or GeoDataFrame
         Returns `data.points[key]` as a `[Geo]DataFrame` or 'Dask DataFrame'
     """
-    if astype not in ["Pandas", "Dask", "GeoPandas"]:
-        raise ValueError(f"astype must be one of ['Dask', 'Pandas', 'GeoPandas'], not {astype}")
+    if astype not in ["pandas", "dask", "geopandas"]:
+        raise ValueError(f"astype must be one of ['dask', 'pandas', 'geopandas'], not {astype}")
 
     points = sync_points(sdata).points[key]
     
-    if astype == "Pandas":
+    if astype == "pandas":
         return points.compute()
-    elif astype == "Dask":
+    elif astype == "dask":
         return points
-    elif astype == "GeoPandas":
+    elif astype == "geopandas":
         points = points.compute()
         return gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points.x, points.y), copy=True)
     

@@ -12,7 +12,7 @@ from spatialdata._core.spatialdata import SpatialData
 #from bento._utils import track, _register_points
 
 
-def fe_fazal2019(sdata: SpatialData, copy: bool = False, **kwargs):
+def fe_fazal2019(sdata: SpatialData, **kwargs):
     """Compute enrichment scores from subcellular compartment gene sets from Fazal et al. 2019 (APEX-seq).
     See `bento.tl.fe` docs for parameter details.
 
@@ -20,8 +20,7 @@ def fe_fazal2019(sdata: SpatialData, copy: bool = False, **kwargs):
     ----------
     data : SpatialData
         Spatial formatted SpatialData object.
-    copy : bool
-        Return a copy instead of writing to `sdata`. Default False.
+
     Returns
     -------
     DataFrame
@@ -32,7 +31,7 @@ def fe_fazal2019(sdata: SpatialData, copy: bool = False, **kwargs):
     fe(sdata, net=gene_sets, **kwargs)
 
 
-def fe_xia2019(sdata: SpatialData, copy: bool = False, **kwargs):
+def fe_xia2019(sdata: SpatialData, **kwargs):
     """Compute enrichment scores from subcellular compartment gene sets from Xia et al. 2019 (MERFISH 10k U2-OS).
     See `bento.tl.fe` docs for parameters details.
 
@@ -40,8 +39,7 @@ def fe_xia2019(sdata: SpatialData, copy: bool = False, **kwargs):
     ----------
     data : SpatialData
         Spatial formatted SpatialData object.
-    copy : bool
-        Return a copy instead of writing to `sdata`. Default False.
+
     Returns
     -------
     DataFrame
@@ -52,7 +50,6 @@ def fe_xia2019(sdata: SpatialData, copy: bool = False, **kwargs):
     fe(sdata, gene_sets, **kwargs)
 
 
-#@track
 def fe(
     sdata: SpatialData,
     net: pd.DataFrame,
@@ -61,7 +58,6 @@ def fe(
     weight: Optional[str] = "weight",
     batch_size: int = 10000,
     min_n: int = 0,
-    copy: bool = False,
 ):
     """
     Perform functional enrichment on point embeddings. Wrapper for decoupler wsum function.
@@ -82,8 +78,6 @@ def fe(
         Number of points to process in each batch. Default 10000.
     min_n : int
         Minimum number of targets per source. If less, sources are removed.
-    copy : bool
-        Return a copy instead of writing to `adata`. Default False.
 
     Returns
     -------
@@ -95,8 +89,10 @@ def fe(
     if "flux" not in sdata.points["cell_raster"].columns:
         print("Run bento.tl.flux first.")
         return
-
-    mat = sparse.csr_matrix(np.mat([np.array(array) for array in sdata.points["cell_raster"]["flux"].values.compute()]))  # sparse matrix in csr format
+    
+    flux_values = sdata.points["cell_raster"]["flux"].values.compute()
+    cell_raster_matrix = np.mat([np.array(array) for array in flux_values])
+    mat = sparse.csr_matrix(cell_raster_matrix)  # sparse matrix in csr format
     zero_rows = mat.getnnz(1) == 0
 
     samples = sdata.points["cell_raster"].index.astype(str)
@@ -121,7 +117,7 @@ def fe(
 
     sdata.points["cell_raster"] = dd.from_pandas(cell_raster_points, npartitions=sdata.points["cell_raster"].npartitions)
 
-    _fe_stats(sdata, net, source=source, target=target, copy=copy)
+    _fe_stats(sdata, net, source=source, target=target)
 
 
 def _fe_stats(
@@ -129,7 +125,6 @@ def _fe_stats(
     net: pd.DataFrame,
     source: str = "source",
     target: str = "target",
-    copy: bool = False,
 ):
     # rows = cells, columns = pathways, values = count of genes in pathway
     expr_binary = sdata.table.to_df() >= 5

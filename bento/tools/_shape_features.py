@@ -143,7 +143,7 @@ def _density(data: SpatialData, shape_name: str, recompute: bool = False):
     if feature_key in data.shapes[shape_name].keys() and not recompute:
         return
 
-    count = get_points(data, astype="Dask").query(f"{shape_prefix} != 'None'")[shape_prefix].value_counts().compute()
+    count = get_points(data, astype="dask").query(f"{shape_prefix} != 'None'")[shape_prefix].value_counts().compute()
     _area(data, shape_name)
 
     data.shapes[shape_name][feature_key] = count / data.shapes[shape_name][f"{shape_prefix}_area"]
@@ -159,7 +159,7 @@ def _opening(data: SpatialData, proportion: float, recompute: bool = False):
     Returns
     -------
     data : spatialdata.SpatialData
-        Returns `data` if `copy=True`, otherwise adds fields to `data`:
+        Adds fields to `data`:
 
         `.shapes[shape_name]['cell_open_{d}_shape']` : Polygons
             Ratio of long / short axis for each polygon in `.shapes[shape_name]['cell_boundaries']`
@@ -207,7 +207,7 @@ def _second_moment(data: SpatialData, shape_name: str, recompute: bool = False):
     Returns
     -------
     data : spatialdata.SpatialData
-        Returns `data` if `copy=True`, otherwise adds fields to `data`:
+        Adds fields to `data`:
 
         `.shapes[shape_name]['{shape}_moment']` : float
             The second moment for each polygon
@@ -276,7 +276,7 @@ def _raster(data: SpatialData, shape_name: str, step: int = 1, recompute: bool =
     Returns
     -------
     data : spatialdata.SpatialData
-        Returns `data` if `copy=True`, otherwise adds fields to `data`:
+        Adds fields to `data`:
 
         `.shapes[shape_name]['{shape}_raster']` : np.array
             Long DataFrame of points annotated by shape from `.shapes[shape_name]['{shape_name}']`
@@ -317,7 +317,7 @@ def _perimeter(data: SpatialData, shape_name: str, recompute: bool = False):
     Returns
     -------
     data : spatialdata.SpatialData
-        Returns `data` if `copy=True`, otherwise adds fields to `data`:
+        Adds fields to `data`:
 
         `.shapes[shape_name]['{shape}_perimeter']` : np.array
             Perimeter of each polygon
@@ -342,7 +342,7 @@ def _radius(data: SpatialData, shape_name: str, recompute: bool = False):
     Returns
     -------
     data : spatialdata.SpatialData
-        Returns `data` if `copy=True`, otherwise adds fields to `data`:
+        Adds fields to `data`:
 
         `.shapes[shape_name]['{shape}_radius']` : np.array
             Radius of each polygon in `obs['cell_shape']`
@@ -379,7 +379,7 @@ def _span(data: SpatialData, shape_name: str, recompute: bool = False):
     Returns
     -------
     data : spatialdata.SpatialData
-        Returns `data` if `copy=True`, otherwise adds fields to `data`:
+        Adds fields to `data`:
 
         `.shapes[shape_name]['{shape}_span']` : float
             Length of longest diagonal for each polygon
@@ -435,7 +435,6 @@ shape_features = dict(
 def obs_stats(
     data: SpatialData,
     feature_names: List[str] = ["area", "aspect_ratio", "density"],
-    copy=False,
 ):
     """Compute features for each cell shape. Convenient wrapper for `bento.tl.shape_features`.
     See list of available features in `bento.tl.shape_features`.
@@ -446,27 +445,21 @@ def obs_stats(
         Spatial formatted SpatialData
     feature_names : list
         List of features to compute. See list of available features in `bento.tl.shape_features`.
-    copy : bool, optional
-        Return a copy of `data` instead of writing to data, by default False.
 
     Returns
     -------
     data : spatialdata.SpatialData
-        Returns `data` if `copy=True`, otherwise adds fields to `data`:
+        Adds fields to `data`:
 
         `.shapes[shape_name]['{shape}_{feature}']` : np.array
             Feature of each polygon
     """
-    sdata = data.copy() if copy else data
 
     # Compute features
-    analyze_shapes(sdata, "cell_boundaries", feature_names, copy=copy)
-    if "nucleus_boundaries" in sdata.shapes.keys():
-        analyze_shapes(sdata, "nucleus_boundaries", feature_names, copy=copy)
+    analyze_shapes(data, "cell_boundaries", feature_names)
+    if "nucleus_boundaries" in data.shapes.keys():
+        analyze_shapes(data, "nucleus_boundaries", feature_names)
 
-    return sdata if copy else None
-
-#@track
 def analyze_shapes(
     sdata: SpatialData,
     shape_names: Union[str, List[str]],
@@ -474,7 +467,6 @@ def analyze_shapes(
     feature_kws: Dict[str, Dict] = None,
     recompute: bool = False,
     progress: bool = True,
-    copy: bool = False,
 ):
     """Analyze features of shapes.
 
@@ -488,8 +480,6 @@ def analyze_shapes(
         List of features to analyze.
     feature_kws : dict, optional (default: None)
         Keyword arguments for each feature.
-    copy : bool, optional
-        Return a copy of `data` instead of writing to data, by default False.
 
     Returns
     -------
