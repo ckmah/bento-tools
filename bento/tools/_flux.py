@@ -8,33 +8,34 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 import pandas as pd
-import dask.dataframe as dd
 import pkg_resources
 import rasterio
 import rasterio.features
 import shapely
 from spatialdata._core.spatialdata import SpatialData
+from spatialdata.models import PointsModel, ShapesModel
 from kneed import KneeLocator
 from minisom import MiniSom
+from shapely import Polygon
 from scipy.sparse import csr_matrix, vstack
 from sklearn.decomposition import TruncatedSVD
 from sklearn.preprocessing import StandardScaler, minmax_scale, quantile_transform
 from sklearn.utils import resample
 from tqdm.auto import tqdm
 
-#from bento._utils import, track
-from bento.geometry import get_points, sindex_points
-from bento.tools._neighborhoods import _count_neighbors
-from bento.tools._shape_features import analyze_shapes
+from ..geometry import get_points, sindex_points
+from ..tools._neighborhoods import _count_neighbors
+from ..tools._shape_features import analyze_shapes
 
 def flux(
     sdata: SpatialData,
-    point_key: str = "transcripts",
+    points_key: str = "transcripts",
     method: Literal["knn", "radius"] = "radius",
     n_neighbors: Optional[int] = None,
     radius: Optional[int] = 50,
     res: int = 0.1,
     random_state: int = 11,
+    recompute: bool = False
 ):
     """
     RNAflux: Embedding each pixel as normalized local composition normalized by cell composition.
@@ -68,12 +69,15 @@ def flux(
         .table.uns["flux_variance_ratio"] : np.ndarray
             [components] array of explained variance ratio for each component.
     """
+
+    if "cell_raster" in sdata.points and len(sdata.points["cell_raster"].columns) > 3 and not recompute:
+        return
+    
     if n_neighbors is None and radius is None:
         radius = 50
 
     dask_points = get_points(sdata, astype="dask")
-    sdata.points[point_key] = dask_points.loc[dask_points["cell"] != "None"].sort_values("cell")
-    
+    sdata.points[points_key] = PointsModel.parse(dask_points.sort_values("cell"), coordinates={'x': 'x', 'y': 'y', 'z': 'z'})
     points = dask_points[["cell", "gene", "x", "y"]].compute()
 
     # embeds points on a uniform grid
@@ -88,9 +92,14 @@ def flux(
         progress=False,
         feature_kws=dict(raster={"step": step}),
     )
+
+    cell_raster = get_points(sdata, points_key="cell_raster", astype="dask")[["x", "y", "cell"]].sort_values("cell")
+
+    transform = sdata.points["cell_raster"].attrs
     # Long dataframe of raster points
-    sdata.points["cell_raster"] = dd.from_pandas(sdata.points["cell_raster"].compute().sort_values("cell"), npartitions=sdata.points["cell_raster"].npartitions)
-    raster_points = sdata.points["cell_raster"].compute()
+    sdata.points["cell_raster"] = PointsModel.parse(cell_raster, coordinates={'x': 'x', 'y': 'y'})
+    sdata.points["cell_raster"].attrs = transform
+    raster_points = cell_raster.compute()
 
     # Extract gene names and codes
     gene_names = points["gene"].cat.categories.tolist()
@@ -157,13 +166,20 @@ def flux(
     flux_color = vec2color(flux_embed, fmt="hex", vmin=0.1, vmax=0.9)
     pbar.update()
     pbar.set_description(emoji.emojize("Saving"))
-    cell_raster_points = sdata.points["cell_raster"].compute()
-    cell_raster_points["flux"] = cell_fluxs.todense().tolist()
-    sdata.table.uns["flux_genes"] = gene_names  # gene names
-    cell_raster_points["flux_embed"] = flux_embed.tolist()
-    sdata.table.uns["flux_variance_ratio"] = variance_ratio
+
+    cell_raster_points = get_points(sdata, points_key="cell_raster", astype="pandas")
+    flux_df = pd.DataFrame(cell_fluxs.todense().tolist(), columns=gene_names)
+    flux_embed_df = pd.DataFrame(flux_embed.tolist(), columns=[f'flux_embed_{i}' for i in range(len(flux_embed.tolist()[0]))])
+    cell_raster_points = pd.concat([cell_raster_points, flux_df, flux_embed_df], axis=1, join='outer', ignore_index=False)
+
     cell_raster_points["flux_color"] = flux_color
-    sdata.points["cell_raster"] = dd.from_pandas(cell_raster_points, npartitions=sdata.points["cell_raster"].npartitions)
+
+    sdata.table.uns["flux_variance_ratio"] = variance_ratio
+    sdata.table.uns["flux_genes"] = gene_names  # gene names
+
+    transform = sdata.points["cell_raster"].attrs
+    sdata.points["cell_raster"] = PointsModel.parse(cell_raster_points, coordinates={'x': 'x', 'y': 'y'})
+    sdata.points["cell_raster"].attrs = transform
 
     pbar.set_description(emoji.emojize("Done. :bento_box:"))
     pbar.update()
@@ -190,7 +206,8 @@ def vec2color(
 
 def fluxmap(
     sdata: SpatialData,
-    point_key: str = "transcripts",
+    points_key: str = "transcripts",
+    cell_boundaries_key: str = "cell_boundaries",
     n_clusters: Union[Iterable[int], int] = range(2, 9),
     num_iterations: int = 1000,
     train_size: float = 0.2,
@@ -204,6 +221,10 @@ def fluxmap(
     ----------
     sdata : SpatialData
         Spatial formatted SpatialData object.
+    points_key : str
+        key for points element that holds transcript coordinates
+    cell_boundaries_key: str
+        key for cell boundaries shape element
     n_clusters : int or list
         Number of clusters to use. If list, will pick best number of clusters
         using the elbow heuristic evaluated on the quantization error.
@@ -227,14 +248,17 @@ def fluxmap(
             Adds "fluxmap#_shape" columns for each cluster rendered as (Multi)Polygon shapes.
     """
 
+    raster_points = get_points(sdata, points_key="cell_raster", astype="pandas")
+
     # Check if flux embedding has been computed
-    if "flux_embed" not in sdata.points['cell_raster'].columns:
+    if "flux_embed_0" not in raster_points.columns:
         raise ValueError(
             "Flux embedding has not been computed. Run `bento.tl.flux()` first."
         )
-
-    flux_embed = np.array([np.array(array) for array in sdata.points["cell_raster"]["flux_embed"].values.compute()])
-    raster_points = sdata.points["cell_raster"].compute()
+    
+    flux_embed = raster_points.filter(like='flux_embed_')
+    sorted_column_names = sorted(flux_embed.columns.tolist(), key=lambda x: int(x.split('_')[-1]))
+    flux_embed = flux_embed[sorted_column_names].to_numpy()
 
     if isinstance(n_clusters, int):
         n_clusters = [n_clusters]
@@ -293,8 +317,10 @@ def fluxmap(
     # Indices start at 0, so add 1
     qnt_index = np.ravel_multi_index(winner_coordinates, (1, best_k)) + 1
     raster_points["fluxmap"] = qnt_index
-    sdata.points["cell_raster"] = dd.from_pandas(raster_points.copy(), npartitions=sdata.points["cell_raster"].npartitions)
-
+    transform = sdata.points["cell_raster"].attrs
+    sdata.points["cell_raster"] = PointsModel.parse(raster_points.copy(), coordinates={'x': 'x', 'y': 'y'})
+    sdata.points["cell_raster"].attrs = transform
+    
     pbar.update()
 
     # Vectorize polygons in each cell
@@ -363,18 +389,20 @@ def fluxmap(
     for key in old_cols:
         del sdata.shapes[key]
 
+    transform = sdata.shapes[cell_boundaries_key].attrs
+    fluxmap_df = fluxmap_df.reindex(sdata.table.obs_names).where(fluxmap_df.notna(), other=Polygon())
     for fluxmap in fluxmap_df.columns:
-        sdata.shapes[fluxmap] = gpd.GeoDataFrame(geometry=gpd.GeoSeries(fluxmap_df.reindex(sdata.table.obs_names)[fluxmap]))
-        sdata.shapes[fluxmap].rename_geometry(fluxmap, inplace=True)
+        sdata.shapes[fluxmap] = ShapesModel.parse(gpd.GeoDataFrame(geometry=fluxmap_df[fluxmap]))
+        sdata.shapes[fluxmap].attrs = transform
     
-    old_cols = sdata.points[point_key].columns[
-        sdata.points[point_key].columns.str.startswith("fluxmap")
+    old_cols = sdata.points[points_key].columns[
+        sdata.points[points_key].columns.str.startswith("fluxmap")
     ]
 
-    sdata.points[point_key] = sdata.points[point_key].drop(old_cols, axis=1)
+    sdata.points[points_key] = sdata.points[points_key].drop(old_cols, axis=1)
 
     # TODO SLOW
-    sindex_points(sdata=sdata, shape_names=fluxmap_df.columns.tolist(), point_key=point_key)
+    sindex_points(sdata=sdata, shape_names=fluxmap_df.columns.tolist(), points_key=points_key)
     pbar.update()
     pbar.set_description("Done")
     pbar.close()

@@ -5,11 +5,12 @@ import decoupler as dc
 import numpy as np
 import pandas as pd
 import dask.dataframe as dd
-from scipy import sparse
 import pkg_resources
+from scipy import sparse
 from spatialdata._core.spatialdata import SpatialData
+from spatialdata.models import PointsModel
 
-#from bento._utils import track, _register_points
+from ..geometry import get_points
 
 
 def fe_fazal2019(sdata: SpatialData, **kwargs):
@@ -86,14 +87,20 @@ def fe(
             Enrichment scores for each gene set.
     """
     # Make sure embedding is run first
-    if "flux" not in sdata.points["cell_raster"].columns:
+    if "flux_genes" in sdata.table.uns:
+        flux_genes = set(sdata.table.uns["flux_genes"])
+        cell_raster_columns = set(sdata.points["cell_raster"].columns)
+        if len(flux_genes.intersection(cell_raster_columns)) != len(flux_genes):
+            print("Recompute bento.tl.flux first.")
+            return
+    else:
         print("Run bento.tl.flux first.")
         return
     
-    flux_values = sdata.points["cell_raster"]["flux"].values.compute()
-    cell_raster_matrix = np.mat([np.array(array) for array in flux_values])
+    flux_genes = sdata.table.uns["flux_genes"]
+    cell_raster_points = get_points(sdata, points_key="cell_raster", astype="dask")[flux_genes]
+    cell_raster_matrix = np.mat(cell_raster_points.values.compute())
     mat = sparse.csr_matrix(cell_raster_matrix)  # sparse matrix in csr format
-    zero_rows = mat.getnnz(1) == 0
 
     samples = sdata.points["cell_raster"].index.astype(str)
     features = sdata.table.uns["flux_genes"]
@@ -115,7 +122,9 @@ def fe(
         score_key = f"flux_{col}"
         cell_raster_points[score_key] = scores[col].values
 
-    sdata.points["cell_raster"] = dd.from_pandas(cell_raster_points, npartitions=sdata.points["cell_raster"].npartitions)
+    transform = sdata.points["cell_raster"].attrs
+    sdata.points["cell_raster"] = PointsModel.parse(cell_raster_points, coordinates={'x': 'x', 'y': 'y'})
+    sdata.points["cell_raster"].attrs = transform
 
     _fe_stats(sdata, net, source=source, target=target)
 
@@ -140,14 +149,12 @@ def _fe_stats(
     for source, group in net.groupby(source):
         sources.append(source)
         common = expr_genes.apply(lambda genes: set(genes).intersection(group[target]))
-        # common_genes[source] = np.array(common)
         common_ngenes.append(common.apply(len))
 
     fe_stats = pd.concat(common_ngenes, axis=1)
     fe_stats.columns = sources
 
     sdata.table.uns["fe_stats"] = fe_stats
-    # adata.uns["fe_genes"] = common_genes
     sdata.table.uns["fe_ngenes"] = net_ngenes
 
 
