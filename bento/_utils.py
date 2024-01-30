@@ -1,7 +1,8 @@
 from spatialdata._core.spatialdata import SpatialData
-from dask.dataframe import from_pandas
+from spatialdata.models import PointsModel
+from anndata import AnnData
 
-def sync_points(sdata: SpatialData) -> SpatialData:
+def sync_points(sdata: SpatialData, points_key="transcripts") -> SpatialData:
     """
     Sync existing point sets and associated metadata with sdata.table.obs_names and sdata.table.var_names
 
@@ -13,7 +14,7 @@ def sync_points(sdata: SpatialData) -> SpatialData:
 
     # Iterate over point sets
     for point_key in sdata.points:
-        points = sdata.points[point_key].compute()
+        points = sdata.points[points_key].compute()
 
         # Subset for cells
         cells = sdata.table.obs_names.tolist()
@@ -36,6 +37,8 @@ def sync_points(sdata: SpatialData) -> SpatialData:
             if points[col].dtype == "category":
                 points[col].cat.remove_unused_categories(inplace=True)
 
-        sdata.points[point_key] = from_pandas(points.reset_index(drop=True), npartitions=sdata.points[point_key].npartitions)
+        transform = sdata.points[points_key].attrs
+        sdata.points[points_key] = PointsModel.parse(points.reset_index(drop=True), coordinates={'x': 'x', 'y': 'y', 'z': 'z'})
+        sdata.points[points_key].attrs = transform
 
         return sdata
