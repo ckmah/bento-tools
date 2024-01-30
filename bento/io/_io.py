@@ -10,7 +10,7 @@ from spatialdata.models import ShapesModel
 import anndata
 from shapely import wkt
 
-from .._utils import sc_format
+# from .._utils import sc_format
 from ..geometry import sindex_points, sjoin_shapes
 
 def format_sdata(

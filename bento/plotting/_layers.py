@@ -64,7 +64,7 @@ def _polygons(sdata, shape, ax, hue=None, hide_outside=False, sync_shapes=True, 
 
     # If hue is specified, use it to color faces
     if hue:
-        df = shapes.reset_index().merge(sdata.shapes[shape], how='left', left_on="geometry", right_on=shape).set_index('index')
+        df = shapes.reset_index().merge(sdata.shapes[shape], how='left', left_on="geometry", right_on="geometry").set_index('index')
         if hue == "cell":
             shapes[hue] = df.index
         else:
@@ -108,7 +108,7 @@ def _raster(sdata, res, color, points_key="cell_raster", cbar=False, ax=None, **
     if ax is None:
         ax = plt.gca()
 
-    points = get_points(sdata, astype="pandas", key=points_key)
+    points = get_points(sdata, points_key=points_key, astype="pandas")
     step = 1 / res
     color_values = np.array(get_points_metadata(sdata, metadata_key=color, points_key=points_key))
     # Infer value format and convert values to rgb
