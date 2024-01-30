@@ -17,7 +17,6 @@ from math import isnan
 import re
 
 from .. import tools as tl
-#from .._utils import track
 from ..geometry import get_points
 
 def analyze_points(
@@ -32,7 +31,7 @@ def analyze_points(
 
         Parameters
         ----------
-        data : SpatialData
+        sdata : SpatialData
             Spatially formatted SpatialData
         shape_names : str or list of str
             Names of the shapes to analyze.
@@ -102,10 +101,6 @@ def analyze_points(
     points_df = (
         get_points(sdata, astype="geopandas")
         .set_index("cell")
-    )
-
-    points_df = (
-        points_df.loc[points_df.index.values!="None"]
         .join(sdata.shapes["cell_boundaries"][obs_attrs])
         .rename_axis("cell")
         .reset_index()
