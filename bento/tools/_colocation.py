@@ -159,7 +159,7 @@ def coloc_quotient(
             zip(cells, group_loc, end_loc), desc=shape, total=len(cells)
         ):
             cell_points = points.iloc[start:end]
-            cell_clq = _cell_clq(cell_points, sdata.table.n_vars, radius, min_points)
+            cell_clq = _cell_clq(cell_points, radius, min_points)
             cell_clq["cell"] = cell
 
             cell_clqs.append(cell_clq)
@@ -175,7 +175,7 @@ def coloc_quotient(
 
     sdata.table.uns["clq"] = all_clq
 
-def _cell_clq(cell_points, n_genes, radius, min_points):
+def _cell_clq(cell_points, radius, min_points):
 
     # Count number of points for each gene
     gene_counts = cell_points["gene"].value_counts()
@@ -194,7 +194,7 @@ def _cell_clq(cell_points, n_genes, radius, min_points):
 
     # Count number of source points that have neighbor gene
     point_neighbors = _count_neighbors(
-        valid_points, n_genes, radius=radius, agg="binary"
+        valid_points, len(valid_points["gene"].cat.categories), radius=radius, agg="binary"
     ).toarray()
     neighbor_counts = (
         pd.DataFrame(point_neighbors, columns=valid_points["gene"].cat.categories)
