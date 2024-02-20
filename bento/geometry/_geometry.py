@@ -55,7 +55,7 @@ def sindex_points(
 
     return sdata
 
-def sjoin_shapes(sdata: SpatialData, shape_names: List[str], cell_boundaries_key: str = "cell_boundaries"):
+def sjoin_shapes(sdata: SpatialData, shape_names: List[str]):
     """Adds polygon columns sdata.shapes['cell_boundaries'][shape_name] for point feature analysis
 
         Parameters
@@ -75,13 +75,13 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str], cell_boundaries_key
     if isinstance(shape_names, str):
         shape_names = [shape_names]
 
-    shapes_found = set(shape_names).intersection(set(sdata.shapes[cell_boundaries_key].columns.tolist()))
+    shapes_found = set(shape_names).intersection(set(sdata.shapes["cell_boundaries"].columns.tolist()))
     if shapes_found == set(shape_names):
         return
     
-    shape_names = list(set(shape_names).difference(set(sdata.shapes[cell_boundaries_key].columns.tolist())))
-    sjoined_shapes = sdata.shapes[cell_boundaries_key]
-    transform = sdata.shapes[cell_boundaries_key].attrs
+    shape_names = list(set(shape_names).difference(set(sdata.shapes["cell_boundaries"].columns.tolist())))
+    sjoined_shapes = sdata.shapes["cell_boundaries"]
+    transform = sdata.shapes["cell_boundaries"].attrs
     for shape in shape_names:
         shape_gpd = gpd.GeoDataFrame(geometry=sdata.shapes[shape]['geometry'])
         sjoined_shapes = sjoined_shapes.sjoin(shape_gpd, how='left', predicate='contains')
@@ -93,8 +93,8 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str], cell_boundaries_key
             except:
                 pass
             
-    sdata.shapes[cell_boundaries_key] = ShapesModel.parse(sjoined_shapes)
-    sdata.shapes[cell_boundaries_key].attrs = transform
+    sdata.shapes["cell_boundaries"] = ShapesModel.parse(sjoined_shapes)
+    sdata.shapes["cell_boundaries"].attrs = transform
 
     return sdata
 

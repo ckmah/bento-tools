@@ -207,7 +207,6 @@ def vec2color(
 def fluxmap(
     sdata: SpatialData,
     points_key: str = "transcripts",
-    cell_boundaries_key: str = "cell_boundaries",
     n_clusters: Union[Iterable[int], int] = range(2, 9),
     num_iterations: int = 1000,
     train_size: float = 0.2,
@@ -223,8 +222,6 @@ def fluxmap(
         Spatial formatted SpatialData object.
     points_key : str
         key for points element that holds transcript coordinates
-    cell_boundaries_key: str
-        key for cell boundaries shape element
     n_clusters : int or list
         Number of clusters to use. If list, will pick best number of clusters
         using the elbow heuristic evaluated on the quantization error.
@@ -389,7 +386,7 @@ def fluxmap(
     for key in old_cols:
         del sdata.shapes[key]
 
-    transform = sdata.shapes[cell_boundaries_key].attrs
+    transform = sdata.shapes["cell_boundaries"].attrs
     fluxmap_df = fluxmap_df.reindex(sdata.table.obs_names).where(fluxmap_df.notna(), other=Polygon())
     for fluxmap in fluxmap_df.columns:
         sdata.shapes[fluxmap] = ShapesModel.parse(gpd.GeoDataFrame(geometry=fluxmap_df[fluxmap]))
