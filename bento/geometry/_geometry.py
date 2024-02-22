@@ -75,10 +75,12 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str]):
     if isinstance(shape_names, str):
         shape_names = [shape_names]
 
+    # Check if shapes are already indexed to cell_boundaries
     shapes_found = set(shape_names).intersection(set(sdata.shapes["cell_boundaries"].columns.tolist()))
     if shapes_found == set(shape_names):
         return
     
+    # Remove keys for shapes that are already indexed
     shape_names = list(set(shape_names).difference(set(sdata.shapes["cell_boundaries"].columns.tolist())))
     sjoined_shapes = sdata.shapes["cell_boundaries"]
     transform = sdata.shapes["cell_boundaries"].attrs
@@ -90,9 +92,10 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str]):
             shape_id = sjoined_shapes.at[index, shape]
             try:
                 sjoined_shapes.at[index, shape] = sdata.shapes[shape].loc[shape_id]["geometry"]
-            except:
+            except KeyError:
                 pass
             
+    # Add to sdata.shapes
     sdata.shapes["cell_boundaries"] = ShapesModel.parse(sjoined_shapes)
     sdata.shapes["cell_boundaries"].attrs = transform
 

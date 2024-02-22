@@ -396,4 +396,4 @@ def fluxmap(
         )
         
     # Plot base cell and nucleus shapes
-    shapes(sdata, ax=ax)
+    shapes(sdata, ax=ax, fname=fname)

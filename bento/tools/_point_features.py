@@ -52,11 +52,6 @@ def analyze_points(
     if isinstance(shape_names, str):
         shape_names = [shape_names]
     
-    '''# Make sure all shape names are in sdata.shapes["cell_boundaries"]
-    shapes_found = set(shape_names).intersection(set(sdata.shapes["cell_boundaries"].columns.tolist()))
-    if len(shapes_found) != len(shape_names):
-        raise KeyError(f"sdata.shapes['cell_boundaries'] does not have all shapes: {shape_names}.")'''
-    
     # Cast to list if not already
     if isinstance(feature_names, str):
         feature_names = [feature_names]

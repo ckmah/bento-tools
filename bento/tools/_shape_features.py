@@ -338,7 +338,7 @@ def _perimeter(sdata: SpatialData, shape_name: str, recompute: bool = False):
 
     Parameters
     ----------
-    sdata : SpatialDataßßß
+    sdata : SpatialData
         Spatial formatted SpatialData
 
     Fields

@@ -58,12 +58,11 @@ def flux(
     Returns
     -------
     sdata : SpatialData
-        .points["cell_raster"]["flux"] : scipy.csr_matrix
-            [pixels x genes] sparse matrix of normalized local composition.
-        .points["cell_raster"]["flux_embed"] : np.ndarray
-            [pixels x components] array of embedded flux values.
-        .points["cell_raster"]["flux_color"] : np.ndarray
-            [pixels x 3] array of RGB values for visualization.
+        .points["cell_raster"]: pd.DataFrame
+            Length pixels DataFrame containing all computed flux values, embeddings, and colors as columns in a single DataFrame.
+            flux values: <gene_name> for each gene used in embedding.
+            embeddings: flux_embed_<i> for each component of the embedding.
+            colors: hex color codes for each pixel.
         .table.uns["flux_genes"] : list
             List of genes used for embedding.
         .table.uns["flux_variance_ratio"] : np.ndarray

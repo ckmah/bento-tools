@@ -36,26 +36,32 @@ def format_sdata(
     
     # Renames geometry column of shape element to match shape name
     # Changes indices to strings
-    for shape in sdata.shapes.keys():
-        shape_gpd = sdata.shapes[shape]
-        if shape == cell_boundaries_key:
-            shape_gpd[shape] = shape_gpd['geometry']
-        if type(shape_gpd.index[0]) != str:
-            shape_gpd.index = shape_gpd.index.astype(str, copy = False)
-        sdata.shapes[shape] = ShapesModel.parse(shape_gpd)
-    
+    for shape_name, shape_gdf in sdata.shapes.items():
+        if shape_name == cell_boundaries_key:
+            shape_gdf[shape_name] = shape_gdf["geometry"]
+        if isinstance(shape_gdf.index[0], str):
+            shape_gdf.index = shape_gdf.index.astype(str, copy=False)
+        sdata.shapes[shape_name] = ShapesModel.parse(shape_gdf)
+
+    # Sindex points and s
+
     # sindex points and sjoin shapes if they have not been indexed or joined
     point_sjoin = []
     shape_sjoin = []
     for shape_name in shape_names:
         if shape_name.split("_")[0] not in sdata.points[points_key].columns:
             point_sjoin.append(shape_name)
-        if shape_name != cell_boundaries_key and shape_name not in sdata.shapes[cell_boundaries_key].columns:
+        if (
+            shape_name != cell_boundaries_key
+            and shape_name not in sdata.shapes[cell_boundaries_key].columns
+        ):
             shape_sjoin.append(shape_name)
 
-    if len(point_sjoin) != 0:
-        sdata = sindex_points(sdata=sdata, shape_names=point_sjoin, points_key=points_key)
-    if len(shape_sjoin) != 0:
+    if len(point_sjoin) > 0:
+        sdata = sindex_points(
+            sdata=sdata, shape_names=point_sjoin, points_key=points_key
+        )
+    if len(shape_sjoin) > 0:
         sdata = sjoin_shapes(sdata=sdata, shape_names=shape_sjoin)
 
     return sdata
