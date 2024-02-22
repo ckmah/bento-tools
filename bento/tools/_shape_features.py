@@ -1,4 +1,5 @@
 import warnings
+
 from shapely.errors import ShapelyDeprecationWarning
 
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
@@ -10,10 +11,10 @@ from typing import Callable, Dict, List, Union
 import matplotlib.path as mplPath
 import numpy as np
 import pandas as pd
-from spatialdata._core.spatialdata import SpatialData
-from spatialdata.models import PointsModel, ShapesModel
 from scipy.spatial import distance, distance_matrix
 from shapely.geometry import MultiPolygon, Point
+from spatialdata._core.spatialdata import SpatialData
+from spatialdata.models import PointsModel, ShapesModel
 from tqdm.auto import tqdm
 
 from ..geometry import get_points, get_shape
@@ -48,6 +49,7 @@ def _area(sdata: SpatialData, shape_name: str, recompute: bool = False):
     sdata.shapes[shape_name] = ShapesModel.parse(shape_gpd)
     sdata.shapes[shape_name].attrs = transform
 
+
 def _poly_aspect_ratio(poly):
     """Compute the aspect ratio of the minimum rotated rectangle that contains a polygon."""
 
@@ -69,20 +71,21 @@ def _poly_aspect_ratio(poly):
     # return long / short ratio
     return length / width
 
+
 def _aspect_ratio(sdata: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the aspect ratio of the minimum rotated rectangle that contains each shape.
 
-    Parameters
-    ----------
-    sdata : SpatialData
-        Spatial formatted SpatialData
-    shape_name : str
-        Key in `sdata.shapes[shape_name]` that contains the shape information.
-
-    Fields
-    ------
-        .shapes[shape_name]['{shape}_aspect_ratio'] : float
-            Ratio of major to minor axis for each polygon
+        Parameters
+        ----------
+        sdata : SpatialData
+            Spatial formatted SpatialData
+        shape_name : str
+            Key in `sdata.shapes[shape_name]` that contains the shape information.
+    1
+        Fields
+        ------
+            .shapes[shape_name]['{shape}_aspect_ratio'] : float
+                Ratio of major to minor axis for each polygon
     """
 
     feature_key = f"{shape_name.split('_')[0]}_aspect_ratio"
@@ -96,6 +99,7 @@ def _aspect_ratio(sdata: SpatialData, shape_name: str, recompute: bool = False):
     shape_gpd[feature_key] = ar
     sdata.shapes[shape_name] = ShapesModel.parse(shape_gpd)
     sdata.shapes[shape_name].attrs = transform
+
 
 def _bounds(sdata: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the minimum and maximum coordinate values that bound each shape.
@@ -122,7 +126,10 @@ def _bounds(sdata: SpatialData, shape_name: str, recompute: bool = False):
     feature_keys = [
         f"{shape_name.split('_')[0]}_{k}" for k in ["minx", "miny", "maxx", "maxy"]
     ]
-    if all([k in sdata.shapes[shape_name].keys() for k in feature_keys]) and not recompute:
+    if (
+        all([k in sdata.shapes[shape_name].keys() for k in feature_keys])
+        and not recompute
+    ):
         return
 
     bounds = get_shape(sdata, shape_name).bounds
@@ -137,6 +144,7 @@ def _bounds(sdata: SpatialData, shape_name: str, recompute: bool = False):
 
     sdata.shapes[shape_name] = ShapesModel.parse(shape_gpd)
     sdata.shapes[shape_name].attrs = transform
+
 
 def _density(sdata: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the RNA density of each shape.
@@ -159,7 +167,12 @@ def _density(sdata: SpatialData, shape_name: str, recompute: bool = False):
     if feature_key in sdata.shapes[shape_name].keys() and not recompute:
         return
 
-    count = get_points(sdata, astype="dask").query(f"{shape_prefix} != 'None'")[shape_prefix].value_counts().compute()
+    count = (
+        get_points(sdata, astype="dask")
+        .query(f"{shape_prefix} != 'None'")[shape_prefix]
+        .value_counts()
+        .compute()
+    )
     _area(sdata, shape_name)
 
     shape_gpd = sdata.shapes[shape_name]
@@ -167,6 +180,7 @@ def _density(sdata: SpatialData, shape_name: str, recompute: bool = False):
     shape_gpd[feature_key] = count / shape_gpd[f"{shape_prefix}_area"]
     sdata.shapes[shape_name] = ShapesModel.parse(shape_gpd)
     sdata.shapes[shape_name].attrs = transform
+
 
 def _opening(sdata: SpatialData, proportion: float, recompute: bool = False):
     """Compute the opening (morphological) of distance d for each cell.
@@ -198,6 +212,7 @@ def _opening(sdata: SpatialData, proportion: float, recompute: bool = False):
     shape_gpd[shape_name] = cells.buffer(-d).buffer(d)
     sdata.shapes["cell_boundaries"] = ShapesModel.parse(shape_gpd)
     sdata.shapes["cell_boundaries"].attrs = transform
+
 
 def _second_moment_polygon(centroid, pts):
     """
@@ -252,6 +267,7 @@ def _second_moment(sdata: SpatialData, shape_name: str, recompute: bool = False)
     sdata.shapes[shape_name] = ShapesModel.parse(shape_gpd)
     sdata.shapes[shape_name].attrs = transform
 
+
 def _raster_polygon(poly, step=1):
     """
     Generate a grid of points contained within the poly. The points lie on
@@ -286,7 +302,13 @@ def _raster_polygon(poly, step=1):
     return xy
 
 
-def _raster(sdata: SpatialData, shape_name: str, points_key: str = "transcripts", step: int = 1, recompute: bool = False):
+def _raster(
+    sdata: SpatialData,
+    shape_name: str,
+    points_key: str = "transcripts",
+    step: int = 1,
+    recompute: bool = False,
+):
     """Generate a grid of points contained within each shape. The points lie on
     a 2D grid, with vertices spaced `step` distance apart.
 
@@ -308,9 +330,7 @@ def _raster(sdata: SpatialData, shape_name: str, points_key: str = "transcripts"
         return
 
     shapes = get_shape(sdata, shape_name)
-    raster = shapes.apply(
-        lambda poly: _raster_polygon(poly, step=step)
-    )
+    raster = shapes.apply(lambda poly: _raster_polygon(poly, step=step))
 
     raster_all = []
     for s, r in raster.items():
@@ -328,10 +348,16 @@ def _raster(sdata: SpatialData, shape_name: str, points_key: str = "transcripts"
     # Add raster to sdata.points as long dataframe (for flux compatibility)
     raster_all = pd.concat(raster_all).reset_index(drop=True)
     transform = sdata.points[points_key].attrs
-    sdata.points[feature_key] = PointsModel.parse(raster_all, coordinates={'x': 'x', 'y': 'y'})
+    sdata.points[feature_key] = PointsModel.parse(
+        raster_all, coordinates={"x": "x", "y": "y"}
+    )
     sdata.points[feature_key].attrs = transform
-    if "spatialdata_attrs"in sdata.points[feature_key].attrs.keys() and "feature_key" in sdata.points[feature_key].attrs["spatialdata_attrs"].keys():
+    if (
+        "spatialdata_attrs" in sdata.points[feature_key].attrs.keys()
+        and "feature_key" in sdata.points[feature_key].attrs["spatialdata_attrs"].keys()
+    ):
         del sdata.points[feature_key].attrs["spatialdata_attrs"]["feature_key"]
+
 
 def _perimeter(sdata: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the perimeter of each shape.
@@ -389,6 +415,7 @@ def _radius(sdata: SpatialData, shape_name: str, recompute: bool = False):
     sdata.shapes[shape_name] = ShapesModel.parse(shape_gpd)
     sdata.shapes[shape_name].attrs = transform
 
+
 def _shape_radius(poly):
     if not poly:
         return np.nan
@@ -396,6 +423,7 @@ def _shape_radius(poly):
     return distance.cdist(
         np.array(poly.centroid.coords).reshape(1, 2), np.array(poly.exterior.xy).T
     ).mean()
+
 
 def _span(sdata: SpatialData, shape_name: str, recompute: bool = False):
     """Compute the length of the longest diagonal of each shape.
@@ -432,6 +460,7 @@ def _span(sdata: SpatialData, shape_name: str, recompute: bool = False):
     sdata.shapes[shape_name] = ShapesModel.parse(shape_gpd)
     sdata.shapes[shape_name].attrs = transform
 
+
 def list_shape_features():
     """Return a DataFrame of available shape features. Pulls descriptions from function docstrings.
 
@@ -462,6 +491,7 @@ shape_features = dict(
     span=_span,
 )
 
+
 def obs_stats(
     sdata: SpatialData,
     feature_names: List[str] = ["area", "aspect_ratio", "density"],
@@ -486,6 +516,7 @@ def obs_stats(
     analyze_shapes(sdata, "cell_boundaries", feature_names)
     if "nucleus_boundaries" in sdata.shapes.keys():
         analyze_shapes(sdata, "nucleus_boundaries", feature_names)
+
 
 def analyze_shapes(
     sdata: SpatialData,
@@ -520,7 +551,9 @@ def analyze_shapes(
         shape_names = [shape_names]
 
     # Add _shape suffix if shape names don't have it
-    shape_names = [s if s.endswith("_boundaries") else f"{s}_boundaries" for s in shape_names]
+    shape_names = [
+        s if s.endswith("_boundaries") else f"{s}_boundaries" for s in shape_names
+    ]
 
     # Cast to list if not already
     if isinstance(feature_names, str):
@@ -538,10 +571,11 @@ def analyze_shapes(
         kws = dict(recompute=recompute)
         if feature_kws and feature in feature_kws:
             kws.update(feature_kws[feature])
-    
+
         shape_features[feature](sdata, shape, **kws)
 
     return sdata
+
 
 def register_shape_feature(name: str, func: Callable):
     """Register a shape feature function. The function should take an SpatialData object and a shape name as input.
