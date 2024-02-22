@@ -13,7 +13,7 @@ from ..geometry import sindex_points, sjoin_shapes
 def format_sdata(
     sdata: SpatialData,
     points_key: str = "transcripts",
-    cell_boundaries_key: str = "cell_boundaries",
+    cell_shape_key: str = "cell_boundaries",
     shape_names: List[str] = ["cell_boundaries", "nucleus_boundaries"],
 ) -> SpatialData:
     """Converts shape indices to strings and indexes points to shapes and add as columns to `data.points[point_key]`.
@@ -37,7 +37,7 @@ def format_sdata(
     # Renames geometry column of shape element to match shape name
     # Changes indices to strings
     for shape_name, shape_gdf in sdata.shapes.items():
-        if shape_name == cell_boundaries_key:
+        if shape_name == cell_shape_key:
             shape_gdf[shape_name] = shape_gdf["geometry"]
         if isinstance(shape_gdf.index[0], str):
             shape_gdf.index = shape_gdf.index.astype(str, copy=False)
@@ -50,8 +50,8 @@ def format_sdata(
         if shape_name.split("_")[0] not in sdata.points[points_key].columns:
             point_sjoin.append(shape_name)
         if (
-            shape_name != cell_boundaries_key
-            and shape_name not in sdata.shapes[cell_boundaries_key].columns
+            shape_name != cell_shape_key
+            and shape_name not in sdata.shapes[cell_shape_key].columns
         ):
             shape_sjoin.append(shape_name)
 
@@ -60,6 +60,6 @@ def format_sdata(
             sdata=sdata, shape_names=point_sjoin, points_key=points_key
         )
     if len(shape_sjoin) > 0:
-        sdata = sjoin_shapes(sdata=sdata, shape_names=shape_sjoin)
+        sdata = sjoin_shapes(sdata=sdata, cell_shape_key=cell_shape_key, shape_names=shape_sjoin)
 
     return sdata

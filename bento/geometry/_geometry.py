@@ -55,8 +55,8 @@ def sindex_points(
 
     return sdata
 
-def sjoin_shapes(sdata: SpatialData, shape_names: List[str]):
-    """Adds polygon columns sdata.shapes['cell_boundaries'][shape_name] for point feature analysis
+def sjoin_shapes(sdata: SpatialData, cell_shape_key: str, shape_names: List[str]):
+    """Adds polygon columns sdata.shapes[cell_shape_key][shape_name] for point feature analysis
 
     Parameters
     ----------
@@ -68,7 +68,7 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str]):
     Returns
     -------
     sdata : SpatialData
-        .shapes['cell_boundaries'][shape_name]
+        .shapes[cell_shape_key][shape_name]
     """
 
     # Cast to list if not already
@@ -76,14 +76,15 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str]):
         shape_names = [shape_names]
 
     # Check if shapes are already indexed to cell_boundaries
-    shapes_found = set(shape_names).intersection(set(sdata.shapes["cell_boundaries"].columns.tolist()))
-    if shapes_found == set(shape_names):
-        return
+    missing_shape_names = set(shape_names) - set(sdata.shapes[cell_shape_key].columns)
+
+    if len(missing_shape_names) == 0:
+        return sdata
+    else:
+        shape_names = missing_shape_names
     
-    # Remove keys for shapes that are already indexed
-    shape_names = list(set(shape_names).difference(set(sdata.shapes["cell_boundaries"].columns.tolist())))
-    sjoined_shapes = sdata.shapes["cell_boundaries"]
-    transform = sdata.shapes["cell_boundaries"].attrs
+    sjoined_shapes = sdata.shapes[cell_shape_key]
+    transform = sdata.shapes[cell_shape_key].attrs
 
     # sjoin shapes to cell_boundaries; save shape index and geometry as columns in cell_boundaries
     for shape in shape_names:
@@ -101,12 +102,12 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str]):
                 pass
             
     # Add to sdata.shapes
-    sdata.shapes["cell_boundaries"] = ShapesModel.parse(sjoined_shapes)
-    sdata.shapes["cell_boundaries"].attrs = transform
+    sdata.shapes[cell_shape_key] = ShapesModel.parse(sjoined_shapes)
+    sdata.shapes[cell_shape_key].attrs = transform
 
     return sdata
 
-def get_shape(sdata: SpatialData, shape_name: str, sync: bool = True) -> gpd.GeoSeries:
+def get_shape(sdata: SpatialData, shape_name: str, cell_shape_key : str = "cell_boundaries", sync: bool = True) -> gpd.GeoSeries:
     """Get a GeoSeries of Polygon objects from an SpatialData object.
 
     Parameters
@@ -115,18 +116,20 @@ def get_shape(sdata: SpatialData, shape_name: str, sync: bool = True) -> gpd.Geo
         Spatial formatted SpatialData object
     shape_name : str
         Name of shape column in sdata.shapes
+    cell_shape_key : str, optional
+        Name of cell shape column in sdata.shapes, by default "cell_boundaries"
     sync : bool
-        Whether to retrieve shapes synced to cell_boundaries. Default True.
+        Whether to retrieve shapes synced to cell shape. Default True.
         
     Returns
     -------
     GeoSeries
         GeoSeries of Polygon objects
     """
-    if sync and shape_name != "cell_boundaries":
-        if shape_name not in sdata.shapes["cell_boundaries"].columns:
+    if sync and shape_name != cell_shape_key:
+        if shape_name not in sdata.shapes[cell_shape_key].columns:
             raise ValueError(f"Shape {shape_name} not synced to cell_boundaries. Run bento.io.format_sdata() to setup SpatialData object for bento-tools.")
-        return sdata.shapes["cell_boundaries"][shape_name]
+        return sdata.shapes[cell_shape_key][shape_name]
         
     if shape_name not in sdata.shapes.keys():
         raise ValueError(f"Shape {shape_name} not found in sdata.shapes")
