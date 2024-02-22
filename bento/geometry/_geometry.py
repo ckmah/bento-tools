@@ -25,8 +25,8 @@ def sindex_points(
         
     Returns
     -------
-    SpatialData
-        .points[points_key]: Updated points DataFrame with boolean column for each shape
+    sdata : SpatialData
+        .points[points_key]: Updated points DataFrame with string index for each shape
     """
 
     if isinstance(shape_names, str):
@@ -58,17 +58,17 @@ def sindex_points(
 def sjoin_shapes(sdata: SpatialData, shape_names: List[str]):
     """Adds polygon columns sdata.shapes['cell_boundaries'][shape_name] for point feature analysis
 
-        Parameters
-        ----------
-        sdata : SpatialData
-            Spatially formatted SpatialData
-        shape_names : str or list of str
-            Names of the shapes to add.
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatially formatted SpatialData
+    shape_names : str or list of str
+        Names of the shapes to add.
 
-        Returns
-        -------
-        sdata : spatialdata.SpatialData
-            .shapes['cell_boundaries'][shape_name]
+    Returns
+    -------
+    sdata : SpatialData
+        .shapes['cell_boundaries'][shape_name]
     """
 
     # Cast to list if not already

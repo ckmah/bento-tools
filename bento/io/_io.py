@@ -1,20 +1,20 @@
-from typing import List
 import warnings
+from typing import List
 
 warnings.filterwarnings("ignore")
 
-import pandas as pd
-import geopandas as gpd
 from spatialdata._core.spatialdata import SpatialData
 from spatialdata.models import ShapesModel
-import anndata
-from shapely import wkt
 
 # from .._utils import sc_format
 from ..geometry import sindex_points, sjoin_shapes
 
+
 def format_sdata(
-    sdata: SpatialData, points_key: str = "transcripts", cell_boundaries_key: str = "cell_boundaries", shape_names: List[str] = ["cell_boundaries", "nucleus_boundaries"]
+    sdata: SpatialData,
+    points_key: str = "transcripts",
+    cell_boundaries_key: str = "cell_boundaries",
+    shape_names: List[str] = ["cell_boundaries", "nucleus_boundaries"],
 ) -> SpatialData:
     """Converts shape indices to strings and indexes points to shapes and add as columns to `data.points[point_key]`.
 
@@ -31,9 +31,9 @@ def format_sdata(
     -------
     SpatialData
         .shapes[shape_name]: Updated shapes GeoDataFrame with string index
-        .points[point_key]: Updated points DataFrame with boolean column for each shape
+        .points[point_key]: Updated points DataFrame with string index for each shape
     """
-    
+
     # Renames geometry column of shape element to match shape name
     # Changes indices to strings
     for shape_name, shape_gdf in sdata.shapes.items():
@@ -42,8 +42,6 @@ def format_sdata(
         if isinstance(shape_gdf.index[0], str):
             shape_gdf.index = shape_gdf.index.astype(str, copy=False)
         sdata.shapes[shape_name] = ShapesModel.parse(shape_gdf)
-
-    # Sindex points and s
 
     # sindex points and sjoin shapes if they have not been indexed or joined
     point_sjoin = []
