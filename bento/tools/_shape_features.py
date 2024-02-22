@@ -36,7 +36,7 @@ def _area(sdata: SpatialData, shape_name: str, recompute: bool = False):
             Area of each polygon
     """
 
-    feature_key = f"{shape_name.split('_')[0]}_area"
+    feature_key = f"{shape_name}_area"
     if feature_key in sdata.shapes[shape_name].keys() and not recompute:
         return
 
@@ -88,7 +88,7 @@ def _aspect_ratio(sdata: SpatialData, shape_name: str, recompute: bool = False):
                 Ratio of major to minor axis for each polygon
     """
 
-    feature_key = f"{shape_name.split('_')[0]}_aspect_ratio"
+    feature_key = f"{shape_name}_aspect_ratio"
     if feature_key in sdata.shapes[shape_name].keys() and not recompute:
         return
 
@@ -124,7 +124,7 @@ def _bounds(sdata: SpatialData, shape_name: str, recompute: bool = False):
     """
 
     feature_keys = [
-        f"{shape_name.split('_')[0]}_{k}" for k in ["minx", "miny", "maxx", "maxy"]
+        f"{shape_name}_{k}" for k in ["minx", "miny", "maxx", "maxy"]
     ]
     if (
         all([k in sdata.shapes[shape_name].keys() for k in feature_keys])
@@ -162,14 +162,14 @@ def _density(sdata: SpatialData, shape_name: str, recompute: bool = False):
             Density (molecules / shape area) of each polygon
     """
 
-    shape_prefix = shape_name.split("_")[0]
-    feature_key = f"{shape_prefix}_density"
+    
+    feature_key = f"{shape_name}_density"
     if feature_key in sdata.shapes[shape_name].keys() and not recompute:
         return
 
     count = (
         get_points(sdata, astype="dask")
-        .query(f"{shape_prefix} != 'None'")[shape_prefix]
+        .query(f"{shape_name} != 'None'")[shape_name]
         .value_counts()
         .compute()
     )
@@ -177,7 +177,7 @@ def _density(sdata: SpatialData, shape_name: str, recompute: bool = False):
 
     shape_gpd = sdata.shapes[shape_name]
     transform = sdata.shapes[shape_name].attrs
-    shape_gpd[feature_key] = count / shape_gpd[f"{shape_prefix}_area"]
+    shape_gpd[feature_key] = count / shape_gpd[f"{shape_name}_area"]
     sdata.shapes[shape_name] = ShapesModel.parse(shape_gpd)
     sdata.shapes[shape_name].attrs = transform
 
@@ -246,14 +246,14 @@ def _second_moment(sdata: SpatialData, shape_name: str, recompute: bool = False)
             The second moment for each polygon
     """
 
-    shape_prefix = shape_name.split("_")[0]
-    feature_key = f"{shape_prefix}_moment"
+    
+    feature_key = f"{shape_name}_moment"
     if feature_key in sdata.shapes[shape_name].keys() and not recompute:
         return
 
     _raster(sdata, shape_name, recompute=recompute)
 
-    rasters = sdata.shapes[shape_name][f"{shape_prefix}_raster"]
+    rasters = sdata.shapes[shape_name][f"{shape_name}_raster"]
     shape_centroids = get_shape(sdata, shape_name).centroid
 
     moments = [
@@ -323,8 +323,8 @@ def _raster(
             Long DataFrame of points annotated by shape from `.shapes[shape_name]['{shape_name}']`
     """
 
-    shape_prefix = shape_name.split("_")[0]
-    feature_key = f"{shape_prefix}_raster"
+    
+    feature_key = f"{shape_name}_raster"
 
     if feature_key in sdata.shapes[shape_name].keys() and not recompute:
         return
@@ -335,7 +335,7 @@ def _raster(
     raster_all = []
     for s, r in raster.items():
         raster_df = pd.DataFrame(r, columns=["x", "y"])
-        raster_df[shape_prefix] = s
+        raster_df[shape_name] = s
         raster_all.append(raster_df)
 
     # Add raster to sdata.shapes as 2d array per cell (for point_features compatibility)
@@ -373,8 +373,8 @@ def _perimeter(sdata: SpatialData, shape_name: str, recompute: bool = False):
             Perimeter of each polygon
     """
 
-    shape_prefix = shape_name.split("_")[0]
-    feature_key = f"{shape_prefix}_perimeter"
+    
+    feature_key = f"{shape_name}_perimeter"
     if feature_key in sdata.shapes[shape_name].keys() and not recompute:
         return
 
@@ -399,8 +399,8 @@ def _radius(sdata: SpatialData, shape_name: str, recompute: bool = False):
             Radius of each polygon in `obs['cell_shape']`
     """
 
-    shape_prefix = shape_name.split("_")[0]
-    feature_key = f"{shape_prefix}_radius"
+    
+    feature_key = f"{shape_name}_radius"
     if feature_key in sdata.shapes[shape_name].keys() and not recompute:
         return
 
@@ -439,8 +439,8 @@ def _span(sdata: SpatialData, shape_name: str, recompute: bool = False):
             Length of longest diagonal for each polygon
     """
 
-    shape_prefix = shape_name.split("_")[0]
-    feature_key = f"{shape_prefix}_span"
+    
+    feature_key = f"{shape_name}_span"
 
     if feature_key in sdata.shapes[shape_name].keys() and not recompute:
         return
@@ -549,11 +549,6 @@ def analyze_shapes(
     # Cast to list if not already
     if isinstance(shape_names, str):
         shape_names = [shape_names]
-
-    # Add _shape suffix if shape names don't have it
-    shape_names = [
-        s if s.endswith("_boundaries") else f"{s}_boundaries" for s in shape_names
-    ]
 
     # Cast to list if not already
     if isinstance(feature_names, str):
