@@ -48,7 +48,7 @@ def sindex_points(
         sjoined_points = gpd.sjoin(points_gpd, shape_gpd, how="left", predicate="intersects")
         sjoined_points = sjoined_points[~sjoined_points.index.duplicated(keep='last')]
         sjoined_points.loc[sjoined_points["index_right"].isna(), "index_right"] = ""
-        points[shape.split('_')[0]] = sjoined_points["index_right"].astype('category')
+        points[shape] = sjoined_points["index_right"].astype('category')
 
     sdata.points[points_key] = PointsModel.parse(points, coordinates={'x': 'x', 'y': 'y', 'z': 'z'})
     sdata.points[points_key].attrs = transform
@@ -84,10 +84,15 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str]):
     shape_names = list(set(shape_names).difference(set(sdata.shapes["cell_boundaries"].columns.tolist())))
     sjoined_shapes = sdata.shapes["cell_boundaries"]
     transform = sdata.shapes["cell_boundaries"].attrs
+
+    # sjoin shapes to cell_boundaries; save shape index and geometry as columns in cell_boundaries
     for shape in shape_names:
-        shape_gpd = gpd.GeoDataFrame(geometry=sdata.shapes[shape]['geometry'])
-        sjoined_shapes = sjoined_shapes.sjoin(shape_gpd, how='left', predicate='contains')
-        sjoined_shapes.rename(columns={"index_right": shape}, inplace=True)
+        shape_gdf = gpd.GeoDataFrame(geometry=sdata.shapes[shape]['geometry'])
+        sjoined_shapes = sjoined_shapes.sjoin(shape_gdf, how='left', predicate='contains')
+
+        id_col = f"{shape}_id"
+        sjoined_shapes.rename(columns={"index_right": id_col}, inplace=True)
+        sjoined_shapes[shape] = shape_gdf.loc[id_col]
         for index in list(sjoined_shapes.index):
             shape_id = sjoined_shapes.at[index, shape]
             try:
@@ -101,7 +106,7 @@ def sjoin_shapes(sdata: SpatialData, shape_names: List[str]):
 
     return sdata
 
-def get_shape(sdata: SpatialData, shape_name: str, sync: bool = False) -> gpd.GeoSeries:
+def get_shape(sdata: SpatialData, shape_name: str, sync: bool = True) -> gpd.GeoSeries:
     """Get a GeoSeries of Polygon objects from an SpatialData object.
 
     Parameters
@@ -111,7 +116,7 @@ def get_shape(sdata: SpatialData, shape_name: str, sync: bool = False) -> gpd.Ge
     shape_name : str
         Name of shape column in sdata.shapes
     sync : bool
-        Whether to sync the shape to cell_boundaries. Default False.
+        Whether to retrieve shapes synced to cell_boundaries. Default True.
         
     Returns
     -------
@@ -120,7 +125,7 @@ def get_shape(sdata: SpatialData, shape_name: str, sync: bool = False) -> gpd.Ge
     """
     if sync and shape_name != "cell_boundaries":
         if shape_name not in sdata.shapes["cell_boundaries"].columns:
-            raise ValueError(f"Shape {shape_name} not synced to cell_boundaries. Run sjoin_shapes first.")
+            raise ValueError(f"Shape {shape_name} not synced to cell_boundaries. Run bento.io.format_sdata() to setup SpatialData object for bento-tools.")
         return sdata.shapes["cell_boundaries"][shape_name]
         
     if shape_name not in sdata.shapes.keys():
