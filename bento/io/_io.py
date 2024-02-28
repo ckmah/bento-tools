@@ -46,8 +46,9 @@ def format_sdata(
     # sindex points and sjoin shapes if they have not been indexed or joined
     point_sjoin = []
     shape_sjoin = []
+
     for shape_name in shape_names:
-        if shape_name.split("_")[0] not in sdata.points[points_key].columns:
+        if shape_name not in sdata.points[points_key].columns:
             point_sjoin.append(shape_name)
         if (
             shape_name != cell_shape_key
@@ -60,6 +61,8 @@ def format_sdata(
             sdata=sdata, shape_names=point_sjoin, points_key=points_key
         )
     if len(shape_sjoin) > 0:
-        sdata = sjoin_shapes(sdata=sdata, cell_shape_key=cell_shape_key, shape_names=shape_sjoin)
+        sdata = sjoin_shapes(
+            sdata=sdata, cell_shape_key=cell_shape_key, shape_names=shape_sjoin
+        )
 
     return sdata
