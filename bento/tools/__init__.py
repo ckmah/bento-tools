@@ -10,4 +10,4 @@ from ._shape_features import (
     register_shape_feature,
     list_shape_features,
 )
-from ._decomposition import decompose, to_tensor
+from ._decomposition import decompose
