@@ -6,13 +6,14 @@ import pandas as pd
 import dask.dataframe as dd
 from spatialdata._core.spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel
+from shapely.geometry import Polygon
 
 from .._utils import sync_points
 
 def sindex_points(
     sdata: SpatialData,  points_key: str = "transcripts", shape_names: List[str] = ["cell_boundaries"]
 ):
-    """Index points to shapes and add as columns to `data.points[points_key]`.
+    """Index points to shapes and add as columns to `data.points[points_key]`. Only supports 2D points for now.
 
     Parameters
     ----------
@@ -39,19 +40,20 @@ def sindex_points(
  
     # Grab points as GeoDataFrame
     points = sdata.points[points_key].compute()
-    transform = sdata.points[points_key].attrs
+    attrs = sdata.points[points_key].attrs
     points_gpd = gpd.GeoDataFrame(points, geometry=gpd.points_from_xy(points.x, points.y), copy=True)
 
     # Index points to shapes
     for shape in shape_gpds:
         shape_gpd = shape_gpds[shape]
+        shape_gpd.index = shape_gpd.index.astype(str)
         sjoined_points = gpd.sjoin(points_gpd, shape_gpd, how="left", predicate="intersects")
         sjoined_points = sjoined_points[~sjoined_points.index.duplicated(keep='last')]
         sjoined_points.loc[sjoined_points["index_right"].isna(), "index_right"] = ""
-        points[shape] = sjoined_points["index_right"].astype('category')
+        points[shape] = sjoined_points["index_right"].astype("category")
 
-    sdata.points[points_key] = PointsModel.parse(points, coordinates={'x': 'x', 'y': 'y', 'z': 'z'})
-    sdata.points[points_key].attrs = transform
+    sdata.points[points_key] = PointsModel.parse(points, coordinates={'x': 'x', 'y': 'y'})
+    sdata.points[points_key].attrs = attrs
 
     return sdata
 
@@ -86,20 +88,20 @@ def sjoin_shapes(sdata: SpatialData, cell_shape_key: str, shape_names: List[str]
     sjoined_shapes = sdata.shapes[cell_shape_key]
     transform = sdata.shapes[cell_shape_key].attrs
 
-    # sjoin shapes to cell_boundaries; save shape index and geometry as columns in cell_boundaries
+    # sjoin shapes to cell_boundaries
     for shape in shape_names:
         shape_gdf = gpd.GeoDataFrame(geometry=sdata.shapes[shape]['geometry'])
         sjoined_shapes = sjoined_shapes.sjoin(shape_gdf, how='left', predicate='contains')
 
+        # save shape index and geometry as columns in cell_boundaries
         id_col = f"{shape}_id"
         sjoined_shapes.rename(columns={"index_right": id_col}, inplace=True)
-        sjoined_shapes[shape] = shape_gdf.loc[id_col]
-        for index in list(sjoined_shapes.index):
-            shape_id = sjoined_shapes.at[index, shape]
-            try:
-                sjoined_shapes.at[index, shape] = sdata.shapes[shape].loc[shape_id]["geometry"]
-            except KeyError:
-                pass
+        
+        sjoined_shapes[shape] = [Polygon() for _ in range(sjoined_shapes.shape[0])]
+
+        valid_ids = sjoined_shapes[id_col].dropna()
+        sjoined_shapes.loc[valid_ids, shape] = shape_gdf.loc[valid_ids, "geometry"]
+
             
     # Add to sdata.shapes
     sdata.shapes[cell_shape_key] = ShapesModel.parse(sjoined_shapes)
