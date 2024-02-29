@@ -13,8 +13,8 @@ from ..geometry import sindex_points, sjoin_shapes
 def format_sdata(
     sdata: SpatialData,
     points_key: str = "transcripts",
-    cell_shape_key: str = "cell_boundaries",
     shape_names: List[str] = ["cell_boundaries", "nucleus_boundaries"],
+    instance_key: str = "cell_boundaries",
 ) -> SpatialData:
     """Converts shape indices to strings and indexes points to shapes and add as columns to `data.points[point_key]`.
 
@@ -26,6 +26,8 @@ def format_sdata(
         Key for points DataFrame in `sdata.points`
     shape_names : str, list
         List of shape names to index points to
+    instance_key : str
+        Key for the shape that will be used as the instance for all indexing. Usually the cell shape. 
 
     Returns
     -------
@@ -37,7 +39,7 @@ def format_sdata(
     # Renames geometry column of shape element to match shape name
     # Changes indices to strings
     for shape_name, shape_gdf in sdata.shapes.items():
-        if shape_name == cell_shape_key:
+        if shape_name == instance_key:
             shape_gdf[shape_name] = shape_gdf["geometry"]
         if isinstance(shape_gdf.index[0], str):
             shape_gdf.index = shape_gdf.index.astype(str, copy=False)
@@ -48,11 +50,13 @@ def format_sdata(
     shape_sjoin = []
 
     for shape_name in shape_names:
+        # Compile list of shapes that need to be indexed to points
         if shape_name not in sdata.points[points_key].columns:
             point_sjoin.append(shape_name)
+        # Compile list of shapes that need to be joined to instance shape
         if (
-            shape_name != cell_shape_key
-            and shape_name not in sdata.shapes[cell_shape_key].columns
+            shape_name != instance_key
+            and shape_name not in sdata.shapes[instance_key].columns
         ):
             shape_sjoin.append(shape_name)
 
@@ -62,7 +66,13 @@ def format_sdata(
         )
     if len(shape_sjoin) > 0:
         sdata = sjoin_shapes(
-            sdata=sdata, cell_shape_key=cell_shape_key, shape_names=shape_sjoin
+            sdata=sdata, instance_key=instance_key, shape_names=shape_sjoin
         )
+
+    # TODO recompute count table?
+
+    # Set instance key to cell_shape_key for all points and table
+    sdata.points[points_key].attrs["instance_key"] = instance_key
+    sdata.table.uns["spatialdata_attrs"]["instance_key"] = instance_key
 
     return sdata
