@@ -6,13 +6,13 @@ warnings.filterwarnings("ignore")
 from spatialdata._core.spatialdata import SpatialData
 from spatialdata.models import ShapesModel
 
-# from .._utils import sc_format
 from ..geometry import sindex_points, sjoin_shapes
 
 
 def format_sdata(
     sdata: SpatialData,
     points_key: str = "transcripts",
+    feature_key: str  = "feature_name",
     shape_names: List[str] = ["cell_boundaries", "nucleus_boundaries"],
     instance_key: str = "cell_boundaries",
 ) -> SpatialData:
@@ -27,7 +27,7 @@ def format_sdata(
     shape_names : str, list
         List of shape names to index points to
     instance_key : str
-        Key for the shape that will be used as the instance for all indexing. Usually the cell shape. 
+        Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
 
     Returns
     -------
@@ -69,7 +69,13 @@ def format_sdata(
             sdata=sdata, instance_key=instance_key, shape_names=shape_sjoin
         )
 
-    # TODO recompute count table?
+    # Recompute count table
+    sdata.aggregate(
+        values=points_key,
+        by=instance_key,
+        value_key=feature_key,
+        aggfunc="count",
+    )
 
     # Set instance key to cell_shape_key for all points and table
     sdata.points[points_key].attrs["instance_key"] = instance_key

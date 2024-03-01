@@ -17,11 +17,12 @@ from spatialdata._core.spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel
 from tqdm.auto import tqdm
 
-from ..geometry import get_points, get_shape
+from ..geometry import get_points, get_shape, set_shape_metadata
 
 
 def _area(sdata: SpatialData, shape_name: str, recompute: bool = False):
-    """Compute the area of each shape.
+    """
+    Compute the area of each shape.
 
     Parameters
     ----------
@@ -29,25 +30,24 @@ def _area(sdata: SpatialData, shape_name: str, recompute: bool = False):
         Spatial formatted SpatialData
     shape_name : str
         Key in `sdata.shapes[shape_name]` that contains the shape information.
+    recompute : bool, optional
+        If True, forces the computation of the area even if it already exists in the shape metadata. 
+        If False (default), the computation is skipped if the area already exists.
 
     Fields
     ------
-        .shapes[shape_name]['{shape}_area'] : float
-            Area of each polygon
+    .shapes[shape_name]['{shape}_area'] : float
+        Area of each polygon
     """
 
     feature_key = f"{shape_name}_area"
-    if feature_key in sdata.shapes[shape_name].keys() and not recompute:
+    if feature_key in sdata.shapes[shape_name].columns and not recompute:
         return
 
     # Calculate pixel-wise area
     area = get_shape(sdata, shape_name).area
 
-    shape_gpd = sdata.shapes[shape_name]
-    transform = sdata.shapes[shape_name].attrs
-    shape_gpd[feature_key] = area.values
-    sdata.shapes[shape_name] = ShapesModel.parse(shape_gpd)
-    sdata.shapes[shape_name].attrs = transform
+    set_shape_metadata(sdata, shape_name=shape_name, metadata=area)
 
 
 def _poly_aspect_ratio(poly):
@@ -462,12 +462,12 @@ def _span(sdata: SpatialData, shape_name: str, recompute: bool = False):
 
 
 def list_shape_features():
-    """Return a DataFrame of available shape features. Pulls descriptions from function docstrings.
+    """Return a dictionary of available shape features and their descriptions.
 
     Returns
     -------
-    list
-        List of available shape features.
+    dict
+        A dictionary where keys are shape feature names and values are their corresponding descriptions.
     """
 
     # Get shape feature descriptions from docstrings

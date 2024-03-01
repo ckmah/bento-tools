@@ -8,8 +8,6 @@ from spatialdata._core.spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel
 from shapely.geometry import Polygon
 
-from .._utils import sync_points
-
 
 def sindex_points(
     sdata: SpatialData,
@@ -37,27 +35,25 @@ def sindex_points(
         shape_names = [shape_names]
 
     # Grab all shape GeoDataFrames to index points to
-    shape_gpds = {}
+    query_shapes = {}
     for shape in shape_names:
-        shape_gpds[shape] = sdata.shapes[shape]
+        query_shapes[shape] = gpd.GeoDataFrame(geometry=sdata.shapes[shape].geometry)
 
     # Grab points as GeoDataFrame
-    points = sdata.points[points_key].compute()
+    points = get_points(sdata, points_key, astype="geopandas", sync=False)
     attrs = sdata.points[points_key].attrs
-    points_gpd = gpd.GeoDataFrame(
-        points, geometry=gpd.points_from_xy(points.x, points.y), copy=True
-    )
 
     # Index points to shapes
-    for shape in shape_gpds:
-        shape_gpd = shape_gpds[shape]
-        shape_gpd.index = shape_gpd.index.astype(str)
-        sjoined_points = gpd.sjoin(
-            points_gpd, shape_gpd, how="left", predicate="intersects"
-        )
-        sjoined_points = sjoined_points[~sjoined_points.index.duplicated(keep="last")]
-        sjoined_points.loc[sjoined_points["index_right"].isna(), "index_right"] = ""
-        points[shape] = sjoined_points["index_right"].astype("category")
+    for shape_name, shape in query_shapes.items():
+        shape = query_shapes[shape_name]
+        shape.index.name = None
+        shape.index = shape.index.astype(str)
+        points = points.sjoin(shape, how="left", predicate="intersects")
+        points = points[~points.index.duplicated(keep="last")]
+        points.loc[points["index_right"].isna(), "index_right"] = ""
+        points.rename(columns={"index_right": shape_name}, inplace=True)
+
+    points = pd.DataFrame(points.drop(columns="geometry"))
 
     sdata.points[points_key] = PointsModel.parse(
         points, coordinates={"x": "x", "y": "y"}
@@ -90,31 +86,40 @@ def sjoin_shapes(sdata: SpatialData, instance_key: str, shape_names: List[str]):
         shape_names = [shape_names]
 
     # Check if shapes are already indexed to instance_key shape
-    missing_shape_names = set(shape_names) - set(sdata.shapes[instance_key].columns)
+    shape_names = (
+        set(shape_names) - set(sdata.shapes[instance_key].columns) - set(instance_key)
+    )
 
-    if len(missing_shape_names) == 0:
+    if len(shape_names) == 0:
         return sdata
-    else:
-        shape_names = missing_shape_names
 
-    sjoined_shapes = sdata.shapes[instance_key]
-    transform = sdata.shapes[instance_key].attrs
+    parent_shape = sdata.shapes[instance_key]
+    attrs = sdata.shapes[instance_key].attrs
 
     # sjoin shapes to instance_key shape
     for shape in shape_names:
-        shape_gdf = gpd.GeoDataFrame(geometry=sdata.shapes[shape]["geometry"])
-        sjoined_shapes = sjoined_shapes.sjoin(
-            shape_gdf, how="left", predicate="contains"
-        )
+        child_shape = gpd.GeoDataFrame(geometry=sdata.shapes[shape]["geometry"])
+        parent_shape = parent_shape.sjoin(child_shape, how="left", predicate="contains")
+        parent_shape = parent_shape[~parent_shape.index.duplicated(keep="last")]
+        parent_shape.loc[parent_shape["index_right"].isna(), "index_right"] = ""
+        parent_shape = parent_shape.astype({"index_right": "category"})
 
         # save shape index as column in instance_key shape
-        id_col = f"{shape}_id"
-        sjoined_shapes.rename(columns={"index_right": id_col}, inplace=True)
+        # id_col = f"{shape}_id"
+        parent_shape.rename(columns={"index_right": shape}, inplace=True)
 
+        # Add instance_key shape index to shape
+        parent_shape.index.name = "parent_index"
+        instance_index = parent_shape.reset_index().set_index(shape)["parent_index"]
+        instance_index.name = instance_key # index name = shape, column name = instance_key
+        instance_index.index.name = None
+        instance_index = instance_index[instance_index.index != ""]
+
+        set_shape_metadata(sdata, shape_name=shape, metadata=instance_index)
 
     # Add to sdata.shapes
-    sdata.shapes[instance_key] = ShapesModel.parse(sjoined_shapes)
-    sdata.shapes[instance_key].attrs = transform
+    sdata.shapes[instance_key] = ShapesModel.parse(parent_shape)
+    sdata.shapes[instance_key].attrs = attrs
 
     return sdata
 
@@ -170,7 +175,7 @@ def check_shape_sync(sdata, shape_name, instance_key):
         and shape_name not in sdata.shapes[instance_key].columns
     ):
         raise ValueError(
-            f"Shape {shape_name} not synced to cell_boundaries. Run bento.io.format_sdata() to setup SpatialData object for bento-tools."
+            f"Shape {shape_name} not synced to instance_key shape element. Run bento.io.format_sdata() to setup SpatialData object for bento-tools."
         )
 
 
@@ -188,7 +193,7 @@ def set_shape_metadata(
     shape_name : str
         Name of element in sdata.shapes
     metadata : pd.Series, pd.DataFrame
-        Metadata to set for shape
+        Metadata to set for shape. Index must be a (sub)set of shape index.
     """
     if shape_name not in sdata.shapes.keys():
         raise ValueError(f"Shape {shape_name} not found in sdata.shapes")
@@ -196,12 +201,18 @@ def set_shape_metadata(
     # Set metadata as columns in sdata.shape[shape_name]
     if isinstance(metadata, pd.Series):
         metadata = pd.DataFrame(metadata)
-    sdata.shapes[shape_name][metadata.columns] = metadata
+
+    sdata.shapes[shape_name].loc[:, metadata.columns] = metadata.reindex(
+        sdata.shapes[shape_name].index
+    )
     return sdata
 
 
 def get_points(
-    sdata: SpatialData, points_key: str = "transcripts", astype: str = "pandas"
+    sdata: SpatialData,
+    points_key: str = "transcripts",
+    astype: str = "pandas",
+    sync: bool = True,
 ) -> Union[pd.DataFrame, dd.DataFrame, gpd.GeoDataFrame]:
     """Get points DataFrame synced to AnnData object.
 
@@ -224,7 +235,11 @@ def get_points(
             f"astype must be one of ['dask', 'pandas', 'geopandas'], not {astype}"
         )
 
-    points = sync_points(sdata).points[points_key]
+    points = sdata.points[points_key]
+
+    # Sync points to instance_key
+    if sync:
+        check_points_sync(sdata, points_key)
 
     if astype == "pandas":
         return points.compute()
@@ -238,7 +253,10 @@ def get_points(
 
 
 def get_points_metadata(
-    sdata: SpatialData, metadata_key: str, points_key: str = "transcripts"
+    sdata: SpatialData,
+    metadata_keys: Union[str, List[str]],
+    points_key: str = "transcripts",
+    astype="pandas",
 ):
     """Get points metadata synced to SpatialData object.
 
@@ -246,15 +264,100 @@ def get_points_metadata(
     ----------
     sdata : SpatialData
         Spatial formatted SpatialData object
-    metadata_key : str
-        Key for `sdata.points[points_key][key]` to use
+    metadata_keys : str or list of str
+        Key(s) for `sdata.points[points_key][key]` to use
     points_key : str, optional
         Key for `sdata.points` to use, by default "transcripts"
+    astype : str, optional
+        Whether to return a 'pandas' Series or 'dask' DataFrame, by default "pandas"
 
     Returns
     -------
     Series
         Returns `data.uns[key][metadata_key]` as a `Series`
     """
-    metadata = sync_points(sdata).points[points_key][metadata_key].compute()
-    return metadata
+    metadata = sdata.points[points_key][metadata_keys]
+
+    if astype == "pandas":
+        return metadata.compute()
+    elif astype == "dask":
+        return metadata
+
+
+def sync_points(
+    sdata: SpatialData,
+    points_key: str = "transcripts",
+    instance_key: str = "cell_boundaries",
+    feature_key: str = "",
+) -> SpatialData:
+    """
+    Sync existing point sets and associated metadata with sdata.table.obs_names and sdata.table.var_names
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial formatted SpatialData object
+    points_key : str, optional
+        Key for points DataFrame in `sdata.points`, by default "transcripts"
+    instance_key : str, optional
+        Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
+    feature_key : str, optional
+        Key for the feature corresponding to table var names. Usually the gene name.
+    """
+
+    # Iterate over point sets
+    for point_key in sdata.points:
+        points = get_points(sdata, point_key, astype="dask")
+
+        # Subset for cells
+        cells = sdata.table.obs_names.tolist()
+        in_cells = points[instance_key].isin(cells)
+
+        # Subset for genes
+        in_genes = [True] * points.shape[0]
+        if feature_key and feature_key in points.columns:
+            genes = sdata.table.var_names.tolist()
+            in_genes = points[feature_key].isin(genes)
+
+        # Combine boolean masks
+        valid_mask = (in_cells & in_genes).values
+
+        # Sync points using mask
+        points = points.loc[valid_mask]
+
+        # Remove unused categories for categorical columns
+        for col in points.columns:
+            if points[col].dtype == "category":
+                points[col].cat.remove_unused_categories(inplace=True)
+
+        # Update points in sdata
+        attrs = sdata.points[points_key].attrs
+        sdata.points[points_key] = PointsModel.parse(
+            points.reset_index(drop=True), coordinates={"x": "x", "y": "y"}
+        )
+        sdata.points[points_key].attrs = attrs
+
+        return sdata
+
+
+def check_points_sync(sdata, points_key):
+    """
+    Check if points are synced to instance_key shape in a SpatialData object.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The SpatialData object to check.
+    points_key : str
+        The name of the points to check.
+
+    Raises
+    ------
+    ValueError
+        If the points are not synced to instance_key shape.
+    """
+    points = sdata.points[points_key]
+    if points.attrs["instance_key"] not in points.columns:
+        raise ValueError(
+            f"Points {points_key} not synced to instance_key shape element. Run bento.io.format_sdata() to setup SpatialData object for bento-tools."
+        )
