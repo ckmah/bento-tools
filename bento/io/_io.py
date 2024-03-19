@@ -41,8 +41,7 @@ def format_sdata(
     for shape_name, shape_gdf in sdata.shapes.items():
         if shape_name == instance_key:
             shape_gdf[shape_name] = shape_gdf["geometry"]
-        if isinstance(shape_gdf.index[0], str):
-            shape_gdf.index = shape_gdf.index.astype(str, copy=False)
+        shape_gdf.index = shape_gdf.index.astype(str, copy=False)
         sdata.shapes[shape_name] = ShapesModel.parse(shape_gdf)
 
     # sindex points and sjoin shapes if they have not been indexed or joined
@@ -67,7 +66,7 @@ def format_sdata(
     if len(shape_sjoin) > 0:
         sdata = sjoin_shapes(
             sdata=sdata, instance_key=instance_key, shape_names=shape_sjoin
-        )
+        )  
 
     # Recompute count table
     sdata.aggregate(
@@ -78,7 +77,7 @@ def format_sdata(
     )
 
     # Set instance key to cell_shape_key for all points and table
-    sdata.points[points_key].attrs["instance_key"] = instance_key
+    sdata.points[points_key].attrs["spatialdata_attrs"]["instance_key"] = instance_key
     sdata.table.uns["spatialdata_attrs"]["instance_key"] = instance_key
 
     return sdata

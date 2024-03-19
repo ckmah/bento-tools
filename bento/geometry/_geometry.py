@@ -47,7 +47,6 @@ def sindex_points(
     for shape_name, shape in query_shapes.items():
         shape = query_shapes[shape_name]
         shape.index.name = None
-        shape.index = shape.index.astype(str)
         points = points.sjoin(shape, how="left", predicate="intersects")
         points = points[~points.index.duplicated(keep="last")]
         points.loc[points["index_right"].isna(), "index_right"] = ""
@@ -111,7 +110,9 @@ def sjoin_shapes(sdata: SpatialData, instance_key: str, shape_names: List[str]):
         # Add instance_key shape index to shape
         parent_shape.index.name = "parent_index"
         instance_index = parent_shape.reset_index().set_index(shape)["parent_index"]
-        instance_index.name = instance_key # index name = shape, column name = instance_key
+        instance_index.name = (
+            instance_key  # index name = shape, column name = instance_key
+        )
         instance_index.index.name = None
         instance_index = instance_index[instance_index.index != ""]
 
@@ -142,12 +143,16 @@ def get_shape(sdata: SpatialData, shape_name: str, sync: bool = True) -> gpd.Geo
         GeoSeries of Polygon objects
     """
     instance_key = sdata.table.uns["spatialdata_attrs"]["instance_key"]
-    if sync and shape_name != instance_key:
-        check_shape_sync(sdata, shape_name, instance_key)
-        return sdata.shapes[instance_key][shape_name]
 
+    # Make sure shape exists in sdata.shapes
     if shape_name not in sdata.shapes.keys():
         raise ValueError(f"Shape {shape_name} not found in sdata.shapes")
+
+    if sync and shape_name != instance_key:
+        check_shape_sync(sdata, shape_name, instance_key)
+        shape_index = sdata.shapes[instance_key][shape_name]
+        valid_shapes = shape_index != ""
+        return sdata.shapes[shape_name][valid_shapes].geometry
 
     return sdata.shapes[shape_name].geometry
 
@@ -204,7 +209,7 @@ def set_shape_metadata(
 
     sdata.shapes[shape_name].loc[:, metadata.columns] = metadata.reindex(
         sdata.shapes[shape_name].index
-    )
+    ).fillna("")
     return sdata
 
 
@@ -240,6 +245,11 @@ def get_points(
     # Sync points to instance_key
     if sync:
         check_points_sync(sdata, points_key)
+        instance_key = points.attrs["spatialdata_attrs"]["instance_key"]
+
+        point_index = sdata.points[points_key][instance_key]
+        valid_points = point_index != ""
+        points = points[valid_points]
 
     if astype == "pandas":
         return points.compute()
@@ -282,62 +292,6 @@ def get_points_metadata(
         return metadata.compute()
     elif astype == "dask":
         return metadata
-
-
-def sync_points(
-    sdata: SpatialData,
-    points_key: str = "transcripts",
-    instance_key: str = "cell_boundaries",
-    feature_key: str = "",
-) -> SpatialData:
-    """
-    Sync existing point sets and associated metadata with sdata.table.obs_names and sdata.table.var_names
-
-    Parameters
-    ----------
-    sdata : SpatialData
-        Spatial formatted SpatialData object
-    points_key : str, optional
-        Key for points DataFrame in `sdata.points`, by default "transcripts"
-    instance_key : str, optional
-        Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
-    feature_key : str, optional
-        Key for the feature corresponding to table var names. Usually the gene name.
-    """
-
-    # Iterate over point sets
-    for point_key in sdata.points:
-        points = get_points(sdata, point_key, astype="dask")
-
-        # Subset for cells
-        cells = sdata.table.obs_names.tolist()
-        in_cells = points[instance_key].isin(cells)
-
-        # Subset for genes
-        in_genes = [True] * points.shape[0]
-        if feature_key and feature_key in points.columns:
-            genes = sdata.table.var_names.tolist()
-            in_genes = points[feature_key].isin(genes)
-
-        # Combine boolean masks
-        valid_mask = (in_cells & in_genes).values
-
-        # Sync points using mask
-        points = points.loc[valid_mask]
-
-        # Remove unused categories for categorical columns
-        for col in points.columns:
-            if points[col].dtype == "category":
-                points[col].cat.remove_unused_categories(inplace=True)
-
-        # Update points in sdata
-        attrs = sdata.points[points_key].attrs
-        sdata.points[points_key] = PointsModel.parse(
-            points.reset_index(drop=True), coordinates={"x": "x", "y": "y"}
-        )
-        sdata.points[points_key].attrs = attrs
-
-        return sdata
 
 
 def check_points_sync(sdata, points_key):
