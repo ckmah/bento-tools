@@ -77,7 +77,7 @@ def format_sdata(
     )
 
     # Set instance key to cell_shape_key for all points and table
-    sdata.points[points_key].attrs["instance_key"] = instance_key
+    sdata.points[points_key].attrs["spatialdata_attrs"]["instance_key"] = instance_key
     sdata.table.uns["spatialdata_attrs"]["instance_key"] = instance_key
 
     return sdata
