@@ -47,7 +47,6 @@ def sindex_points(
     for shape_name, shape in query_shapes.items():
         shape = query_shapes[shape_name]
         shape.index.name = None
-        shape.index = shape.index.astype(str)
         points = points.sjoin(shape, how="left", predicate="intersects")
         points = points[~points.index.duplicated(keep="last")]
         points.loc[points["index_right"].isna(), "index_right"] = ""
@@ -204,7 +203,7 @@ def set_shape_metadata(
 
     sdata.shapes[shape_name].loc[:, metadata.columns] = metadata.reindex(
         sdata.shapes[shape_name].index
-    )
+    ).fillna("")
     return sdata
 
 
