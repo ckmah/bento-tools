@@ -23,7 +23,7 @@ from sklearn.preprocessing import StandardScaler, minmax_scale, quantile_transfo
 from sklearn.utils import resample
 from tqdm.auto import tqdm
 
-from ..geometry import get_points, sindex_points
+from ..geometry import get_points, sjoin_points
 from ..tools._neighborhoods import _count_neighbors
 from ..tools._shape_features import analyze_shapes
 
@@ -398,7 +398,7 @@ def fluxmap(
     sdata.points[points_key] = sdata.points[points_key].drop(old_cols, axis=1)
 
     # TODO SLOW
-    sindex_points(sdata=sdata, shape_names=fluxmap_df.columns.tolist(), points_key=points_key)
+    sjoin_points(sdata=sdata, shape_names=fluxmap_df.columns.tolist(), points_key=points_key)
     pbar.update()
     pbar.set_description("Done")
     pbar.close()
