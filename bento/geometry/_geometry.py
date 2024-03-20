@@ -276,7 +276,8 @@ def get_shape_metadata(
 def set_points_metadata(
     sdata: SpatialData,
     points_key: str,
-    metadata: Union[pd.Series, pd.DataFrame],
+    metadata: Union[List, pd.Series, pd.DataFrame],
+    column_names: Optional[Union[str, List[str]]] = None,
 ):
     """Write metadata in SpatialData points element as column(s). Aligns metadata index to shape index.
 
@@ -291,10 +292,17 @@ def set_points_metadata(
     """
     if points_key not in sdata.points.keys():
         raise ValueError(f"{points_key} not found in sdata.points")
+    
+    if isinstance(metadata, list):
+        metadata = pd.Series(metadata, index=sdata.points[points_key].index)
 
-    # Set metadata as columns in sdata.shape[shape_key]
     if isinstance(metadata, pd.Series):
         metadata = pd.DataFrame(metadata)
+
+    if column_names is not None:
+        if isinstance(column_names, str):
+            column_names = [column_names]
+        metadata = metadata.rename(columns={metadata.columns[0]: column_names[0]})
         
     sdata.points[points_key] = sdata.points[points_key].reset_index(drop=True)
     for name, series in metadata.iteritems():
@@ -305,7 +313,8 @@ def set_points_metadata(
 def set_shape_metadata(
     sdata: SpatialData,
     shape_key: str,
-    metadata: Union[pd.Series, pd.DataFrame],
+    metadata: Union[List, pd.Series, pd.DataFrame],
+    column_names: Optional[Union[str, List[str]]] = None,
 ):
     """Write metadata in SpatialData shapes element as column(s). Aligns metadata index to shape index.
 
@@ -320,10 +329,17 @@ def set_shape_metadata(
     """
     if shape_key not in sdata.shapes.keys():
         raise ValueError(f"Shape {shape_key} not found in sdata.shapes")
+    
+    if isinstance(metadata, list):
+        metadata = pd.Series(metadata, index=sdata.shapes[shape_key].index)
 
-    # Set metadata as columns in sdata.shape[shape_key]
     if isinstance(metadata, pd.Series):
         metadata = pd.DataFrame(metadata)
+
+    if column_names is not None:
+        if isinstance(column_names, str):
+            column_names = [column_names]
+        metadata = metadata.rename(columns={metadata.columns[0]: column_names[0]})
 
     sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(
         sdata.shapes[shape_key].index
