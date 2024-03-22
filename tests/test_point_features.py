@@ -5,6 +5,14 @@ import spatialdata as sd
 
 class TestPointFeatures(unittest.TestCase):
     def setUp(self):
+        self.data = sd.read_zarr("/mnt/d/spatial_datasets/small_data.zarr")
+        self.data = bt.io.format_sdata(
+            sdata=self.data,
+            points_key="transcripts",
+            feature_key="feature_name",
+            instance_key="cell_boundaries",
+            shape_keys=["cell_boundaries", "nucleus_boundaries"],
+        )
         self.point_features = bt.tl.list_point_features().keys()
         self.instance_key = ["cell_boundaries"]
         self.feature_key = ["feature_name"]
@@ -17,47 +25,29 @@ class TestPointFeatures(unittest.TestCase):
             'l_monotony',
             'l_half_radius'
         ]
-        self.cell_features = [
-            'cell_boundaries_inner_proximity',
-            'cell_boundaries_outer_proximity',
-            'cell_boundaries_inner_asymmetry',
-            'cell_boundaries_outer_asymmetry',
-            'cell_boundaries_dispersion_norm',
-            'cell_boundaries_inner_distance',
-            'cell_boundaries_outer_distance',
-            'cell_boundaries_inner_offset',
-            'cell_boundaries_outer_offset',
-            'cell_boundaries_dispersion',
-            'cell_boundaries_enrichment'
+
+        feature_names = [
+            'inner_proximity',
+            'outer_proximity',
+            'inner_asymmetry',
+            'outer_asymmetry',
+            'dispersion_norm',
+            'inner_distance',
+            'outer_distance',
+            'inner_offset',
+            'outer_offset',
+            'dispersion',
+            'enrichment'
         ]
-        self.nucleus_features = [
-            'nucleus_boundaries_inner_proximity',
-            'nucleus_boundaries_outer_proximity',
-            'nucleus_boundaries_inner_asymmetry',
-            'nucleus_boundaries_outer_asymmetry',
-            'nucleus_boundaries_dispersion_norm',
-            'nucleus_boundaries_inner_distance',
-            'nucleus_boundaries_outer_distance',
-            'nucleus_boundaries_inner_offset',
-            'nucleus_boundaries_outer_offset',
-            'nucleus_boundaries_dispersion',
-            'nucleus_boundaries_enrichment'
-        ]
+
+        self.cell_features = [f"cell_boundaries_{x}" for x in feature_names]
+        self.nucleus_features = [f"nucleus_boundaries_{x}" for x in feature_names]
 
 
     # Test case to check if features are calculated for a single shape and a single group
     def test_single_shape_single_group(self):
-        data = sd.read_zarr("/mnt/d/spatial_datasets/small_data.zarr")
-        data = bt.io.format_sdata(
-            sdata=data,
-            points_key="transcripts",
-            feature_key="feature_name",
-            instance_key="cell_boundaries",
-            shape_keys=["cell_boundaries", "nucleus_boundaries"],
-        )
-
         data = bt.tl.analyze_points(
-            sdata=data,
+            sdata=self.data,
             shape_keys=["cell_boundaries"],
             feature_names=self.point_features,
             groupby=None,
@@ -74,17 +64,8 @@ class TestPointFeatures(unittest.TestCase):
 
     # Test case to check if features are calculated for a single shape and multiple groups
     def test_single_shape_multiple_groups(self):
-        data = sd.read_zarr("/mnt/d/spatial_datasets/small_data.zarr")
-        data = bt.io.format_sdata(
-            sdata=data,
-            points_key="transcripts",
-            feature_key="feature_name",
-            instance_key="cell_boundaries",
-            shape_keys=["cell_boundaries", "nucleus_boundaries"],
-        )
-
         data = bt.tl.analyze_points(
-            sdata=data,
+            sdata=self.data,
             shape_keys=["cell_boundaries"],
             feature_names=self.point_features,
             groupby=["feature_name"],
@@ -100,17 +81,8 @@ class TestPointFeatures(unittest.TestCase):
 
     # Test case to check if point features are calculated for multiple shapes and a single group
     def test_multiple_shapes_single_group(self):
-        data = sd.read_zarr("/mnt/d/spatial_datasets/small_data.zarr")
-        data = bt.io.format_sdata(
-            sdata=data,
-            points_key="transcripts",
-            feature_key="feature_name",
-            instance_key="cell_boundaries",
-            shape_keys=["cell_boundaries", "nucleus_boundaries"],
-        )
-
         data = bt.tl.analyze_points(
-            sdata=data,
+            sdata=self.data,
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
             feature_names=self.point_features,
             groupby=None,
@@ -126,17 +98,8 @@ class TestPointFeatures(unittest.TestCase):
 
     # Test case to check if multiple shape features are calculated for multiple shapes
     def test_multiple_shapes_multiple_groups(self):
-        data = sd.read_zarr("/mnt/d/spatial_datasets/small_data.zarr")
-        data = bt.io.format_sdata(
-            sdata=data,
-            points_key="transcripts",
-            feature_key="feature_name",
-            instance_key="cell_boundaries",
-            shape_keys=["cell_boundaries", "nucleus_boundaries"],
-        )
-
         data = bt.tl.analyze_points(
-            sdata=data,
+            sdata=self.data,
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
             feature_names=self.point_features,
             groupby=["feature_name"],
