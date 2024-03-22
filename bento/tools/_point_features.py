@@ -23,11 +23,18 @@ def analyze_points(
     sdata: SpatialData,
     shape_keys: List[str],
     feature_names: List[str],
+    points_key: str = "transcripts",
+    instance_key: str = "cell_boundaries",
     groupby: Optional[Union[str, List[str]]] = None,
     recompute=False,
     progress: bool = False,
 ):
     """Calculate the set of specified `features` for each point group. Groups are within each cell.
+        
+        When creating the points_df, it first grabs sdata.points[points_key] and joins shape polygons from sdata.shapes[shape_keys].
+        The second join is to sdata.shapes[instance_key] to pull in cell polygons and cell features.
+        The shape indices in the points object are renamed to have _index as a suffix to avoid conflicts.
+        The joined polygons are named with it's respective shape_key.
 
         Parameters
         ----------
@@ -42,7 +49,7 @@ def analyze_points(
 
         Returns
         -------
-    sdata : spatialdata.SpatialData
+        sdata : spatialdata.SpatialData
             table.uns["point_feature"]
                 See the output of each :class:`PointFeature` in `features` for keys added.
 
@@ -58,11 +65,12 @@ def analyze_points(
 
     # Make sure groupby is a list
     if isinstance(groupby, str):
-        groupby = ["cell", groupby]
+        groupby = [f"{instance_key}_index", groupby]
     elif isinstance(groupby, list):
-        groupby = ["cell"] + groupby
+        groupby = [f"{instance_key}_index"] + groupby
     else:
-        groupby = ["cell"]
+        groupby = [f"{instance_key}_index"]
+
     # Make sure points are sjoined to all shapes in shape_keys
     shapes_found = set(shape_keys).intersection(set(sdata.points[points_key].columns))
     if len(shapes_found) != len(shape_keys):
@@ -70,11 +78,11 @@ def analyze_points(
 
     # Make sure all groupby keys are in point columns
     for g in groupby:
-        if g not in get_points(sdata, astype="dask").columns:
+        if g != f"{instance_key}_index" and g not in get_points(sdata, points_key=points_key, astype="dask", sync=True).columns:
             raise ValueError(f"Groupby key {g} not found in point columns.")
     
     # Generate feature x shape combinations
-    feature_combos = [point_features[f](s) for f in feature_names for s in shape_names]
+    feature_combos = [point_features[f](instance_key, s) for f in feature_names for s in shape_keys]
 
     # Compile dependency set of features and attributes
     cell_features = set()
@@ -88,35 +96,38 @@ def analyze_points(
     
     print("Crunching shape features...")
     tl.analyze_shapes(
-        sdata, "cell_boundaries", cell_features, progress=progress, recompute=recompute
+        sdata=sdata, 
+        shape_keys=instance_key, 
+        feature_names=cell_features, 
+        progress=progress, 
+        recompute=recompute
     )
-    
-    # Make sure attributes are present
-    attrs_found = set(obs_attrs).intersection(set(sdata.shapes["cell_boundaries"].columns.tolist()))
-    if len(attrs_found) != len(obs_attrs):
+
+    # Make sure points are sjoined to all shapes in shape_keys
+    attributes = [attr for attr in obs_attrs if attr not in shape_keys]
+    attributes.append(instance_key)
+    attrs_found = set(attributes).intersection(set(sdata.shapes[instance_key].columns.tolist()))
+    if len(attrs_found) != len(attributes):
         raise KeyError(f"df does not have all columns: {obs_attrs}.")
-    
-    # extract cell attributes
+
+    points_df = get_points(sdata, points_key=points_key, astype="geopandas", sync=True).set_index(instance_key)
+    # Pull all shape polygons into the points dataframe
+    for shape in list(set(obs_attrs).intersection(set([x for x in shape_keys if x != instance_key]))):
+        points_df = (
+            points_df.join(sdata.shapes[shape], on=instance_key, lsuffix="", rsuffix=f"_{shape}")
+            .drop("cell_boundaries", axis=1)
+            .rename(columns={shape: f"{shape}_index", f"geometry_{shape}": shape})
+        )
+
+    # Pull cell_boundaries shape features into the points dataframe
     points_df = (
-        get_points(sdata, astype="geopandas")
-        .set_index("cell")
-        .join(sdata.shapes["cell_boundaries"][obs_attrs])
-        .rename_axis("cell")
+        points_df.join(sdata.shapes[instance_key][attributes])
+        .rename_axis(f"{instance_key}_index")
         .reset_index()
     )
-    
-    
+
     for g in groupby:
         points_df[g] = points_df[g].astype("category")
-    # Handle categories as strings to avoid ambiguous cat types
-    # for col in points_df.loc[:, (points_df.dtypes == "category").values]:
-    #     points_df[col] = points_df[col].astype(str)
-   
-    # Handle shape indexes as strings to avoid ambiguous types
-    for shape_name in [shape for shape in list(sdata.shapes.keys()) if shape.endswith("_boundaries")]:
-        shape_prefix = "_".join(shape_name.split("_")[:-1])
-        if shape_prefix in points_df.columns:
-            points_df[shape_prefix] = points_df[shape_prefix].astype(str)
 
     # Calculate features for a sample
     def process_sample(df):
@@ -133,7 +144,7 @@ def analyze_points(
 
     # Process points of each cell separately
     cells, group_loc = np.unique(
-        points_df["cell"],
+        points_df[f"{instance_key}_index"],
         return_index=True,
     )
     
@@ -152,11 +163,12 @@ def analyze_points(
     output = pd.concat(output)
     # Save and overwrite existing
     print("Saving results...")
+    groupby[groupby.index(f"{instance_key}_index")] = instance_key
     output_key = "_".join([*groupby, "features"])
     if output_key in sdata.table.uns:
-        sdata.table.uns[output_key][output.columns] = output.reset_index(drop=True)
+        sdata.table.uns[output_key][output.columns] = output.reset_index(drop=True).rename(columns={f"{instance_key}_index": instance_key})
     else:
-        sdata.table.uns[output_key] = output.reset_index()
+        sdata.table.uns[output_key] = output.reset_index().rename(columns={f"{instance_key}_index": instance_key})
 
     print("Done.")
     return sdata
