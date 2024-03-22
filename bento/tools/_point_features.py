@@ -173,11 +173,11 @@ class PointFeature(metaclass=ABCMeta):
         Names (keys) used to store computed cell-level features.
     """
 
-    def __init__(self, shape_name):
+    def __init__(self, instance_key, shape_key):
         self.cell_features = set()
         self.attributes = set()
-
-        if shape_name:
+        self.instance_key = instance_key
+        
         if shape_key:
             self.attributes.add(shape_key)
             self.shape_key = shape_key
@@ -215,11 +215,10 @@ class ShapeProximity(PointFeature):
         `"{shape_key}_outer_proximity"`: proximity of points outside `shape_key`
     """
 
-    def __init__(self, shape_name):
-        super().__init__(shape_name)
+    def __init__(self, instance_key, shape_key):
+        super().__init__(instance_key, shape_key)
         self.cell_features.add("radius")
-        self.attributes.add("cell_radius")
-        self.shape_name = shape_name
+        self.attributes.add(f"{self.instance_key}_radius")
 
     def extract(self, df):
         df = super().extract(df)
@@ -247,7 +246,7 @@ class ShapeProximity(PointFeature):
         points_geo = df["geometry"]
 
         # Check for points within shape, assume all are intracellular
-        if self.shape_prefix == "cell":
+        if self.shape_key == self.instance_key:
             inner = np.array([True] * len(df))
         else:
             inner = df[self.shape_prefix] != "-1"
@@ -263,7 +262,7 @@ class ShapeProximity(PointFeature):
             outer_dist = points_geo[outer].distance(shape.boundary).mean()
 
         # Scale from [0, 1], where 1 is close and 0 is far.
-        cell_radius = df["cell_radius"].values[0]
+        cell_radius = df[f"{self.instance_key}_radius"].values[0]
         inner_proximity = (cell_radius - inner_dist) / cell_radius
         outer_proximity = (cell_radius - outer_dist) / cell_radius
 
@@ -302,11 +301,10 @@ class ShapeAsymmetry(PointFeature):
         `"{shape_key}_outer_asymmetry"`: asymmetry of points outside `shape_key`
     """
 
-    def __init__(self, shape_name):
-        super().__init__(shape_name)
+    def __init__(self, instance_key, shape_key):
+        super().__init__(instance_key, shape_key)
         self.cell_features.add("radius")
-        self.attributes.add("cell_radius")
-        self.shape_name = shape_name
+        self.attributes.add(f"{self.instance_key}_radius")
 
     def extract(self, df):
         df = super().extract(df)
@@ -334,7 +332,7 @@ class ShapeAsymmetry(PointFeature):
         points_geo = df["geometry"]
 
         # Check for points within shape, assume all are intracellular
-        if self.shape_prefix == "cell":
+        if self.shape_key == self.instance_key:
             inner = np.array([True] * len(df))
         else:
             inner = df[self.shape_prefix] != "-1"
@@ -350,7 +348,7 @@ class ShapeAsymmetry(PointFeature):
             outer_to_centroid = points_geo[outer].distance(shape.centroid).mean()
 
         # Values [0, 1], where 1 is asymmetrical and 0 is symmetrical.
-        cell_radius = df["cell_radius"].values[0]
+        cell_radius = df[f"{self.instance_key}_radius"].values[0]
         inner_asymmetry = inner_to_centroid / cell_radius
         outer_asymmetry = outer_to_centroid / cell_radius
 
@@ -384,19 +382,17 @@ class PointDispersionNorm(PointFeature):
         `"point_dispersion"`: measure of point dispersion
     """
 
-    def __init__(self, shape_name):
-        super().__init__(shape_name)
+    def __init__(self, instance_key, shape_key):
+        super().__init__(instance_key, shape_key)
         self.cell_features.add("raster")
-
-        attrs = ["cell_raster"]
-        self.attributes.update(attrs)
+        self.attributes.add(f"{self.instance_key}_raster")
 
     def extract(self, df):
         df = super().extract(df)
 
         # Get precomputed cell centroid and raster
         pt_centroid = df[["x", "y"]].values.mean(axis=0).reshape(1, 2)
-        cell_raster = df["cell_raster"].values[0]
+        cell_raster = df[f"{self.instance_key}_raster"].values[0]
 
         # Skip if no raster
         if not np.array(cell_raster).flatten().any():
@@ -430,12 +426,11 @@ class ShapeDispersionNorm(PointFeature):
         `"{shape_key}_dispersion"`: measure of point dispersion relative to `shape_key`
     """
 
-    def __init__(self, shape_name):
-        super().__init__(shape_name)
+    def __init__(self, instance_key, shape_key):
+        super().__init__(instance_key, shape_key)
 
         self.cell_features.add("raster")
-        attrs = ["cell_raster"]
-        self.attributes.update(attrs)
+        self.attributes.add(f"{self.instance_key}_raster")
 
     def extract(self, df):
         df = super().extract(df)
@@ -454,7 +449,7 @@ class ShapeDispersionNorm(PointFeature):
             return {f"{self.shape_key}_dispersion_norm": np.nan}
 
         # Get precomputed shape centroid and raster
-        cell_raster = df["cell_raster"].values[0]
+        cell_raster = df[f"{self.instance_key}_raster"].values[0]
 
         # calculate points moment
         point_moment = _second_moment(shape.centroid, df[["x", "y"]].values)
@@ -485,8 +480,8 @@ class ShapeDistance(PointFeature):
     """
 
     # Cell-level features needed for computing sample-level features
-    def __init__(self, shape_name):
-        super().__init__(shape_name)
+    def __init__(self, instance_key, shape_key):
+        super().__init__(instance_key, shape_key)
 
     def extract(self, df):
         df = super().extract(df)
@@ -514,7 +509,7 @@ class ShapeDistance(PointFeature):
         points_geo = df["geometry"].values
 
         # Check for points within shape, assume all are intracellular
-        if self.shape_prefix == "cell":
+        if self.shape_key == self.instance_key:
             inner = np.array([True] * len(df))
         else:
             inner = df[self.shape_prefix] != "-1"
@@ -558,8 +553,8 @@ class ShapeOffset(PointFeature):
         `"{shape_key}_outer_offset"`: offset of points outside `shape_key`
     """
 
-    def __init__(self, shape_name):
-        super().__init__(shape_name)
+    def __init__(self, instance_key, shape_key):
+        super().__init__(instance_key, shape_key)
 
     def extract(self, df):
         df = super().extract(df)
@@ -587,7 +582,7 @@ class ShapeOffset(PointFeature):
         points_geo = df["geometry"].values
 
         # Check for points within shape, assume all are intracellular
-        if self.shape_prefix == "cell":
+        if self.shape_key == self.instance_key:
             inner = np.array([True] * len(df))
         else:
             inner = df[self.shape_prefix] != "-1"
@@ -626,9 +621,9 @@ class PointDispersion(PointFeature):
         `"point_dispersion"`: measure of point dispersion
     """
 
-    # shape_name set to None to follow the same convention as other shape features
-    def __init__(self, shape_name=None):
-        super().__init__(shape_name)
+    # shape_key set to None to follow the same convention as other shape features
+    def __init__(self, instance_key, shape_key=None):
+        super().__init__(instance_key, shape_key)
 
     def extract(self, df):
         df = super().extract(df)
@@ -659,8 +654,8 @@ class ShapeDispersion(PointFeature):
         `"{shape_key}_dispersion"`: measure of point dispersion relative to `shape_key`
     """
 
-    def __init__(self, shape_name):
-        super().__init__(shape_name)
+    def __init__(self, instance_key, shape_key):
+        super().__init__(instance_key, shape_key)
 
     def extract(self, df):
         df = super().extract(df)
@@ -706,18 +701,18 @@ class RipleyStats(PointFeature):
 
     """
 
-    def __init__(self, shape_name=None):
-        super().__init__(shape_name)
+    def __init__(self, instance_key, shape_key=None):
+        super().__init__(instance_key, shape_key)
         self.cell_features.update(["span", "bounds", "area"])
 
         self.attributes.update(
             [
-                "cell_span",
-                "cell_minx",
-                "cell_miny",
-                "cell_maxx",
-                "cell_maxy",
-                "cell_area",
+                f"{instance_key}_span",
+                f"{instance_key}_minx",
+                f"{instance_key}_miny",
+                f"{instance_key}_maxx",
+                f"{instance_key}_maxy",
+                f"{instance_key}_area",
             ]
         )
 
@@ -725,12 +720,12 @@ class RipleyStats(PointFeature):
         df = super().extract(df)
 
         # Get precomputed centroid and cell moment
-        cell_span = df["cell_span"].values[0]
-        cell_minx = df["cell_minx"].values[0]
-        cell_miny = df["cell_miny"].values[0]
-        cell_maxx = df["cell_maxx"].values[0]
-        cell_maxy = df["cell_maxy"].values[0]
-        cell_area = df["cell_area"].values[0]
+        cell_span = df[f"{self.instance_key}_span"].values[0]
+        cell_minx = df[f"{self.instance_key}_minx"].values[0]
+        cell_miny = df[f"{self.instance_key}_miny"].values[0]
+        cell_maxx = df[f"{self.instance_key}_maxx"].values[0]
+        cell_maxy = df[f"{self.instance_key}_maxy"].values[0]
+        cell_area = df[f"{self.instance_key}_area"].values[0]
 
         estimator = RipleysKEstimator(
             area=cell_area,
@@ -800,11 +795,11 @@ class ShapeEnrichment(PointFeature):
     Returns
     -------
     dict
-        `"{shape_prefix}_enrichment"`: enrichment fraction of points in `shape_name`
+        `"{shape_key}_enrichment"`: enrichment fraction of points in `shape_key`
     """
 
-    def __init__(self, shape_name):
-        super().__init__(shape_name)
+    def __init__(self, instance_key, shape_key):
+        super().__init__(instance_key, shape_key)
 
     def extract(self, df):
         df = super().extract(df)
@@ -813,7 +808,7 @@ class ShapeEnrichment(PointFeature):
         points_geo = df["geometry"]
 
         # Check for points within shape, assume all are intracellular
-        if self.shape_prefix == "cell":
+        if self.shape_key == self.instance_key:
             enrichment = 1.0
         else:
             inner_count = (df[self.shape_prefix] != "-1").sum()
