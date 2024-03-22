@@ -249,7 +249,7 @@ class ShapeProximity(PointFeature):
         if self.shape_key == self.instance_key:
             inner = np.array([True] * len(df))
         else:
-            inner = df[self.shape_prefix] != "-1"
+            inner = df[f"{self.shape_key}_index"] != ""
         outer = ~inner
 
         inner_dist = np.nan
@@ -335,7 +335,7 @@ class ShapeAsymmetry(PointFeature):
         if self.shape_key == self.instance_key:
             inner = np.array([True] * len(df))
         else:
-            inner = df[self.shape_prefix] != "-1"
+            inner = df[f"{self.shape_key}_index"] != ""
         outer = ~inner
 
         inner_to_centroid = np.nan
@@ -512,7 +512,7 @@ class ShapeDistance(PointFeature):
         if self.shape_key == self.instance_key:
             inner = np.array([True] * len(df))
         else:
-            inner = df[self.shape_prefix] != "-1"
+            inner = df[f"{self.shape_key}_index"] != ""
         outer = ~inner
 
         if inner.sum() > 0:
@@ -585,7 +585,7 @@ class ShapeOffset(PointFeature):
         if self.shape_key == self.instance_key:
             inner = np.array([True] * len(df))
         else:
-            inner = df[self.shape_prefix] != "-1"
+            inner = df[f"{self.shape_key}_index"] != ""
         outer = ~inner
 
         if inner.sum() > 0:
@@ -811,7 +811,7 @@ class ShapeEnrichment(PointFeature):
         if self.shape_key == self.instance_key:
             enrichment = 1.0
         else:
-            inner_count = (df[self.shape_prefix] != "-1").sum()
+            inner_count = (df[f"{self.shape_key}_index"] != "").sum()
             enrichment = inner_count / float(len(points_geo))
 
         return {f"{self.shape_key}_enrichment": enrichment}
