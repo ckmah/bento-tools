@@ -21,7 +21,7 @@ from ..geometry import get_points
 
 def analyze_points(
     sdata: SpatialData,
-    shape_names: List[str],
+    shape_keys: List[str],
     feature_names: List[str],
     groupby: Optional[Union[str, List[str]]] = None,
     recompute=False,
@@ -33,7 +33,7 @@ def analyze_points(
         ----------
         sdata : SpatialData
             Spatially formatted SpatialData
-        shape_names : str or list of str
+        shape_keys : str or list of str
             Names of the shapes to analyze.
         feature_names : str or list of str
             Names of the features to analyze.
@@ -49,8 +49,8 @@ def analyze_points(
     """
 
     # Cast to list if not already
-    if isinstance(shape_names, str):
-        shape_names = [shape_names]
+    if isinstance(shape_keys, str):
+        shape_keys = [shape_keys]
     
     # Cast to list if not already
     if isinstance(feature_names, str):
@@ -63,6 +63,10 @@ def analyze_points(
         groupby = ["cell"] + groupby
     else:
         groupby = ["cell"]
+    # Make sure points are sjoined to all shapes in shape_keys
+    shapes_found = set(shape_keys).intersection(set(sdata.points[points_key].columns))
+    if len(shapes_found) != len(shape_keys):
+        raise KeyError(f"sdata.points[{points_key}] does not have all columns: {shape_keys}. Please run sjoin_points first.")
 
     # Make sure all groupby keys are in point columns
     for g in groupby:
@@ -174,9 +178,9 @@ class PointFeature(metaclass=ABCMeta):
         self.attributes = set()
 
         if shape_name:
-            self.attributes.add(shape_name)
-            self.shape_name = shape_name
-            self.shape_prefix = "_".join(shape_name.split("_")[:-1])
+        if shape_key:
+            self.attributes.add(shape_key)
+            self.shape_key = shape_key
 
     @abstractmethod
     def extract(self, df):
@@ -191,11 +195,11 @@ class PointFeature(metaclass=ABCMeta):
 
 
 class ShapeProximity(PointFeature):
-    """For a set of points, computes the proximity of points within `shape_name`
-    as well as the proximity of points outside `shape_name`. Proximity is defined as
-    the average absolute distance to the specified `shape_name` normalized by cell
-    radius. Values closer to 0 denote farther from the `shape_name`, values closer
-    to 1 denote closer to the `shape_name`.
+    """For a set of points, computes the proximity of points within `shape_key`
+    as well as the proximity of points outside `shape_key`. Proximity is defined as
+    the average absolute distance to the specified `shape_key` normalized by cell
+    radius. Values closer to 0 denote farther from the `shape_key`, values closer
+    to 1 denote closer to the `shape_key`.
 
     Attributes
     ----------
@@ -207,8 +211,8 @@ class ShapeProximity(PointFeature):
     Returns
     -------
     dict
-        `"{shape_prefix}_inner_proximity"`: proximity of points inside `shape_name`
-        `"{shape_prefix}_outer_proximity"`: proximity of points outside `shape_name`
+        `"{shape_key}_inner_proximity"`: proximity of points inside `shape_key`
+        `"{shape_key}_outer_proximity"`: proximity of points outside `shape_key`
     """
 
     def __init__(self, shape_name):
@@ -221,22 +225,22 @@ class ShapeProximity(PointFeature):
         df = super().extract(df)
 
         # Get shape polygon
-        shape = df[self.shape_name].values[0]
+        shape = df[self.shape_key].values[0]
         
         # Skip if no shape or if shape is nan
         try:
             if isnan(shape):
                 return {
-                f"{self.shape_prefix}_inner_proximity": 0,
-                f"{self.shape_prefix}_outer_proximity": 0,
+                f"{self.shape_key}_inner_proximity": 0,
+                f"{self.shape_key}_outer_proximity": 0,
             }
         except:
             pass
 
         if not shape:
             return {
-                f"{self.shape_prefix}_inner_proximity": 0,
-                f"{self.shape_prefix}_outer_proximity": 0,
+                f"{self.shape_key}_inner_proximity": 0,
+                f"{self.shape_key}_outer_proximity": 0,
             }
 
         # Get points
@@ -270,16 +274,16 @@ class ShapeProximity(PointFeature):
             outer_proximity = 0
 
         return {
-            f"{self.shape_prefix}_inner_proximity": inner_proximity,
-            f"{self.shape_prefix}_outer_proximity": outer_proximity,
+            f"{self.shape_key}_inner_proximity": inner_proximity,
+            f"{self.shape_key}_outer_proximity": outer_proximity,
         }
 
 
 class ShapeAsymmetry(PointFeature):
-    """For a set of points, computes the asymmetry of points within `shape_name`
-    as well as the asymmetry of points outside `shape_name`. Asymmetry is defined as
+    """For a set of points, computes the asymmetry of points within `shape_key`
+    as well as the asymmetry of points outside `shape_key`. Asymmetry is defined as
     the offset between the centroid of points to the centroid of the specified
-    `shape_name`, normalized by cell radius. Values closer to 0 denote symmetry,
+    `shape_key`, normalized by cell radius. Values closer to 0 denote symmetry,
     values closer to 1 denote asymmetry.
 
     Attributes
@@ -288,14 +292,14 @@ class ShapeAsymmetry(PointFeature):
         Set of cell-level features needed for computing sample-level features
     cell_attributes : int
         Names (keys) used to store computed cell-level features
-    shape_name : str
+    shape_key : str
         Name of shape to use, must be column name in input DataFrame
 
     Returns
     -------
     dict
-        `"{shape_prefix}_inner_asymmetry"`: asymmetry of points inside `shape_name`
-        `"{shape_prefix}_outer_asymmetry"`: asymmetry of points outside `shape_name`
+        `"{shape_key}_inner_asymmetry"`: asymmetry of points inside `shape_key`
+        `"{shape_key}_outer_asymmetry"`: asymmetry of points outside `shape_key`
     """
 
     def __init__(self, shape_name):
@@ -308,22 +312,22 @@ class ShapeAsymmetry(PointFeature):
         df = super().extract(df)
 
         # Get shape polygon
-        shape = df[self.shape_name].values[0]
+        shape = df[self.shape_key].values[0]
         
         # Skip if no shape or shape is nan
         try:
             if isnan(shape):
                 return {
-                    f"{self.shape_prefix}_inner_asymmetry": 0,
-                    f"{self.shape_prefix}_outer_asymmetry": 0,
+                    f"{self.shape_key}_inner_asymmetry": 0,
+                    f"{self.shape_key}_outer_asymmetry": 0,
                 }
         except:
             pass
 
         if shape is None:
             return {
-                f"{self.shape_prefix}_inner_asymmetry": 0,
-                f"{self.shape_prefix}_outer_asymmetry": 0,
+                f"{self.shape_key}_inner_asymmetry": 0,
+                f"{self.shape_key}_outer_asymmetry": 0,
             }
 
         # Get points
@@ -357,8 +361,8 @@ class ShapeAsymmetry(PointFeature):
             outer_asymmetry = 0
 
         return {
-            f"{self.shape_prefix}_inner_asymmetry": inner_asymmetry,
-            f"{self.shape_prefix}_outer_asymmetry": outer_asymmetry,
+            f"{self.shape_key}_inner_asymmetry": inner_asymmetry,
+            f"{self.shape_key}_outer_asymmetry": outer_asymmetry,
         }
 
 
@@ -410,7 +414,7 @@ class PointDispersionNorm(PointFeature):
 
 class ShapeDispersionNorm(PointFeature):
     """For a set of points, calculates the second moment of all points in a cell relative to the
-    centroid of `shape_name`. This value is normalized by the second moment of a uniform
+    centroid of `shape_key`. This value is normalized by the second moment of a uniform
     distribution within the cell boundary.
 
     Attributes
@@ -423,7 +427,7 @@ class ShapeDispersionNorm(PointFeature):
     Returns
     -------
     dict
-        `"{shape_prefix}_dispersion"`: measure of point dispersion relative to `shape_name`
+        `"{shape_key}_dispersion"`: measure of point dispersion relative to `shape_key`
     """
 
     def __init__(self, shape_name):
@@ -437,17 +441,17 @@ class ShapeDispersionNorm(PointFeature):
         df = super().extract(df)
 
         # Get shape polygon
-        shape = df[self.shape_name].values[0]
+        shape = df[self.shape_key].values[0]
 
         # Skip if no shape or if shape is nan
         try:
             if isnan(shape):
-                return {f"{self.shape_prefix}_dispersion_norm": np.nan}
+                return {f"{self.shape_key}_dispersion_norm": np.nan}
         except:
             pass
 
         if not shape:
-            return {f"{self.shape_prefix}_dispersion_norm": np.nan}
+            return {f"{self.shape_key}_dispersion_norm": np.nan}
 
         # Get precomputed shape centroid and raster
         cell_raster = df["cell_raster"].values[0]
@@ -459,12 +463,12 @@ class ShapeDispersionNorm(PointFeature):
         # Normalize by cell moment
         norm_moment = point_moment / cell_moment
 
-        return {f"{self.shape_prefix}_dispersion_norm": norm_moment}
+        return {f"{self.shape_key}_dispersion_norm": norm_moment}
 
 
 class ShapeDistance(PointFeature):
-    """For a set of points, computes the distance of points within `shape_name`
-    as well as the distance of points outside `shape_name`.
+    """For a set of points, computes the distance of points within `shape_key`
+    as well as the distance of points outside `shape_key`.
 
     Attributes
     ----------
@@ -476,8 +480,8 @@ class ShapeDistance(PointFeature):
     Returns
     -------
     dict
-        `"{shape_prefix}_inner_distance"`: distance of points inside `shape_name`
-        `"{shape_prefix}_outer_distance"`: distance of points outside `shape_name`
+        `"{shape_key}_inner_distance"`: distance of points inside `shape_key`
+        `"{shape_key}_outer_distance"`: distance of points outside `shape_key`
     """
 
     # Cell-level features needed for computing sample-level features
@@ -488,22 +492,22 @@ class ShapeDistance(PointFeature):
         df = super().extract(df)
 
         # Get shape polygon
-        shape = df[self.shape_name].values[0]
+        shape = df[self.shape_key].values[0]
 
         # Skip if no shape or if shape is nan
         try:
             if isnan(shape):
                 return {
-                    f"{self.shape_prefix}_inner_distance": np.nan,
-                    f"{self.shape_prefix}_outer_distance": np.nan,
+                    f"{self.shape_key}_inner_distance": np.nan,
+                    f"{self.shape_key}_outer_distance": np.nan,
                 }
         except:
             pass
 
         if not shape:
             return {
-                f"{self.shape_prefix}_inner_distance": np.nan,
-                f"{self.shape_prefix}_outer_distance": np.nan,
+                f"{self.shape_key}_inner_distance": np.nan,
+                f"{self.shape_key}_outer_distance": np.nan,
             }
 
         # Get points
@@ -527,16 +531,16 @@ class ShapeDistance(PointFeature):
             outer_dist = np.nan
 
         return {
-            f"{self.shape_prefix}_inner_distance": inner_dist,
-            f"{self.shape_prefix}_outer_distance": outer_dist,
+            f"{self.shape_key}_inner_distance": inner_dist,
+            f"{self.shape_key}_outer_distance": outer_dist,
         }
 
 
 class ShapeOffset(PointFeature):
-    """For a set of points, computes the offset of points within `shape_name`
-    as well as the offset of points outside `shape_name`. Offset is defined as
+    """For a set of points, computes the offset of points within `shape_key`
+    as well as the offset of points outside `shape_key`. Offset is defined as
     the offset between the centroid of points to the centroid of the specified
-    `shape_name`.
+    `shape_key`.
 
     Attributes
     ----------
@@ -544,14 +548,14 @@ class ShapeOffset(PointFeature):
         Set of cell-level features needed for computing sample-level features
     attributes : int
         Names (keys) used to store computed cell-level features
-    shape_name : str
+    shape_key : str
         Name of shape to use, must be column name in input DataFrame
 
     Returns
     -------
     dict
-        `"{shape_prefix}_inner_offset"`: offset of points inside `shape_name`
-        `"{shape_prefix}_outer_offset"`: offset of points outside `shape_name`
+        `"{shape_key}_inner_offset"`: offset of points inside `shape_key`
+        `"{shape_key}_outer_offset"`: offset of points outside `shape_key`
     """
 
     def __init__(self, shape_name):
@@ -561,22 +565,22 @@ class ShapeOffset(PointFeature):
         df = super().extract(df)
 
         # Get shape polygon
-        shape = df[self.shape_name].values[0]
+        shape = df[self.shape_key].values[0]
 
         # Skip if no shape
         try:
             if isnan(shape):
                 return {
-                    f"{self.shape_prefix}_inner_offset": np.nan,
-                    f"{self.shape_prefix}_outer_offset": np.nan,
+                    f"{self.shape_key}_inner_offset": np.nan,
+                    f"{self.shape_key}_outer_offset": np.nan,
                 }
         except:
             pass
         
         if not shape:
             return {
-                f"{self.shape_prefix}_inner_offset": np.nan,
-                f"{self.shape_prefix}_outer_offset": np.nan,
+                f"{self.shape_key}_inner_offset": np.nan,
+                f"{self.shape_key}_outer_offset": np.nan,
             }
 
         # Get points
@@ -600,8 +604,8 @@ class ShapeOffset(PointFeature):
             outer_to_centroid = np.nan
 
         return {
-            f"{self.shape_prefix}_inner_offset": inner_to_centroid,
-            f"{self.shape_prefix}_outer_offset": outer_to_centroid,
+            f"{self.shape_key}_inner_offset": inner_to_centroid,
+            f"{self.shape_key}_outer_offset": outer_to_centroid,
         }
 
 
@@ -640,7 +644,7 @@ class PointDispersion(PointFeature):
 
 class ShapeDispersion(PointFeature):
     """For a set of points, calculates the second moment of all points in a cell relative to the
-    centroid of `shape_name`.
+    centroid of `shape_key`.
 
     Attributes
     ----------
@@ -652,7 +656,7 @@ class ShapeDispersion(PointFeature):
     Returns
     -------
     dict
-        `"{shape_prefix}_dispersion"`: measure of point dispersion relative to `shape_name`
+        `"{shape_key}_dispersion"`: measure of point dispersion relative to `shape_key`
     """
 
     def __init__(self, shape_name):
@@ -662,22 +666,22 @@ class ShapeDispersion(PointFeature):
         df = super().extract(df)
 
         # Get shape polygon
-        shape = df[self.shape_name].values[0]
+        shape = df[self.shape_key].values[0]
 
         # Skip if no shape or if shape is nan
         try:
             if isnan(shape):
-                return {f"{self.shape_prefix}_dispersion": np.nan}
+                return {f"{self.shape_key}_dispersion": np.nan}
         except:
             pass
 
         if not shape:
-            return {f"{self.shape_prefix}_dispersion": np.nan}
+            return {f"{self.shape_key}_dispersion": np.nan}
 
         # calculate points moment
         point_moment = _second_moment(shape.centroid, df[["x", "y"]].values)
 
-        return {f"{self.shape_prefix}_dispersion": point_moment}
+        return {f"{self.shape_key}_dispersion": point_moment}
 
 
 class RipleyStats(PointFeature):
@@ -781,7 +785,7 @@ class RipleyStats(PointFeature):
 
 
 class ShapeEnrichment(PointFeature):
-    """For a set of points, calculates the fraction of points within `shape_name`
+    """For a set of points, calculates the fraction of points within `shape_key`
     out of all points in the cell.
 
     Attributes
@@ -790,7 +794,7 @@ class ShapeEnrichment(PointFeature):
         Set of cell-level features needed for computing sample-level features
     attributes : int
         Names (keys) used to store computed cell-level features
-    shape_name : str
+    shape_key : str
         Name of shape to use, must be column name in input DataFrame
 
     Returns
@@ -815,7 +819,7 @@ class ShapeEnrichment(PointFeature):
             inner_count = (df[self.shape_prefix] != "-1").sum()
             enrichment = inner_count / float(len(points_geo))
 
-        return {f"{self.shape_prefix}_enrichment": enrichment}
+        return {f"{self.shape_key}_enrichment": enrichment}
 
 
 def _second_moment(centroid, pts):
