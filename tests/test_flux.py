@@ -1,51 +1,46 @@
-# import unittest
-# import bento as bt
-
-# data = bt.ds.sample_data()
-# radius = 50
-# n_neighbors = 20
-# res = 0.02
+import unittest
+import bento as bt
+import spatialdata as sd
+import random
 
 
-# class TestFlux(unittest.TestCase):
-#     def test_flux_radius(self):
-#         bt.tl.flux(data, method="radius", radius=radius, res=res)
+class TestFlux(unittest.TestCase): 
+    def setUp(self):
+        self.data = sd.read_zarr("/mnt/d/spatial_datasets/small_data.zarr")
+        self.data = bt.io.format_sdata(
+            self.data,
+            points_key="transcripts",
+            feature_key="feature_name",
+            instance_key="cell_boundaries",
+            shape_keys=["cell_boundaries", "nucleus_boundaries"],
+        )
 
-#         self.assertTrue(
-#             key in data.uns.keys() for key in ["flux", "flux_embed", "color"]
-#         )
-#         self.assertTrue(data.uns["flux"].shape[0] == data.uns["cell_raster"].shape[0])
-#         self.assertTrue(
-#             data.uns["flux_embed"].shape[0] == data.uns["cell_raster"].shape[0]
-#         )
-#         self.assertTrue(data.uns["flux_color"].flatten()[0][0] == "#")
+        bt.tl.flux(sdata=self.data, points_key="transcripts", instance_key="cell_boundaries", feature_key="feature_name")
+        bt.tl.fluxmap(sdata=self.data, points_key="transcripts", instance_key="cell_boundaries", n_clusters=3)
+        
 
-#     def test_flux_knn(self):
-#         bt.tl.flux(data, method="knn", n_neighbors=n_neighbors, res=res)
+    def test_flux(self):
+        # Check that cell_boundaries_raster is in self.data.points
+        self.assertTrue("cell_boundaries_raster" in self.data.points)
 
-#         self.assertTrue(
-#             key in data.uns.keys() for key in ["flux", "flux_embed", "flux_color"]
-#         )
-#         self.assertTrue(data.uns["flux"].shape[0] == data.uns["cell_raster"].shape[0])
-#         self.assertTrue(
-#             data.uns["flux_embed"].shape[0] == data.uns["cell_raster"].shape[0]
-#         )
-#         self.assertTrue(data.uns["flux_color"].flatten()[0][0] == "#")
+        # Check that flux_genes is in self.data.table.uns
+        self.assertTrue("flux_genes" in self.data.table.uns)
+        genes = self.data.table.uns["flux_genes"]
 
-#     def test_fluxmap(self):
-#         bt.tl.flux(data, method="radius", radius=radius, res=res)
-#         bt.tl.fluxmap(data, n_clusters=range(2, 4), train_size=0.2, res=res)
-#         bt.tl.fluxmap(data, n_clusters=3, train_size=1, res=res)
-#         self.assertTrue("fluxmap" in data.uns["cell_raster"])
-#         self.assertTrue(
-#             [
-#                 f in data.uns["points"].columns
-#                 for f in ["fluxmap0", "fluxmap1", "fluxmap2"]
-#             ]
-#         )
-#         self.assertTrue(
-#             [
-#                 f in data.obs.columns
-#                 for f in ["fluxmap0_shape", "fluxmap1_shape", "fluxmap2_shape"]
-#             ]
-#         )
+        # Check that flux_variance_ratio is in self.data.table.uns
+        self.assertTrue("flux_variance_ratio" in self.data.table.uns)
+        
+        # Check columns are added in cell_boundaries_raster
+        for gene in genes:
+            self.assertTrue(gene in self.data.points["cell_boundaries_raster"].columns)
+
+        for i in range(10):
+            self.assertTrue(f"flux_embed_{i}" in self.data.points["cell_boundaries_raster"].columns)
+
+        self.assertTrue("fluxmap" in self.data.points["cell_boundaries_raster"].columns)
+    
+    def test_fluxmap(self):
+        for i in range(1, 4):
+            self.assertTrue(f"fluxmap{i}_boundaries" in self.data.points["transcripts"].columns)
+            self.assertTrue(f"fluxmap{i}_boundaries" in self.data.shapes)
+    
