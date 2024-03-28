@@ -5,7 +5,7 @@ from sklearn.neighbors import NearestNeighbors
 
 
 def _count_neighbors(
-    points, n_genes, query_points=None, n_neighbors=None, radius=None, agg="gene"
+    points, n_genes, query_points=None, n_neighbors=None, radius=None, agg="feature_name"
 ):
     """Build nearest neighbor index for points.
 
@@ -60,8 +60,8 @@ def _count_neighbors(
             print(points.shape, query_points.shape)
 
     # Get gene-level neighbor counts for each gene
-    if agg == "gene":
-        gene_code = points["gene"].values
+    if agg == "feature_name":
+        gene_code = points["feature_name"].values
         source_genes, source_indices = np.unique(gene_code, return_index=True)
 
         gene_index = []
@@ -78,13 +78,13 @@ def _count_neighbors(
             for neighbor, count in zip(neighbor_names, neighbor_counts):
                 gene_index.append([g, neighbor, count])
 
-        gene_index = pd.DataFrame(gene_index, columns=["gene", "neighbor", "count"])
+        gene_index = pd.DataFrame(gene_index, columns=["feature_name", "neighbor", "count"])
 
         return gene_index
 
     else:
         # Get gene-level neighbor counts for each point
-        gene_codes = points["gene"].cat.codes.values
+        gene_codes = points["feature_name"].cat.codes.values
         neighborhood_sizes = np.array([len(n) for n in neighbor_index])
         flat_nindex = np.concatenate(neighbor_index)
         # Get gene name for each neighbor
