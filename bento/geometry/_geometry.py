@@ -289,6 +289,8 @@ def set_points_metadata(
         Name of element in sdata.points
     metadata : pd.Series, pd.DataFrame
         Metadata to set for points. Index must be a (sub)set of points index.
+    column_names : str or list of str, optional
+        Name of column(s) to set. If None, use metadata column name(s), by default None
     """
     if points_key not in sdata.points.keys():
         raise ValueError(f"{points_key} not found in sdata.points")
@@ -326,6 +328,8 @@ def set_shape_metadata(
         Name of element in sdata.shapes
     metadata : pd.Series, pd.DataFrame
         Metadata to set for shape. Index must be a (sub)set of shape index.
+    column_names : str or list of str, optional
+        Name of column(s) to set. If None, use metadata column name(s), by default None
     """
     if shape_key not in sdata.shapes.keys():
         raise ValueError(f"Shape {shape_key} not found in sdata.shapes")
