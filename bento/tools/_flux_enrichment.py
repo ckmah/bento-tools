@@ -116,15 +116,8 @@ def fe(
         verbose=True,
     )
 
-    scores = enrichment[1].reindex(index=samples)
-    cell_raster_points = sdata.points["cell_raster"].compute()
-    for col in scores.columns:
-        score_key = f"flux_{col}"
-        cell_raster_points[score_key] = scores[col].values
-
-    transform = sdata.points["cell_raster"].attrs
-    sdata.points["cell_raster"] = PointsModel.parse(cell_raster_points, coordinates={'x': 'x', 'y': 'y'})
-    sdata.points["cell_raster"].attrs = transform
+    scores = enrichment[1].reindex(index=samples).add_prefix('flux_')
+    set_points_metadata(sdata, points_key=f"{instance_key}_raster", metadata=scores)
 
     _fe_stats(sdata, net, source=source, target=target)
 
