@@ -1,7 +1,6 @@
 import unittest
 import bento as bt
 import spatialdata as sd
-import random
 
 
 class TestFluxEnrichement(unittest.TestCase): 
