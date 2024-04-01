@@ -10,7 +10,7 @@ from scipy import sparse
 from spatialdata._core.spatialdata import SpatialData
 from spatialdata.models import PointsModel
 
-from ..geometry import get_points
+from ..geometry import get_points, set_points_metadata
 
 
 def fe_fazal2019(sdata: SpatialData, **kwargs):
@@ -54,6 +54,7 @@ def fe_xia2019(sdata: SpatialData, **kwargs):
 def fe(
     sdata: SpatialData,
     net: pd.DataFrame,
+    instance_key: Optional[str] = "cell_boundaries",
     source: Optional[str] = "source",
     target: Optional[str] = "target",
     weight: Optional[str] = "weight",
@@ -83,13 +84,13 @@ def fe(
     Returns
     -------
     sdata : SpatialData
-        .points["cell_raster"]["flux_fe"] : DataFrame
+        .points["cell_boundaries_raster"]["flux_fe"] : DataFrame
             Enrichment scores for each gene set.
     """
     # Make sure embedding is run first
     if "flux_genes" in sdata.table.uns:
         flux_genes = set(sdata.table.uns["flux_genes"])
-        cell_raster_columns = set(sdata.points["cell_raster"].columns)
+        cell_raster_columns = set(sdata.points[f"{instance_key}_raster"].columns)
         if len(flux_genes.intersection(cell_raster_columns)) != len(flux_genes):
             print("Recompute bento.tl.flux first.")
             return
@@ -98,11 +99,11 @@ def fe(
         return
     
     flux_genes = sdata.table.uns["flux_genes"]
-    cell_raster_points = get_points(sdata, points_key="cell_raster", astype="dask")[flux_genes]
-    cell_raster_matrix = np.mat(cell_raster_points.values.compute())
+    cell_raster_points = get_points(sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=True)[flux_genes].values
+    cell_raster_matrix = np.mat(cell_raster_points)
     mat = sparse.csr_matrix(cell_raster_matrix)  # sparse matrix in csr format
 
-    samples = sdata.points["cell_raster"].index.astype(str)
+    samples = sdata.points[f"{instance_key}_raster"].index.astype(str)
     features = sdata.table.uns["flux_genes"]
 
     enrichment = dc.run_wsum(
