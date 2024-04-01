@@ -114,6 +114,9 @@ def _colocation_tensor(sdata: SpatialData, instance_key: str, feature_key: str):
 
 def coloc_quotient(
     sdata: SpatialData,
+    points_key: str = "transcripts",
+    instance_key: str = "cell_boundaries",
+    feature_key: str = "feature_name",
     shapes: List[str] = ["cell_boundaries"],
     radius: int = 20,
     min_points: int = 10,
@@ -125,6 +128,12 @@ def coloc_quotient(
     ----------
     sdata : SpatialData
         Spatial formatted SpatialData object.
+    points_key: str
+        Key that specifies transcript points in sdata.
+    instance_key : str
+        Key that specifies cell_boundaries instance in sdata.
+    feature_key : str
+        Key that specifies genes in sdata.
     shapes : list
         Specify which shapes to compute colocalization separately.
     radius : int
@@ -142,23 +151,21 @@ def coloc_quotient(
 
     all_clq = dict()
     for shape in shapes:
-        shape_col = "_".join(str(shape).split("_")[:-1])
-        points = get_points(sdata, astype="pandas")
-        points[shape_col] = points[shape_col].astype(str)
+        points = get_points(sdata, points_key=points_key, astype="pandas", sync=True)
         points = (
-            points.query(f"{shape_col} != '-1'")
-            .sort_values("cell")[["cell", "gene", "x", "y"]]
+            points.query(f"{instance_key} != ''")
+            .sort_values(instance_key)[[instance_key, feature_key, "x", "y"]]
             .reset_index(drop=True)
         )
 
         # Keep genes expressed in at least min_cells cells
-        gene_counts = points.groupby("gene").size()
+        gene_counts = points.groupby(feature_key).size()
         valid_genes = gene_counts[gene_counts >= min_cells].index
-        points = points[points["gene"].isin(valid_genes)]
+        points = points[points[feature_key].isin(valid_genes)]
 
         # Partition so {chunksize} cells per partition
         cells, group_loc = np.unique(
-            points["cell"].astype(str),
+            points[instance_key].astype(str),
             return_index=True,
         )
 
@@ -169,14 +176,14 @@ def coloc_quotient(
             zip(cells, group_loc, end_loc), desc=shape, total=len(cells)
         ):
             cell_points = points.iloc[start:end]
-            cell_clq = _cell_clq(cell_points, radius, min_points)
-            cell_clq["cell"] = cell
+            cell_clq = _cell_clq(cell_points, radius, min_points, feature_key)
+            cell_clq[instance_key] = cell
 
             cell_clqs.append(cell_clq)
 
         cell_clqs = pd.concat(cell_clqs)
-        cell_clqs[["cell", "gene", "neighbor"]] = (
-            cell_clqs[["cell", "gene", "neighbor"]].astype(str).astype("category")
+        cell_clqs[[instance_key, feature_key, "neighbor"]] = (
+            cell_clqs[[instance_key, feature_key, "neighbor"]].astype(str).astype("category")
         )
         cell_clqs["log_clq"] = cell_clqs["clq"].replace(0, np.nan).apply(np.log2)
 
@@ -185,10 +192,10 @@ def coloc_quotient(
 
     sdata.table.uns["clq"] = all_clq
 
-def _cell_clq(cell_points, radius, min_points):
+def _cell_clq(cell_points, radius, min_points, feature_key):
 
     # Count number of points for each gene
-    gene_counts = cell_points["gene"].value_counts()
+    gene_counts = cell_points[feature_key].value_counts()
 
     # Keep genes with at least min_count
     gene_counts = gene_counts[gene_counts >= min_points]
@@ -197,30 +204,30 @@ def _cell_clq(cell_points, radius, min_points):
         return pd.DataFrame()
 
     # Get points
-    valid_points = cell_points[cell_points["gene"].isin(gene_counts.index)]
+    valid_points = cell_points[cell_points[feature_key].isin(gene_counts.index)]
 
     # Cleanup gene categories
     # valid_points["gene"] = valid_points["gene"].cat.remove_unused_categories()
 
     # Count number of source points that have neighbor gene
     point_neighbors = _count_neighbors(
-        valid_points, len(valid_points["gene"].cat.categories), radius=radius, agg="binary"
+        valid_points, len(valid_points[feature_key].cat.categories), radius=radius, agg="binary"
     ).toarray()
     neighbor_counts = (
-        pd.DataFrame(point_neighbors, columns=valid_points["gene"].cat.categories)
-        .groupby(valid_points["gene"].values)
+        pd.DataFrame(point_neighbors, columns=valid_points[feature_key].cat.categories)
+        .groupby(valid_points[feature_key].values)
         .sum()
         .reset_index()
         .melt(id_vars="index")
         .query("value > 0")
     )
-    neighbor_counts.columns = ["gene", "neighbor", "count"]
-    clq_df = _clq_statistic(neighbor_counts, gene_counts)
+    neighbor_counts.columns = [feature_key, "neighbor", "count"]
+    clq_df = _clq_statistic(neighbor_counts, gene_counts, feature_key)
 
     return clq_df
 
 
-def _clq_statistic(neighbor_counts, counts):
+def _clq_statistic(neighbor_counts, counts, feature_key):
     """
     Compute the colocation quotient for each gene pair.
 
@@ -232,7 +239,7 @@ def _clq_statistic(neighbor_counts, counts):
         Series of raw gene counts.
     """
     clq_df = neighbor_counts.copy()
-    clq_df["clq"] = (clq_df["count"] / counts.loc[clq_df["gene"]].values) / (
+    clq_df["clq"] = (clq_df["count"] / counts.loc[clq_df[feature_key]].values) / (
         counts.loc[clq_df["neighbor"]].values / counts.sum()
     )
     return clq_df.drop("count", axis=1)
