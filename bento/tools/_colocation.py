@@ -18,6 +18,8 @@ from ._decomposition import decompose
 def colocation(
     sdata: SpatialData,
     ranks: List[int],
+    instance_key: str = "cell_boundaries",
+    feature_key: str = "feature_name",
     iterations: int = 3,
     plot_error: bool = True,
 ):
@@ -29,6 +31,10 @@ def colocation(
         Spatial formatted SpatialData object.
     ranks : list
         List of ranks to decompose the tensor.
+    instance_key : str
+        Key that specifies cell_boundaries instance in sdata.
+    feature_key : str
+        Key that specifies genes in sdata.
     iterations : int
         Number of iterations to run the decomposition.
     plot_error : bool
@@ -42,7 +48,7 @@ def colocation(
     """
 
     print("Preparing tensor...")
-    _colocation_tensor(sdata)
+    _colocation_tensor(sdata, instance_key, feature_key)
 
     tensor = sdata.table.uns["tensor"]
 
@@ -62,7 +68,7 @@ def colocation(
     print(emoji.emojize(":heavy_check_mark: Done."))
 
 
-def _colocation_tensor(sdata: SpatialData):
+def _colocation_tensor(sdata: SpatialData, instance_key: str, feature_key: str):
     """
     Convert a dictionary of colocation quotient values in long format to a dense tensor.
 
@@ -70,6 +76,10 @@ def _colocation_tensor(sdata: SpatialData):
     ----------
     sdata : SpatialData
         Spatial formatted SpatialData object.
+    instance_key : str
+        Key that specifies cell_boundaries instance in sdata.
+    feature_key : str
+        Key that specifies genes in sdata.
     """
 
     clqs = sdata.table.uns["clq"]
@@ -81,10 +91,10 @@ def _colocation_tensor(sdata: SpatialData):
 
     clq_long = pd.concat(clq_long, axis=0)
     clq_long["pair"] = (
-        clq_long["gene"].astype(str) + "_" + clq_long["neighbor"].astype(str)
+        clq_long[feature_key].astype(str) + "_" + clq_long["neighbor"].astype(str)
     )
 
-    label_names = ["compartment", "cell", "pair"]
+    label_names = ["compartment", instance_key, "pair"]
     labels = dict()
     label_orders = []
     for name in label_names:
