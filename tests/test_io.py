@@ -3,9 +3,10 @@ import bento as bt
 import spatialdata as sd
 
 
-class TestIO(unittest.TestCase): 
+class TestIO(unittest.TestCase):
     def setUp(self):
-        self.data = sd.read_zarr("/mnt/d/spatial_datasets/small_data.zarr")
+        datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
+        self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
         self.data = bt.io.format_sdata(
             self.data,
             points_key="transcripts",
@@ -21,20 +22,34 @@ class TestIO(unittest.TestCase):
 
     def test_shapes_indexing(self):
         # Check shapes indexing
-        self.assertTrue("cell_boundaries" in self.data.shapes["cell_boundaries"].columns)
-        self.assertTrue("cell_boundaries" in self.data.shapes["nucleus_boundaries"].columns)
-        self.assertTrue("nucleus_boundaries" in self.data.shapes["cell_boundaries"].columns)
+        self.assertTrue(
+            "cell_boundaries" in self.data.shapes["cell_boundaries"].columns
+        )
+        self.assertTrue(
+            "cell_boundaries" in self.data.shapes["nucleus_boundaries"].columns
+        )
+        self.assertTrue(
+            "nucleus_boundaries" in self.data.shapes["cell_boundaries"].columns
+        )
 
     def test_points_attrs(self):
         # Check points attrs
         self.assertTrue("transform" in self.data.points["transcripts"].attrs.keys())
-        self.assertTrue(self.data.points["transcripts"].attrs["spatialdata_attrs"]["feature_key"] == "feature_name")
-        self.assertTrue(self.data.points["transcripts"].attrs["spatialdata_attrs"]["instance_key"] == "cell_boundaries")
+        self.assertTrue(
+            self.data.points["transcripts"].attrs["spatialdata_attrs"]["feature_key"]
+            == "feature_name"
+        )
+        self.assertTrue(
+            self.data.points["transcripts"].attrs["spatialdata_attrs"]["instance_key"]
+            == "cell_boundaries"
+        )
 
     def test_shapes_attrs(self):
         # Check shapes attrs
         self.assertTrue("transform" in self.data.shapes["cell_boundaries"].attrs.keys())
-        self.assertTrue("transform" in self.data.shapes["nucleus_boundaries"].attrs.keys())
+        self.assertTrue(
+            "transform" in self.data.shapes["nucleus_boundaries"].attrs.keys()
+        )
 
     def test_index_dtypes(self):
         # Check index dtypes

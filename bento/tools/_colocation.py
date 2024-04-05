@@ -9,7 +9,7 @@ from spatialdata._core.spatialdata import SpatialData
 from kneed import KneeLocator
 from tqdm.auto import tqdm
 
-#from .._utils import track
+# from .._utils import track
 from bento.geometry import get_points
 from ._neighborhoods import _count_neighbors
 from ._decomposition import decompose
@@ -106,11 +106,11 @@ def _colocation_tensor(sdata: SpatialData, instance_key: str, feature_key: str):
 
     s = sparse.COO(label_orders, data=clq_long["log_clq"].values)
     tensor = s.todense()
-    print(tensor.shape)
 
     sdata.table.uns["tensor"] = tensor
     sdata.table.uns["tensor_labels"] = labels
     sdata.table.uns["tensor_names"] = label_names
+
 
 def coloc_quotient(
     sdata: SpatialData,
@@ -183,7 +183,9 @@ def coloc_quotient(
 
         cell_clqs = pd.concat(cell_clqs)
         cell_clqs[[instance_key, feature_key, "neighbor"]] = (
-            cell_clqs[[instance_key, feature_key, "neighbor"]].astype(str).astype("category")
+            cell_clqs[[instance_key, feature_key, "neighbor"]]
+            .astype(str)
+            .astype("category")
         )
         cell_clqs["log_clq"] = cell_clqs["clq"].replace(0, np.nan).apply(np.log2)
 
@@ -192,8 +194,8 @@ def coloc_quotient(
 
     sdata.table.uns["clq"] = all_clq
 
-def _cell_clq(cell_points, radius, min_points, feature_key):
 
+def _cell_clq(cell_points, radius, min_points, feature_key):
     # Count number of points for each gene
     gene_counts = cell_points[feature_key].value_counts()
 
@@ -211,7 +213,10 @@ def _cell_clq(cell_points, radius, min_points, feature_key):
 
     # Count number of source points that have neighbor gene
     point_neighbors = _count_neighbors(
-        valid_points, len(valid_points[feature_key].cat.categories), radius=radius, agg="binary"
+        valid_points,
+        len(valid_points[feature_key].cat.categories),
+        radius=radius,
+        agg="binary",
     ).toarray()
     neighbor_counts = (
         pd.DataFrame(point_neighbors, columns=valid_points[feature_key].cat.categories)
