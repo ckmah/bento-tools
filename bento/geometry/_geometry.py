@@ -304,7 +304,8 @@ def set_points_metadata(
     if column_names is not None:
         if isinstance(column_names, str):
             column_names = [column_names]
-        metadata = metadata.rename(columns={metadata.columns[0]: column_names[0]})
+        for i in range(len(column_names)):
+            metadata = metadata.rename(columns={metadata.columns[i]: column_names[i]})
         
     sdata.points[points_key] = sdata.points[points_key].reset_index(drop=True)
     for name, series in metadata.iteritems():
@@ -343,7 +344,8 @@ def set_shape_metadata(
     if column_names is not None:
         if isinstance(column_names, str):
             column_names = [column_names]
-        metadata = metadata.rename(columns={metadata.columns[0]: column_names[0]})
+        for i in range(len(column_names)):
+            metadata = metadata.rename(columns={metadata.columns[i]: column_names[i]})
 
     sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(
         sdata.shapes[shape_key].index
