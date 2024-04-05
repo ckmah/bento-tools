@@ -6,7 +6,7 @@ include = [
     "bento/models/**/*",
     "bento/tools/gene_sets/*",
 ]
-version = "2.0.0"
+version = "2.1.0a0"
 description = "A toolkit for subcellular analysis of spatial transcriptomics data"
 authors = ["Clarence Mah <ckmah@ucsd.edu>"]
 license = "BSD-2-Clause"

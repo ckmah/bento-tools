@@ -87,8 +87,8 @@ def lp(
     X_df = sdata.table.uns[feature_key][pattern_features]
 
     # Load trained model
-    model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"
-    model = pickle.load(open(f"{model_dir}/rf_calib_20220514.pkl", "rb"))
+    model_path = os.path.join(os.path.split(bento.__file__)[0], "models", "rf_calib_20220514.pkl")
+    model = pickle.load(open(model_path, "rb"))
 
     # Compatibility with newer versions of scikit-learn
     for cls in model.calibrated_classifiers_:

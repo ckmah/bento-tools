@@ -1,14 +1,11 @@
 from typing import Iterable, Literal, Optional, Union
 
-import decoupler as dc
 import emoji
 import geopandas as gpd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-
 import numpy as np
 import pandas as pd
-import pkg_resources
 import rasterio
 import rasterio.features
 import shapely
@@ -18,10 +15,11 @@ from kneed import KneeLocator
 from minisom import MiniSom
 from shapely import Polygon
 from scipy.sparse import csr_matrix, vstack
-from sklearn.decomposition import TruncatedSVD
+from sklearn.decomposition import TruncatedSVD, IncrementalPCA
 from sklearn.preprocessing import StandardScaler, minmax_scale, quantile_transform
 from sklearn.utils import resample
 from tqdm.auto import tqdm
+from rich.progress import Progress
 
 from ..geometry import get_points, sjoin_points, set_points_metadata
 from ..tools._neighborhoods import _count_neighbors
@@ -34,8 +32,11 @@ def flux(
     feature_key: str = "feature_name",
     method: Literal["knn", "radius"] = "radius",
     n_neighbors: Optional[int] = None,
-    radius: Optional[int] = 50,
-    res: int = 0.1,
+    radius: Optional[int] = 0.5,
+    n_components = 100,
+    res: float = 1,
+    train_size: float = 1,
+    use_highly_variable: bool = False,
     random_state: int = 11,
     recompute: bool = False
 ):
@@ -59,7 +60,7 @@ def flux(
     n_neighbors : int
         Number of neighbors to use for local neighborhood.
     radius : float
-        Radius to use for local neighborhood.
+        Radius to use for local neighborhood. Uses cell radius / 2 if None.
     res : float
         Resolution to use for rendering embedding. Default 0.05 samples at 5% original resolution (5 units between pixels)
 
@@ -86,9 +87,34 @@ def flux(
     points = get_points(sdata, points_key=points_key, astype="pandas", sync=True)
     points = points[[instance_key, feature_key, "x", "y"]].sort_values(instance_key)
 
+    # Only use highly variable genes
+    if use_highly_variable:
+        high_var = adata.var["highly_variable"]
+        high_var = high_var[high_var].index.tolist()
+        points = points[points["gene"].isin(high_var)]
+
+    # Extract gene names and codes
+    points["gene"] = points["gene"].cat.remove_unused_categories()
+    gene_names = points["gene"].cat.categories.tolist()
+    n_genes = len(gene_names)
+
+
+    # By default use 50% of average cell radius
+    if method == "radius":
+        analyze_shapes(adata, "cell_shape", "radius", progress=False, recompute=True)
+
+        # Default radius = 50% of average cell radius
+        if radius is None:
+            radius = adata.obs["cell_radius"].mean() / 2
+        # If radius is a fraction, use that fraction of average cell radius
+        elif radius <= 1:
+            radius = radius * (adata.obs["cell_radius"].mean())
+        # If radius is an integer, use that as the radius
+
+        settings.log.info(f"radius = {radius}")
+
     # embeds points on a uniform grid
-    pbar = tqdm(total=3)
-    pbar.set_description(emoji.emojize("Embedding"))
+    settings.log.step("Embedding")
     step = 1 / res
     # Get grid rasters
     analyze_shapes(
@@ -117,7 +143,8 @@ def flux(
 
     # Embed each cell neighborhood independently
     cell_fluxs = []
-    for i, cell in enumerate(tqdm(cells, leave=False)):
+    rpoint_counts = []
+    for i, cell in tqdm(enumerate(cells), total=len(cells)):
         cell_points = points_grouped.get_group(cell)
         rpoints = rpoints_grouped.get_group(cell)
         if method == "knn":
@@ -137,30 +164,51 @@ def flux(
                 agg=None,
             )
         gene_count = gene_count.toarray()
-        # embedding: distance neighborhood composition and cell composition
-        # Compute composition of neighborhood
-        flux_composition = gene_count / (gene_count.sum(axis=1).reshape(-1, 1))
-        cflux = flux_composition - cell_composition[i]
+
+        # Count points in each neighborhood
+        total_count = gene_count.sum(axis=1)
+        
+        # Get max neighborhood size
+        max_count = total_count.max()
+
+        # Compute gene composition of neighborhood
+        flux_composition = gene_count / total_count.reshape(-1, 1)
+        
+        # Formula: distance between cell composition and neighborhood composition * relative neighborhood size
+        cflux = (flux_composition - cell_composition[i])
+        # * (total_count.reshape(-1, 1) / max_count)
+
+        # TODO do i need this
         cflux = StandardScaler(with_mean=False).fit_transform(cflux)
 
         # Convert back to sparse matrix
         cflux = csr_matrix(cflux)
 
         cell_fluxs.append(cflux)
+        rpoint_counts.append(total_count)
 
     # Stack all cells
     cell_fluxs = vstack(cell_fluxs) if len(cell_fluxs) > 1 else cell_fluxs[0]
     cell_fluxs.data = np.nan_to_num(cell_fluxs.data)
-    pbar.update()
+    rpoints_counts = np.concatenate(rpoint_counts)
 
-    # todo: Slow step, try algorithm="randomized" may be faster
-    pbar.set_description(emoji.emojize("Reducing"))
-    n_components = min(n_genes - 1, 10)
-    pca_model = TruncatedSVD(
-        n_components=n_components, algorithm="randomized", random_state=random_state
-    ).fit(cell_fluxs)
-    flux_embed = pca_model.transform(cell_fluxs)
-    variance_ratio = pca_model.explained_variance_ratio_
+    settings.log.step("SVD")
+    train_n_samples = max(int(train_size * cell_fluxs.shape[0]), 10000)
+    train_n_samples = min(train_n_samples, cell_fluxs.shape[0])
+    train_x = resample(
+        cell_fluxs,
+        replace=False,
+        n_samples=train_n_samples,
+        random_state=random_state,
+    )
+    settings.log.step(f"Train size: {train_n_samples}")
+
+    svd_model = IncrementalPCA(
+        batch_size=None, n_components=n_components
+    ).fit(train_x)
+    flux_embed = svd_model.transform(cell_fluxs)
+    flux_sv = svd_model.components_
+    variance_ratio = svd_model.explained_variance_ratio_
 
     # For color visualization of flux embeddings
     flux_color = vec2color(flux_embed, fmt="hex", vmin=0.1, vmax=0.9)
@@ -178,9 +226,7 @@ def flux(
     sdata.table.uns["flux_variance_ratio"] = variance_ratio
     sdata.table.uns["flux_genes"] = gene_names  # gene names
 
-    pbar.set_description(emoji.emojize("Done. :bento_box:"))
-    pbar.update()
-    pbar.close()
+    settings.log.end("Done.")
 
 def vec2color(
     vec: np.ndarray,
@@ -206,7 +252,9 @@ def fluxmap(
     points_key: str = "transcripts",
     instance_key: str = "cell_boundaries",
     n_clusters: Union[Iterable[int], int] = range(2, 9),
+    n_components: Optional[int] = None,
     num_iterations: int = 1000,
+    min_points: int = 50,
     train_size: float = 0.2,
     res: float = 0.1,
     random_state: int = 11,
@@ -270,8 +318,8 @@ def fluxmap(
         flux_train = flux_embed
     if train_size < 1:
         flux_train = resample(
-            flux_embed,
-            n_samples=int(train_size * flux_embed.shape[0]),
+            flux_embed[valid_points],
+            n_samples=int(train_size * flux_embed[valid_points].shape[0]),
             random_state=random_state,
         )
 
@@ -286,6 +334,7 @@ def fluxmap(
         som.train(flux_train, num_iterations, random_order=False, verbose=False)
         som_models[k] = som
         quantization_errors.append(som.quantization_error(flux_embed))
+
 
     # Use kneed to find elbow
     if len(n_clusters) > 1:
@@ -313,6 +362,7 @@ def fluxmap(
 
     # Indices start at 0, so add 1
     qnt_index = np.ravel_multi_index(winner_coordinates, (1, best_k)) + 1
+    qnt_index[~valid_points] = 0
     raster_points["fluxmap"] = qnt_index
     set_points_metadata(sdata, points_key=f"{instance_key}_raster", metadata=list(qnt_index), column_names="fluxmap")
 
@@ -395,4 +445,5 @@ def fluxmap(
     pbar.update()
     pbar.set_description("Done")
     pbar.close()
+
     
