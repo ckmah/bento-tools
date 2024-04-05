@@ -8,16 +8,14 @@ from matplotlib_scalebar.scalebar import ScaleBar
 
 from ..geometry import get_points
 from ._layers import _raster, _scatter, _hist, _kde, _polygons
-from ._utils import savefig, vec2color
-from .._utils import sync
+from ._utils import savefig
 from ._colors import red2blue, red2blue_dark
 
-
-def _prepare_points_df(adata, semantic_vars=None):
+def _prepare_points_df(sdata, semantic_vars=None, hue=None, hue_order=None):
     """
     Prepare points DataFrame for plotting. This function will concatenate the appropriate semantic variables as columns to points data.
     """
-    points = get_points(adata, key="points")
+    points = get_points(sdata, astype="pandas")
     cols = list(set(["x", "y", "cell"]))
 
     if semantic_vars is None or len(semantic_vars) == 0:
@@ -26,21 +24,19 @@ def _prepare_points_df(adata, semantic_vars=None):
         vars = [v for v in semantic_vars if v is not None]
     cols.extend(vars)
 
+    if hue_order is not None:
+        points = points[points[hue].isin(hue_order)]
+
     # Add semantic variables to points; priority: points, obs, points metadata
     for var in vars:
         if var in points.columns:
             continue
-        elif var in adata.obs.columns:
-            points[var] = adata.obs.reindex(points["cell"].values)[var].values
-        elif var in adata.uns["point_sets"]["points"]:
-            if len(adata.uns[var].shape) > 1:
-                raise ValueError(f"Variable {var} is not 1-dimensional")
-            points[var] = adata.uns[var]
+        elif var in sdata.shapes:
+            points[var] = sdata.shapes[var].reindex(points["cell"].values)[var].values
         else:
             raise ValueError(f"Variable {var} not found in points or obs")
-
+    
     return points[cols]
-
 
 def _setup_ax(
     ax=None,
@@ -94,12 +90,11 @@ def _setup_ax(
 
     return ax
 
-
 @savefig
 def points(
-    data,
-    batch=None,
+    sdata,
     hue=None,
+    hue_order=None,
     size=None,
     style=None,
     shapes=None,
@@ -111,17 +106,12 @@ def points(
     axis_visible=False,
     frame_visible=True,
     ax=None,
+    sync_shapes=True,
     shapes_kws=dict(),
     fname=None,
     **kwargs,
 ):
-    # Default use first obs batch
-    if batch is None:
-        batch = data.obs["batch"].iloc[0]
-    adata = data[data.obs["batch"] == batch]
-    sync(adata)
-    title = f"batch {batch}" if not title else title
-
+    
     ax = _setup_ax(
         ax=ax,
         dx=dx,
@@ -131,18 +121,16 @@ def points(
         frame_visible=frame_visible,
         title=title,
     )
-
-    points = _prepare_points_df(adata, semantic_vars=[hue, size, style])
+    points = _prepare_points_df(sdata, semantic_vars=[hue, size, style], hue=hue, hue_order=hue_order)
     _scatter(points, hue=hue, size=size, style=style, ax=ax, **kwargs)
-    _shapes(adata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shapes_kws)
-
+    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shapes_kws)
 
 @savefig
 def density(
-    data,
-    batch=None,
+    sdata,
     kind="hist",
     hue=None,
+    hue_order=None,
     shapes=None,
     hide_outside=True,
     axis_visible=False,
@@ -152,16 +140,11 @@ def density(
     units="um",
     square=False,
     ax=None,
+    sync_shapes=True,
     shape_kws=dict(),
     fname=None,
     **kwargs,
 ):
-    # Default use first obs batch
-    if batch is None:
-        batch = data.obs["batch"].iloc[0]
-    adata = data[data.obs["batch"] == batch]
-    sync(adata)
-    title = f"batch {batch}" if title is None else title
 
     ax = _setup_ax(
         ax=ax,
@@ -173,41 +156,32 @@ def density(
         title=title,
     )
 
-    points = _prepare_points_df(adata, semantic_vars=[hue])
+    points = _prepare_points_df(sdata, semantic_vars=[hue], hue=hue, hue_order=hue_order)
     if kind == "hist":
         _hist(points, hue=hue, ax=ax, **kwargs)
     elif kind == "kde":
         _kde(points, hue=hue, ax=ax, **kwargs)
 
-    _shapes(adata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shape_kws)
-
+    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shape_kws)
 
 @savefig
-def flux(
-    data,
-    dims=[0, 1, 2],
-    alpha=True,
-    batch=None,
-    res=1,
+def shapes(
+    sdata,
     shapes=None,
+    color=None,
+    color_style="outline",
     hide_outside=True,
+    dx=0.1,
+    units="um",
     axis_visible=False,
     frame_visible=True,
     title=None,
-    dx=0.1,
-    units="um",
     square=False,
     ax=None,
-    shape_kws=dict(),
+    sync_shapes=True,
     fname=None,
     **kwargs,
 ):
-    # Default use first obs batch
-    if batch is None:
-        batch = data.obs["batch"].iloc[0]
-    adata = data[data.obs["batch"] == batch]
-    sync(adata)
-    title = f"batch {batch}" if not title else title
 
     ax = _setup_ax(
         ax=ax,
@@ -219,21 +193,125 @@ def flux(
         title=title,
     )
 
-    adata.uns["flux_color"] = vec2color(
-        adata.uns["flux_embed"][:, dims], alpha_vec=adata.uns["flux_counts"]
+    if shapes and not isinstance(shapes, list):
+        shapes = [shapes]
+
+    _shapes(
+        sdata,
+        shapes=shapes,
+        color=color,
+        color_style=color_style,
+        hide_outside=hide_outside,
+        ax=ax,
+        sync_shapes=sync_shapes,
+        **kwargs,
     )
 
-    _raster(adata, res=res, color="flux_color", alpha=alpha, ax=ax, **kwargs)
-    _shapes(adata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shape_kws)
 
+def _shapes(
+    sdata,
+    shapes=None,
+    color=None,
+    color_style="outline",
+    hide_outside=True,
+    ax=None,
+    sync_shapes=True,
+    **kwargs,
+):
+    """Plot layer(s) of shapes.
+
+    Parameters
+    ----------
+    data : SpatialData
+        Spatial formatted SpatialData
+    shapes : list, optional
+        List of shapes to plot, by default None. If None, will plot cell and nucleus shapes by default.
+    color : str, optional
+        Color name, by default None. If None, will use default theme color.
+    color_style : "outline" or "fill"
+        Whether to color the outline or fill of the shape, by default "outline".
+    hide_outside : bool, optional
+        Whether to hide molecules outside of cells, by default True.
+    ax : matplotlib.axes.Axes, optional
+        Axis to plot on, by default None. If None, will use current axis.
+    """
+    if shapes is None:
+        shapes = ["cell", "nucleus"]
+
+    shape_names = []
+    for s in shapes:
+        if str(s).endswith("_boundaries"):
+            shape_names.append(s)
+        else:
+            shape_names.append(f"{s}_boundaries")
+
+    # Save list of names to remove if not in data.obs
+    shape_names = [name for name in shape_names if name in sdata.shapes.keys()]
+    missing_names = [name for name in shape_names if name not in sdata.shapes.keys()]
+
+    if len(missing_names) > 0:
+        warnings.warn("Shapes not found in data: " + ", ".join(missing_names))
+
+    geo_kws = dict(edgecolor="none", facecolor="none")
+    if color_style == "outline":
+        geo_kws["edgecolor"] = color
+        geo_kws["facecolor"] = "none"
+    elif color_style == "fill":
+        geo_kws["facecolor"] = color
+        geo_kws["edgecolor"] = "black"
+    geo_kws.update(**kwargs)
+
+    for name in shape_names:
+        hide = False
+        if name == "cell_boundaries" and hide_outside:
+            hide = True
+
+        _polygons(
+            sdata,
+            name,
+            hide_outside=hide,
+            ax=ax,
+            sync_shapes=sync_shapes,
+            **geo_kws,
+        )
+
+@savefig
+def flux(
+    sdata,
+    res=0.05,
+    shapes=None,
+    hide_outside=True,
+    axis_visible=False,
+    frame_visible=True,
+    title=None,
+    dx=0.1,
+    units="um",
+    square=False,
+    ax=None,
+    sync_shapes=True,
+    shape_kws=dict(),
+    fname=None,
+    **kwargs,
+):
+
+    ax = _setup_ax(
+        ax=ax,
+        dx=dx,
+        units=units,
+        square=square,
+        axis_visible=axis_visible,
+        frame_visible=frame_visible,
+        title=title,
+    )
+
+    _raster(sdata, res=res, color="flux_color", ax=ax, **kwargs)
+    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shape_kws)
 
 @savefig
 def fe(
-    data,
+    sdata,
     gs,
-    batch=None,
-    res=1,
-    alpha=True,
+    res=0.05,
     shapes=None,
     cmap=None,
     cbar=True,
@@ -245,16 +323,11 @@ def fe(
     units="um",
     square=False,
     ax=None,
+    sync_shapes=True,
     shape_kws=dict(),
     fname=None,
     **kwargs,
 ):
-    # Default use first obs batch
-    if batch is None:
-        batch = data.obs["batch"].iloc[0]
-    adata = data[data.obs["batch"] == batch]
-    sync(adata)
-    title = f"batch {batch}" if not title else title
 
     ax = _setup_ax(
         ax=ax,
@@ -272,130 +345,12 @@ def fe(
         elif sns.axes_style()["axes.facecolor"] == "black":
             cmap = red2blue_dark
 
-    _raster(
-        adata, res=res, color=gs, alpha=alpha, cmap=cmap, cbar=cbar, ax=ax, **kwargs
-    )
-    _shapes(adata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shape_kws)
-
+    _raster(sdata, res=res, color=gs, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
+    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shape_kws)
 
 @savefig
-def shapes(
-    data,
-    batch=None,
-    shapes=None,
-    color=None,
-    color_style="outline",
-    hide_outside=True,
-    dx=0.1,
-    units="um",
-    axis_visible=False,
-    frame_visible=True,
-    title=None,
-    square=False,
-    ax=None,
-    fname=None,
-    **kwargs,
-):
-    # Default use first obs batch
-    if batch is None:
-        batch = data.obs["batch"].iloc[0]
-    adata = data[data.obs["batch"] == batch]
-    sync(adata)
-    title = f"batch {batch}" if not title else title
-
-    ax = _setup_ax(
-        ax=ax,
-        dx=dx,
-        units=units,
-        square=square,
-        axis_visible=axis_visible,
-        frame_visible=frame_visible,
-        title=title,
-    )
-
-    if shapes and not isinstance(shapes, list):
-        shapes = [shapes]
-
-    _shapes(
-        adata,
-        shapes=shapes,
-        color=color,
-        color_style=color_style,
-        hide_outside=hide_outside,
-        ax=ax,
-        **kwargs,
-    )
-
-
-def _shapes(
-    data,
-    shapes=None,
-    color=None,
-    color_style="outline",
-    hide_outside=True,
-    ax=None,
-    **kwargs,
-):
-    """Plot layer(s) of shapes.
-
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData
-    shapes : list, optional
-        List of shapes to plot, by default None. If None, will plot cell and nucleus shapes by default.
-    color : str, optional
-        Color name, by default None. If None, will use default theme color.
-    color_style : "outline" or "fill"
-        Whether to color the outline or fill of the shape, by default "outline".
-    hide_outside : bool, optional
-        Whether to hide molecules outside of cells, by default True.
-    ax : matplotlib.axes.Axes, optional
-        Axis to plot on, by default None. If None, will use current axis.
-    """
-    if shapes is None:
-        shapes = ["cell", "nucleus"]
-
-    shape_names = []
-    for s in shapes:
-        if str(s).endswith("_shape"):
-            shape_names.append(s)
-        else:
-            shape_names.append(f"{s}_shape")
-
-    # Save list of names to remove if not in data.obs
-    shape_names = [name for name in shape_names if name in data.obs.columns]
-    missing_names = [name for name in shape_names if name not in data.obs.columns]
-
-    if len(missing_names) > 0:
-        warnings.warn("Shapes not found in data: " + ", ".join(missing_names))
-
-    geo_kws = dict(edgecolor="none", facecolor="none")
-    if color_style == "outline":
-        geo_kws["edgecolor"] = color
-        geo_kws["facecolor"] = "none"
-    elif color_style == "fill":
-        geo_kws["facecolor"] = color
-        geo_kws["edgecolor"] = "black"
-    geo_kws.update(**kwargs)
-
-    for name in shape_names:
-        hide = False
-        if name == "cell_shape" and hide_outside:
-            hide = True
-
-        _polygons(
-            data,
-            name,
-            hide_outside=hide,
-            ax=ax,
-            **geo_kws,
-        )
-
-
 def fluxmap(
-    data,
-    batch=None,
+    sdata,
     palette="tab10",
     hide_outside=True,
     axis_visible=False,
@@ -403,7 +358,7 @@ def fluxmap(
     title=None,
     dx=0.1,
     ax=None,
-    legend=True,
+    sync_shapes=False,
     fname=None,
     **kwargs,
 ):
@@ -413,8 +368,6 @@ def fluxmap(
     ----------
     data : AnnData
         Spatial formatted AnnData
-    batch : str, optional
-        Batch to plot, by default None. If None, will use first batch.
     palette : str or dict, optional
         Color palette, by default "tab10". If dict, will use dict to map shape names to colors.
     ax : matplotlib.axes.Axes, optional
@@ -427,7 +380,7 @@ def fluxmap(
     if isinstance(palette, dict):
         colormap = palette
     else:
-        fluxmap_shapes = [s for s in data.obs.columns if s.startswith("fluxmap")]
+        fluxmap_shapes = [s for s in sdata.shapes.keys() if s.startswith("fluxmap")]
         fluxmap_shapes.sort()
         colors = sns.color_palette(palette, n_colors=len(fluxmap_shapes))
         colormap = dict(zip(fluxmap_shapes, colors))
@@ -437,8 +390,7 @@ def fluxmap(
 
     for s, c in colormap.items():
         shapes(
-            data,
-            batch=batch,
+            sdata,
             shapes=s,
             color=c,
             hide_outside=hide_outside,
@@ -447,32 +399,9 @@ def fluxmap(
             title=title,
             dx=dx,
             ax=ax,
+            sync_shapes=sync_shapes,
             **shape_kws,
         )
-
-        # Add to legend
-        if legend:
-            plt.plot(
-                [],
-                [],
-                color=c,
-                label="_".join(s.split("_")[:-1]),
-                marker="s",
-                linestyle="none",
-            )
-
-    if legend:
-        plt.legend()
-
+        
     # Plot base cell and nucleus shapes
-    shapes(
-        data,
-        batch=batch,
-        ax=ax,
-        hide_outside=hide_outside,
-        axis_visible=axis_visible,
-        frame_visible=frame_visible,
-        title=title,
-        dx=dx,
-        fname=fname,
-    )
+    shapes(sdata, ax=ax, fname=fname)

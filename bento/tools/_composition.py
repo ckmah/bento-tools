@@ -5,9 +5,9 @@ import pandas as pd
 import numpy as np
 
 from ..geometry import get_points
-from .._utils import track
+#from .._utils import track
 
-from anndata import AnnData
+from spatialdata._core.spatialdata import SpatialData
 
 
 def _get_compositions(points: pd.DataFrame, shape_names: list) -> pd.DataFrame:
@@ -57,35 +57,24 @@ def _get_compositions(points: pd.DataFrame, shape_names: list) -> pd.DataFrame:
     return comp_stats
 
 
-@track
 def comp_diff(
-    data: AnnData, shape_names: list, groupby: str, ref_group: str, copy: bool = False
+    sdata: SpatialData, shape_names: list, groupby: str, ref_group: str
 ):
     """Calculate the average difference in gene composition for shapes across batches of cells. Uses the Wasserstein distance.
 
     Parameters
     ----------
-    data : anndata.AnnData
-        Spatial formatted AnnData object.
+    sdata : spatialdata.SpatialData
+        Spatial formatted SpatialData object.
     shape_names : list of str
         Names of shapes to calculate compositions for.
     groupby : str
-        Key in `adata.obs` to group cells by.
+        Key in `sdata.points['transcripts]` to group cells by.
     ref_group : str
         Reference group to compare other groups to.
-    copy : bool
-        Return a copy of `data` instead of writing to data, by default False.
-
-    Returns
-    -------
-    adata : anndata.AnnData
-        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
 
     """
-
-    adata = data.copy() if copy else data
-
-    points = get_points(data)
+    points = get_points(sdata, astype="pandas")
 
     # Get average gene compositions for each batch
     comp_stats = dict()
@@ -94,7 +83,7 @@ def comp_diff(
 
     ref_comp = comp_stats[ref_group]
 
-    dims = [s.replace("_shape", "") for s in shape_names]
+    dims = [s.replace("_boundaries", "") for s in shape_names]
     for group in comp_stats.keys():
         if group == ref_group:
             continue
@@ -109,4 +98,4 @@ def comp_diff(
             index=ref_comp.index,
         )
 
-    adata.uns[f"{groupby}_comp_stats"] = comp_stats
+    sdata.table.uns[f"{groupby}_comp_stats"] = comp_stats

@@ -1,39 +1,114 @@
 import unittest
 import bento as bt
-
-data = bt.ds.sample_data()[:5, :5]
-bt.sync(data)
-
-# Ad a missing shape for testing
-nucleus_shapes = data.obs["nucleus_shape"]
-nucleus_shapes[1] = None
-
-features = list(bt.tl.list_point_features().keys())
+import spatialdata as sd
 
 
 class TestPointFeatures(unittest.TestCase):
-    def test_single_feature(self):
-        # Simplest case, single parameters
-        bt.tl.analyze_points(data, "cell_shape", features[0], groupby=None)
+    def setUp(self):
+        self.data = sd.read_zarr("/mnt/d/spatial_datasets/small_data.zarr")
+        self.data = bt.io.format_sdata(
+            sdata=self.data,
+            points_key="transcripts",
+            feature_key="feature_name",
+            instance_key="cell_boundaries",
+            shape_keys=["cell_boundaries", "nucleus_boundaries"],
+        )
+        self.point_features = bt.tl.list_point_features().keys()
+        self.instance_key = ["cell_boundaries"]
+        self.feature_key = ["feature_name"]
+        self.indpendent_features = [
+            'point_dispersion_norm', 
+            'point_dispersion',
+            'l_max', 
+            'l_max_gradient', 
+            'l_min_gradient',
+            'l_monotony',
+            'l_half_radius'
+        ]
 
-        self.assertTrue("cell_features" in data.uns)
-        self.assertTrue(data.uns["cell_features"].shape[0] == data.n_obs)
+        feature_names = [
+            'inner_proximity',
+            'outer_proximity',
+            'inner_asymmetry',
+            'outer_asymmetry',
+            'dispersion_norm',
+            'inner_distance',
+            'outer_distance',
+            'inner_offset',
+            'outer_offset',
+            'dispersion',
+            'enrichment'
+        ]
 
-    def test_multiple_shapes(self):
-        # Multiple shapes, and features
-        bt.tl.analyze_points(
-            data, ["cell_shape", "nucleus_shape"], features, groupby=None
+        self.cell_features = [f"cell_boundaries_{x}" for x in feature_names]
+        self.nucleus_features = [f"nucleus_boundaries_{x}" for x in feature_names]
+
+
+    # Test case to check if features are calculated for a single shape and a single group
+    def test_single_shape_single_group(self):
+        data = bt.tl.analyze_points(
+            sdata=self.data,
+            shape_keys=["cell_boundaries"],
+            feature_names=self.point_features,
+            groupby=None,
+            recompute=False,
+            progress=True,
         )
 
-        self.assertTrue("cell_features" in data.uns)
-        self.assertTrue(data.uns["cell_features"].shape[0] == data.n_obs)
+        point_features = self.instance_key + self.indpendent_features + self.cell_features
 
-    def test_multiple_shapes_features_groupby(self):
-        # Multiple shapes, features, and gene groupby
-        bt.tl.analyze_points(
-            data, ["cell_shape", "nucleus_shape"], features, groupby="gene"
+        # Check if cell_boundaries point features are calculated
+        for feature in point_features:
+            self.assertTrue(feature in data.table.uns["cell_boundaries_features"].columns)
+
+
+    # Test case to check if features are calculated for a single shape and multiple groups
+    def test_single_shape_multiple_groups(self):
+        data = bt.tl.analyze_points(
+            sdata=self.data,
+            shape_keys=["cell_boundaries"],
+            feature_names=self.point_features,
+            groupby=["feature_name"],
+            recompute=False,
+            progress=True,
         )
 
-        output_key = "cell_gene_features"
-        n_groups = data.uns["points"].groupby(["cell", "gene"], observed=True).ngroups
-        self.assertTrue(data.uns[output_key].shape[0] == n_groups)
+        point_features = self.instance_key + self.feature_key+ self.indpendent_features + self.cell_features
+
+        # Check if cell_boundaries and gene point features are calculated
+        for feature in point_features:
+            self.assertTrue(feature in data.table.uns["cell_boundaries_feature_name_features"].columns)
+
+    # Test case to check if point features are calculated for multiple shapes and a single group
+    def test_multiple_shapes_single_group(self):
+        data = bt.tl.analyze_points(
+            sdata=self.data,
+            shape_keys=["cell_boundaries", "nucleus_boundaries"],
+            feature_names=self.point_features,
+            groupby=None,
+            recompute=False,
+            progress=True,
+        )
+
+        point_features = self.instance_key + self.indpendent_features + self.cell_features + self.nucleus_features
+
+        # Check if cell_boundaries and nucleus_boundaries point features are calculated
+        for feature in point_features:
+            self.assertTrue(feature in data.table.uns["cell_boundaries_features"].columns)
+
+    # Test case to check if multiple shape features are calculated for multiple shapes
+    def test_multiple_shapes_multiple_groups(self):
+        data = bt.tl.analyze_points(
+            sdata=self.data,
+            shape_keys=["cell_boundaries", "nucleus_boundaries"],
+            feature_names=self.point_features,
+            groupby=["feature_name"],
+            recompute=False,
+            progress=True,
+        )
+
+        point_features = self.instance_key + self.feature_key + self.indpendent_features + self.cell_features + self.nucleus_features
+
+        # Check if cell_boundaries and nucleus_boundaries point features are calculated
+        for feature in point_features:
+            self.assertTrue(feature in data.table.uns["cell_boundaries_feature_name_features"].columns)

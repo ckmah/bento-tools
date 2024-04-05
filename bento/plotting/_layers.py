@@ -56,27 +56,29 @@ def _kde(points, ax, hue=None, **kwargs):
     sns.kdeplot(data=points, x="x", y="y", hue=hue, ax=ax, **kde_kws)
 
 
-def _polygons(adata, shape, ax, hue=None, hide_outside=False, **kwargs):
+def _polygons(sdata, shape, ax, hue=None, hide_outside=False, sync_shapes=True, **kwargs):
     """Plot shapes with GeoSeries plot function."""
-
-    shapes = gpd.GeoDataFrame(geometry=get_shape(adata, shape))
-
-    edge_color = sns.axes_style()["axes.edgecolor"]
+    shapes = gpd.GeoDataFrame(geometry=get_shape(sdata, shape, sync=sync_shapes))
+    edge_color = "none"
     face_color = "none"
 
     # If hue is specified, use it to color faces
     if hue:
-        shapes[hue] = adata.obs.reset_index()[hue].values
+        df = shapes.reset_index().merge(sdata.shapes[shape], how='left', left_on="geometry", right_on="geometry").set_index('index')
+        if hue == "cell":
+            shapes[hue] = df.index
+        else:
+            shapes[hue] = df.reset_index()[hue].values
         edge_color = sns.axes_style()["axes.edgecolor"]
         face_color = "none"  # let GeoDataFrame plot function handle facecolor
-
+    
     style_kwds = dict(
         linewidth=0.5, edgecolor=edge_color, facecolor=face_color, zorder=2
     )
     style_kwds.update(kwargs)
     shapes.plot(ax=ax, column=hue, **style_kwds)
-
-    if hide_outside:
+    
+    if hide_outside and ax is not None:
         # get axes limits
         xmin, xmax = ax.get_xlim()
         ymin, ymax = ax.get_ylim()
@@ -105,15 +107,15 @@ def _polygons(adata, shape, ax, hue=None, hide_outside=False, **kwargs):
         )
 
 
-def _raster(adata, res, color, alpha, points_key="cell_raster", cbar=False, ax=None, **kwargs):
+def _raster(sdata, res, color, points_key="cell_raster", cbar=False, ax=None, **kwargs):
     """Plot gradient."""
 
     if ax is None:
         ax = plt.gca()
 
-    points = get_points(adata, key=points_key)
+    points = get_points(sdata, points_key=points_key, astype="pandas")
     step = 1 / res
-    color_values = get_points_metadata(adata, metadata_key=color, points_key=points_key)
+    color_values = np.array(get_points_metadata(sdata, metadata_key=color, points_key=points_key))
     # Infer value format and convert values to rgb
     # Handle color names and (r, g, b) tuples with matplotlib
     v1 = color_values[0]

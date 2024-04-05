@@ -7,10 +7,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import rasterio
+import rasterio.features
 import shapely
-from anndata import AnnData
+from spatialdata._core.spatialdata import SpatialData
+from spatialdata.models import PointsModel, ShapesModel
 from kneed import KneeLocator
 from minisom import MiniSom
+from shapely import Polygon
 from scipy.sparse import csr_matrix, vstack
 from sklearn.decomposition import TruncatedSVD, IncrementalPCA
 from sklearn.preprocessing import StandardScaler, minmax_scale, quantile_transform
@@ -18,17 +21,15 @@ from sklearn.utils import resample
 from tqdm.auto import tqdm
 from rich.progress import Progress
 
-from bento._settings import settings
-from bento._utils import register_points, track
-from bento.geometry import get_points, sindex_points
-from bento.tools._neighborhoods import _count_neighbors
-from bento.tools._shape_features import analyze_shapes
+from ..geometry import get_points, sjoin_points, set_points_metadata
+from ..tools._neighborhoods import _count_neighbors
+from ..tools._shape_features import analyze_shapes
 
-
-@track
-@register_points("cell_raster", ["flux", "flux_embed", "flux_counts"])
 def flux(
-    data: AnnData,
+    sdata: SpatialData,
+    points_key: str = "transcripts",
+    instance_key: str = "cell_boundaries",
+    feature_key: str = "feature_name",
     method: Literal["knn", "radius"] = "radius",
     n_neighbors: Optional[int] = None,
     radius: Optional[int] = 0.5,
@@ -37,7 +38,7 @@ def flux(
     train_size: float = 1,
     use_highly_variable: bool = False,
     random_state: int = 11,
-    copy: bool = False,
+    recompute: bool = False
 ):
     """
     RNAflux: Embedding each pixel as normalized local composition normalized by cell composition.
@@ -46,8 +47,14 @@ def flux(
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData object.
+    sdata : SpatialData
+        Spatial formatted SpatialData object.
+    points_key : str
+        key for points element that holds transcript coordinates
+    instance_key : str
+        Key for cell_boundaries instances
+    feature_key : str
+        Key for gene instances
     method: str
         Method to use for local neighborhood. Either 'knn' or 'radius'.
     n_neighbors : int
@@ -56,31 +63,29 @@ def flux(
         Radius to use for local neighborhood. Uses cell radius / 2 if None.
     res : float
         Resolution to use for rendering embedding. Default 0.05 samples at 5% original resolution (5 units between pixels)
-    copy : bool
-        Whether to return a copy the AnnData object. Default False.
 
     Returns
     -------
-    adata : AnnData
-        .uns["flux"] : scipy.csr_matrix
-            [pixels x genes] sparse matrix of normalized local composition.
-        .uns["flux_embed"] : np.ndarray
-            [pixels x components] array of embedded flux values.
-        .uns["flux_color"] : np.ndarray
-            [pixels x 3] array of RGB values for visualization.
-        .uns["flux_genes"] : list
+    sdata : SpatialData
+        .points["{instance_key}_raster"]: pd.DataFrame
+            Length pixels DataFrame containing all computed flux values, embeddings, and colors as columns in a single DataFrame.
+            flux values: <gene_name> for each gene used in embedding.
+            embeddings: flux_embed_<i> for each component of the embedding.
+            colors: hex color codes for each pixel.
+        .table.uns["flux_genes"] : list
             List of genes used for embedding.
-        .uns["flux_variance_ratio"] : np.ndarray
+        .table.uns["flux_variance_ratio"] : np.ndarray
             [components] array of explained variance ratio for each component.
     """
 
-    adata = data.copy() if copy else data
+    if f"{instance_key}_raster" in sdata.points and len(sdata.points[f"{instance_key}_raster"].columns) > 3 and not recompute:
+        return
+    
+    if n_neighbors is None and radius is None:
+        radius = 50
 
-    settings.log.start("Running flux().")
-
-    # Get points
-    adata.uns["points"] = get_points(adata).sort_values("cell")
-    points = get_points(adata)[["cell", "gene", "x", "y"]]
+    points = get_points(sdata, points_key=points_key, astype="pandas", sync=True)
+    points = points[[instance_key, feature_key, "x", "y"]].sort_values(instance_key)
 
     # Only use highly variable genes
     if use_highly_variable:
@@ -113,23 +118,26 @@ def flux(
     step = 1 / res
     # Get grid rasters
     analyze_shapes(
-        adata,
-        "cell_shape",
+        sdata,
+        instance_key,
         "raster",
         progress=False,
         feature_kws=dict(raster={"step": step}),
     )
 
-    # Long dataframe of raster points
-    adata.uns["cell_raster"] = adata.uns["cell_raster"].sort_values("cell")
-    raster_points = adata.uns["cell_raster"]
+    raster_points = get_points(sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=True).sort_values(instance_key)
 
+    # Extract gene names and codes
+    gene_names = points[feature_key].cat.categories.tolist()
+    n_genes = len(gene_names)
 
-    points_grouped = points.groupby("cell")
-    rpoints_grouped = raster_points.groupby("cell")
+    points_grouped = points.groupby(instance_key)
+    rpoints_grouped = raster_points.groupby(instance_key)
     cells = list(points_grouped.groups.keys())
-    # Compute cell composition for each cell
-    cell_composition = adata[cells, gene_names].X.toarray()
+
+    cell_composition = sdata.table[cells, gene_names].X.toarray()
+    
+    # Compute cell composition
     cell_composition = cell_composition / (cell_composition.sum(axis=1).reshape(-1, 1))
     cell_composition = np.nan_to_num(cell_composition)
 
@@ -202,32 +210,47 @@ def flux(
     flux_sv = svd_model.components_
     variance_ratio = svd_model.explained_variance_ratio_
 
-    # Use the elbow method to determine the number of components to keep
-    kl = KneeLocator(
-        range(len(variance_ratio)), variance_ratio, curve="convex", direction="decreasing"
-    )
-    if kl.elbow is not None:
-        n_components = kl.elbow
-    else:
-        n_components = len(variance_ratio)
+    # For color visualization of flux embeddings
+    flux_color = vec2color(flux_embed, fmt="hex", vmin=0.1, vmax=0.9)
+    pbar.update()
+    pbar.set_description(emoji.emojize("Saving"))
 
-    settings.log.step("Saving results")
-    adata.uns["flux"] = cell_fluxs  # sparse gene embedding
-    adata.uns["flux_genes"] = gene_names  # gene names
-    adata.uns["flux_embed"] = flux_embed
-    adata.uns["flux_sv"] = flux_sv
-    adata.uns["flux_n_components"] = n_components
-    adata.uns["flux_counts"] = rpoints_counts
-    adata.uns["flux_variance_ratio"] = variance_ratio
+    flux_df = pd.DataFrame(cell_fluxs.todense().tolist(), columns=gene_names)
+    flux_embed_df = pd.DataFrame(flux_embed.tolist(), columns=[f'flux_embed_{i}' for i in range(len(flux_embed.tolist()[0]))])
+    raster_points = pd.concat([raster_points, flux_df, flux_embed_df], axis=1, join='outer', ignore_index=False)
+
+    raster_points["flux_color"] = flux_color
+    flux_df = raster_points.drop(columns=["x", "y", instance_key])
+    set_points_metadata(sdata, points_key=f"{instance_key}_raster", metadata=flux_df)
+
+    sdata.table.uns["flux_variance_ratio"] = variance_ratio
+    sdata.table.uns["flux_genes"] = gene_names  # gene names
 
     settings.log.end("Done.")
 
-    return adata if copy else None
+def vec2color(
+    vec: np.ndarray,
+    fmt: Literal[
+        "rgb",
+        "hex",
+    ] = "hex",
+    vmin: float = 0,
+    vmax: float = 1,
+):
+    """Convert vector to color."""
+    color = quantile_transform(vec[:, :3])
+    color = minmax_scale(color, feature_range=(vmin, vmax))
 
+    if fmt == "rgb":
+        pass
+    elif fmt == "hex":
+        color = np.apply_along_axis(mpl.colors.to_hex, 1, color, keep_alpha=True)
+    return color
 
-@track
 def fluxmap(
-    data: AnnData,
+    sdata: SpatialData,
+    points_key: str = "transcripts",
+    instance_key: str = "cell_boundaries",
     n_clusters: Union[Iterable[int], int] = range(2, 9),
     n_components: Optional[int] = None,
     num_iterations: int = 1000,
@@ -236,14 +259,17 @@ def fluxmap(
     res: float = 0.1,
     random_state: int = 11,
     plot_error: bool = True,
-    copy: bool = False,
 ):
     """Cluster flux embeddings using self-organizing maps (SOMs) and vectorize clusters as Polygon shapes.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData object.
+    sdata : SpatialData
+        Spatial formatted SpatialData object.
+    points_key : str
+        key for points element that holds transcript coordinates
+    instance_key : str
+        Key for cell_boundaries instances
     n_clusters : int or list
         Number of clusters to use. If list, will pick best number of clusters
         using the elbow heuristic evaluated on the quantization error.
@@ -257,35 +283,27 @@ def fluxmap(
         Random state to use for SOM training. Default 11.
     plot_error : bool
         Whether to plot quantization error. Default True.
-    copy : bool
-        Whether to return a copy the AnnData object. Default False.
 
     Returns
     -------
-    adata : AnnData
-        .uns["cell_raster"] : DataFrame
+    sdata : SpatialData
+        .points["points"] : DataFrame
             Adds "fluxmap" column denoting cluster membership.
-        .uns["points"] : DataFrame
-            Adds "fluxmap#" columns for each cluster.
-        .obs : GeoSeries
+        .shapes["fluxmap#_shape"] : GeoSeries
             Adds "fluxmap#_shape" columns for each cluster rendered as (Multi)Polygon shapes.
     """
-    adata = data.copy() if copy else data
+
+    raster_points = get_points(sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=True)
 
     # Check if flux embedding has been computed
-    if "flux_embed" not in adata.uns:
+    if "flux_embed_0" not in raster_points.columns:
         raise ValueError(
             "Flux embedding has not been computed. Run `bento.tl.flux()` first."
         )
-
-    if n_components is None:
-        n_components = adata.uns["flux_n_components"]
-    flux_embed = adata.uns["flux_embed"][:, :n_components]
-    raster_points = adata.uns["cell_raster"]
-    flux_counts = adata.uns["flux_counts"]
-
-    # Exclude points with low counts
-    valid_points = flux_counts > min_points
+    
+    flux_embed = raster_points.filter(like='flux_embed_')
+    sorted_column_names = sorted(flux_embed.columns.tolist(), key=lambda x: int(x.split('_')[-1]))
+    flux_embed = flux_embed[sorted_column_names].to_numpy()
 
     if isinstance(n_clusters, int):
         n_clusters = [n_clusters]
@@ -346,22 +364,18 @@ def fluxmap(
     qnt_index = np.ravel_multi_index(winner_coordinates, (1, best_k)) + 1
     qnt_index[~valid_points] = 0
     raster_points["fluxmap"] = qnt_index
-    adata.uns["cell_raster"] = raster_points.copy()
+    set_points_metadata(sdata, points_key=f"{instance_key}_raster", metadata=list(qnt_index), column_names="fluxmap")
 
     pbar.update()
 
     # Vectorize polygons in each cell
     pbar.set_description(emoji.emojize("Vectorizing domains"))
-    cells = raster_points["cell"].unique().tolist()
-    # Scale down to render resolution
-    # raster_points[["x", "y"]] = raster_points[["x", "y"]] * res
+    cells = raster_points[instance_key].unique().tolist()
 
     # Cast to int
-    raster_points[["x", "y", "fluxmap"]] = raster_points[["x", "y", "fluxmap"]].astype(
-        int
-    )
+    raster_points[["x", "y", "fluxmap"]] = raster_points[["x", "y", "fluxmap"]].astype(int)
 
-    rpoints_grouped = raster_points.groupby("cell")
+    rpoints_grouped = raster_points.groupby(instance_key)
     fluxmap_df = dict()
     for cell in tqdm(cells, leave=False):
         rpoints = rpoints_grouped.get_group(cell)
@@ -396,11 +410,10 @@ def fluxmap(
 
         # Group same fields as MultiPolygons
         shapes = shapes.dissolve("fluxmap")["geometry"]
-
         fluxmap_df[cell] = shapes
 
     fluxmap_df = pd.DataFrame.from_dict(fluxmap_df).T
-    fluxmap_df.columns = "fluxmap" + fluxmap_df.columns.astype(str) + "_shape"
+    fluxmap_df.columns = "fluxmap" + fluxmap_df.columns.astype(str) + "_boundaries"
 
     # Upscale to match original resolution
     fluxmap_df = fluxmap_df.apply(
@@ -411,20 +424,26 @@ def fluxmap(
     pbar.update()
 
     pbar.set_description("Saving")
-    old_cols = adata.obs.columns[adata.obs.columns.str.startswith("fluxmap")]
-    adata.obs = adata.obs.drop(old_cols, axis=1, errors="ignore")
 
-    adata.obs[fluxmap_df.columns] = fluxmap_df.reindex(adata.obs_names)
+    old_shapes = [k for k in sdata.shapes.keys() if k.startswith("fluxmap")]
+    for key in old_shapes:
+        del sdata.shapes[key]
 
-    old_cols = adata.uns["points"].columns[
-        adata.uns["points"].columns.str.startswith("fluxmap")
+    transform = sdata.shapes[instance_key].attrs
+    fluxmap_df = fluxmap_df.reindex(sdata.table.obs_names).where(fluxmap_df.notna(), other=Polygon())
+    for fluxmap in fluxmap_df.columns:
+        sdata.shapes[fluxmap] = ShapesModel.parse(gpd.GeoDataFrame(geometry=fluxmap_df[fluxmap]))
+        sdata.shapes[fluxmap].attrs = transform
+    
+    old_cols = sdata.points[points_key].columns[
+        sdata.points[points_key].columns.str.startswith("fluxmap")
     ]
-    adata.uns["points"] = adata.uns["points"].drop(old_cols, axis=1)
+    sdata.points[points_key] = sdata.points[points_key].drop(old_cols, axis=1)
 
     # TODO SLOW
-    sindex_points(adata, "points", fluxmap_df.columns.tolist())
+    sjoin_points(sdata=sdata, shape_keys=fluxmap_df.columns.tolist(), points_key=points_key)
     pbar.update()
     pbar.set_description("Done")
     pbar.close()
 
-    return adata if copy else None
+    

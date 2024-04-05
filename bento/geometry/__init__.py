@@ -1,9 +1,10 @@
 from ._geometry import (
-    count_points,
-    crop,
+    sjoin_points,
+    sjoin_shapes,
     get_points,
-    get_points_metadata,
     get_shape,
-    rename_shapes,
-    sindex_points,
+    get_points_metadata,
+    get_shape_metadata,
+    set_points_metadata,
+    set_shape_metadata,
 )
