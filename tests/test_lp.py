@@ -15,7 +15,7 @@ class TestLp(unittest.TestCase):
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
         )
 
-        bt.tl.lp(sdata=self.data, instance_key="cell_boundaries", groupby="feature_name")
+        bt.tl.lp(sdata=self.data, instance_key="cell_boundaries", nucleus_key="nucleus_boundaries", groupby="feature_name")
         bt.tl.lp_stats(sdata=self.data, instance_key="cell_boundaries")
 
     def test_lp(self):

@@ -14,13 +14,14 @@ from statsmodels.tools.sm_exceptions import PerfectSeparationError
 from tqdm.auto import tqdm
 from spatialdata._core.spatialdata import SpatialData
 
-from .._constants import PATTERN_NAMES, PATTERN_FEATURES
+from .._constants import PATTERN_NAMES
 
 tqdm.pandas()
 
 def lp(
     sdata: SpatialData, 
-    instance_key: str = "cell_boundaries", 
+    instance_key: str = "cell_boundaries",
+    nucleus_key: str = "nucleus_boundaries",
     groupby: Optional[Union[str, List[str]]] = "gene"
 ):
     """Predict transcript subcellular localization patterns.
@@ -46,27 +47,44 @@ def lp(
     if isinstance(groupby, str):
         groupby = [groupby]
 
+    pattern_features = [ # Do not change order of features!
+        f"{instance_key}_inner_proximity",
+        f"{nucleus_key}_inner_proximity",
+        f"{nucleus_key}_outer_proximity",
+        f"{instance_key}_inner_asymmetry",
+        f"{nucleus_key}_inner_asymmetry",
+        f"{nucleus_key}_outer_asymmetry",
+        "l_max",
+        "l_max_gradient",
+        "l_min_gradient",
+        "l_monotony",
+        "l_half_radius",
+        "point_dispersion_norm",
+        f"{nucleus_key}_dispersion_norm",
+    ]
+
+
     # Compute features
     feature_key = f"{instance_key}_{'_'.join(groupby)}_features"
     if feature_key not in sdata.table.uns.keys() or not all(
-        f in sdata.table.uns[feature_key].columns for f in PATTERN_FEATURES
+        f in sdata.table.uns[feature_key].columns for f in pattern_features
     ):
         bento.tl.analyze_points(
             sdata,
-            "cell_boundaries",
+            instance_key,
             ["proximity", "asymmetry", "ripley", "point_dispersion_norm"],
             groupby=groupby,
             recompute=True,
         )
         bento.tl.analyze_points(
             sdata,
-            "nucleus_boundaries",
+            nucleus_key,
             ["proximity", "asymmetry", "shape_dispersion_norm"],
             groupby=groupby,
             recompute=True,
         )
 
-    X_df = sdata.table.uns[feature_key][PATTERN_FEATURES]
+    X_df = sdata.table.uns[feature_key][pattern_features]
 
     # Load trained model
     model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"

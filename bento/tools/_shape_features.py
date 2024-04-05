@@ -117,8 +117,9 @@ def _bounds(sdata: SpatialData, shape_key: str, recompute: bool = False):
             y-axis upper bound of each polygon
     """
 
+    feat_names = ["minx", "miny", "maxx", "maxy"]
     feature_keys = [
-        f"{shape_key}_{k}" for k in ["minx", "miny", "maxx", "maxy"]
+        f"{shape_key}_{k}" for k in feat_names
     ]
     if (
         all([k in sdata.shapes[shape_key].keys() for k in feature_keys])
@@ -128,10 +129,7 @@ def _bounds(sdata: SpatialData, shape_key: str, recompute: bool = False):
 
     bounds = get_shape(sdata, shape_key, sync=False).bounds
 
-    set_shape_metadata(sdata=sdata, shape_key=shape_key, metadata=bounds["minx"], column_names=feature_keys[0])
-    set_shape_metadata(sdata=sdata, shape_key=shape_key, metadata=bounds["miny"], column_names=feature_keys[1])
-    set_shape_metadata(sdata=sdata, shape_key=shape_key, metadata=bounds["maxx"], column_names=feature_keys[2])
-    set_shape_metadata(sdata=sdata, shape_key=shape_key, metadata=bounds["maxy"], column_names=feature_keys[3])
+    set_shape_metadata(sdata=sdata, shape_key=shape_key, metadata=bounds[feat_names], column_names=feature_keys)
 
 
 def _density(sdata: SpatialData, shape_key: str, recompute: bool = False):
@@ -540,7 +538,8 @@ def analyze_shapes(
 
 def register_shape_feature(name: str, func: Callable):
     """Register a shape feature function. The function should take an SpatialData object and a shape name as input.
-    The function should add the feature to the SpatialData object as a column in SpatialData.table.obs. This should be done in place and not return anything.
+       The function should add the feature to the SpatialData object as a column in SpatialData.table.obs. 
+       This should be done in place and not return anything.
 
     Parameters
     ----------
