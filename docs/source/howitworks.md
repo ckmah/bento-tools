@@ -1,5 +1,7 @@
 # {octicon}`gear` How it Works
 
+<!-- TODO -->
+
 ## Data Structure
 
 Datasets are stored as `AnnData` objects, where observations are cells, variables are genes, and the X is the count matrix. Bento additionally stores molecular coordinates in `uns['points']` and polygons as columns in `obs`. 
