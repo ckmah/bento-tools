@@ -2,7 +2,7 @@
 
 Bento requires Python version 3.8 or 3.9.
 
-## Setup a virtual environment
+## 1. Setup a virtual environment
 
 We highly recommend using a virtual environment to install Bento to avoid conflicting dependencies with other packages. If you are unfamiliar with virtual environments, we recommend using [Miniconda](https://docs.conda.io/en/latest/miniconda.html).
 
@@ -60,7 +60,7 @@ The package and its dependencies are built using [Poetry](https://python-poetry.
 
    For updating documentation locally, install extra dependencies and launch a live server to preview doc builds:
 
-   First install pandoc (see [dependencies](#Dependencies) section for more details).
+   First install pandoc (see [dependencies](#dependencies) section for more details).
 
    ```bash
    poetry install --extras "docs"

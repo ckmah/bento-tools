@@ -4,7 +4,7 @@ from typing import List
 warnings.filterwarnings("ignore")
 
 from spatialdata._core.spatialdata import SpatialData
-from spatialdata.models import ShapesModel, TableModel
+from spatialdata.models import TableModel
 
 from ..geometry import sjoin_points, sjoin_shapes
 
@@ -16,7 +16,9 @@ def prep(
     instance_key: str = "cell_boundaries",
     shape_keys: List[str] = ["cell_boundaries", "nucleus_boundaries"],
 ) -> SpatialData:
-    """Converts shape indices to strings and indexes points to shapes and add as columns to `data.points[point_key]`.
+    """Computes spatial indices for elements in SpatialData to enable usage of bento-tools.
+    
+    Specifically, this function indexes points to shapes and joins shapes to the instance shape. It also computes a count table for the points.
 
     Parameters
     ----------

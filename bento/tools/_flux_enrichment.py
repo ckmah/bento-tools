@@ -4,11 +4,8 @@ import decoupler as dc
 
 import numpy as np
 import pandas as pd
-import dask.dataframe as dd
-import pkg_resources
 from scipy import sparse
 from spatialdata._core.spatialdata import SpatialData
-from spatialdata.models import PointsModel
 
 from ..geometry import get_points, set_points_metadata
 
@@ -62,7 +59,7 @@ def fe(
     min_n: int = 0,
 ):
     """
-    Perform functional enrichment on point embeddings. Wrapper for decoupler wsum function.
+    Perform functional enrichment of RNAflux embeddings. Uses decoupler wsum function.
 
     Parameters
     ----------
@@ -159,7 +156,7 @@ gene_sets = dict(
 
 
 def load_gene_sets(name):
-    """Load a gene set from bento.
+    """Load a gene set; list available ones with `bento.tl.gene_sets`.
 
     Parameters
     ----------

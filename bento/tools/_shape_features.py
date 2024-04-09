@@ -34,7 +34,7 @@ def area(sdata: SpatialData, shape_key: str, recompute: bool = False):
         If True, forces the computation of the area even if it already exists in the shape metadata. 
         If False (default), the computation is skipped if the area already exists.
 
-    Fields
+    Returns
     ------
     .shapes[shape_key]['{shape}_area'] : float
         Area of each polygon
@@ -105,7 +105,7 @@ def bounds(sdata: SpatialData, shape_key: str, recompute: bool = False):
     shape_key : str
         Key in `sdata.shapes[shape_key]` that contains the shape information.
 
-    Fields
+    Returns
     ------
         .shapes[shape_key]['{shape}_minx'] : float
             x-axis lower bound of each polygon
@@ -142,7 +142,7 @@ def density(sdata: SpatialData, shape_key: str, recompute: bool = False):
     shape_key : str
         Key in `sdata.shapes[shape_key]` that contains the shape information.
 
-    Fields
+    Returns
     ------
         .shapes[shape_key]['{shape}_density'] : float
             Density (molecules / shape area) of each polygon
@@ -460,7 +460,7 @@ def shape_stats(
     sdata: SpatialData,
     feature_names: List[str] = ["area", "aspect_ratio", "density"],
 ):
-    """Compute features for each cell shape. Convenient wrapper for `bento.tl.shape_features`.
+    """Compute descriptive stats for cells. Convenient wrapper for `bento.tl.shape_features`.
     See list of available features in `bento.tl.shape_features`.
 
     Parameters
@@ -472,7 +472,7 @@ def shape_stats(
 
     Returns
     -------
-        .shapes[shape_key]['{shape}_{feature}'] : np.array
+        .shapes['cell_boundaries']['cell_boundaries_{feature}'] : np.array
             Feature of each polygon
     """
 

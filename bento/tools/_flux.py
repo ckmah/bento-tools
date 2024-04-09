@@ -41,7 +41,7 @@ def flux(
     recompute: bool = False,
 ):
     """
-    RNAflux: Embedding each pixel as normalized local composition normalized by cell composition.
+    Compute RNAflux embeddings of each pixel as local composition normalized by cell composition.
     For k-nearest neighborhoods or "knn", method, specify n_neighbors. For radius neighborhoods, specify radius.
     The default method is "radius" with radius=50. RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
 

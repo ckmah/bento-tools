@@ -111,6 +111,46 @@ def points(
     fname=None,
     **kwargs,
 ):
+    """
+    Plot points scatter.
+
+    Parameters
+    ----------
+    data : SpatialData
+        Spatial formatted SpatialData object
+    hue : str, optional
+        Variable name to color points by, by default None
+    hue_order : list, optional
+        Order of hue levels, by default None
+    size : str, optional
+        Variable name to size points by, by default None
+    style : str, optional
+        Variable name to style points by, by default None
+    shapes : list, optional 
+        List of shape names to plot, by default None. If None, will plot cell and nucleus shapes by default.
+    hide_outside : bool, optional
+        Whether to hide molecules outside of cells, by default True
+    title : str, optional
+        Title of plot, by default None
+    dx : float, optional    
+        Size of scalebar in units, by default 0.1
+    units : str, optional
+        Units of scalebar, by default "um"
+    square : bool, optional
+        Whether to make axis square, by default False
+    axis_visible : bool, optional
+        Whether to show axis, by default False
+    frame_visible : bool, optional
+        Whether to show frame, by default True
+    ax : matplotlib.axes.Axes, optional
+        Axis to plot on, by default None. If None, will use current axis.
+    sync_shapes : bool, optional
+        Whether to synchronize shapes with points, by default True
+    shapes_kws : dict, optional
+        Keyword arguments for shapes, by default {}
+    fname : str, optional
+        Filename to save figure to, by default None. If None, will not save figure.
+    """
     
     ax = _setup_ax(
         ax=ax,
@@ -145,6 +185,44 @@ def density(
     fname=None,
     **kwargs,
 ):
+    """
+    Plot points as 2D density.
+
+    Parameters
+    ----------
+    data : SpatialData
+        Spatial formatted SpatialData object
+    kind : str, optional
+        Type of density plot, by default "hist". Options: "hist", "kde"
+    hue : str, optional
+        Variable name to color points by, by default None
+    hue_order : list, optional
+        Order of hue levels, by default None
+    shapes : list, optional 
+        List of shape names to plot, by default None. If None, will plot cell and nucleus shapes by default.
+    hide_outside : bool, optional
+        Whether to hide molecules outside of cells, by default True
+    title : str, optional
+        Title of plot, by default None
+    dx : float, optional    
+        Size of scalebar in units, by default 0.1
+    units : str, optional
+        Units of scalebar, by default "um"
+    square : bool, optional
+        Whether to make axis square, by default False
+    axis_visible : bool, optional
+        Whether to show axis, by default False
+    frame_visible : bool, optional
+        Whether to show frame, by default True
+    ax : matplotlib.axes.Axes, optional
+        Axis to plot on, by default None. If None, will use current axis.
+    sync_shapes : bool, optional
+        Whether to synchronize shapes with points, by default True
+    shape_kws : dict, optional
+        Keyword arguments for shapes, by default {}
+    fname : str, optional
+        Filename to save figure to, by default None. If None, will not save figure.
+    """
 
     ax = _setup_ax(
         ax=ax,
@@ -182,6 +260,39 @@ def shapes(
     fname=None,
     **kwargs,
 ):
+    """Plot shape layers.
+
+    Parameters
+    ----------
+    data : SpatialData
+        Spatial formatted SpatialData
+    shapes : list, optional
+        List of shapes to plot, by default None. If None, will plot cell and nucleus shapes by default.
+    color : str, optional
+        Color name, by default None. If None, will use default theme color.
+    color_style : "outline" or "fill"
+        Whether to color the outline or fill of the shape, by default "outline".
+    hide_outside : bool, optional
+        Whether to hide molecules outside of cells, by default True.
+    dx : float, optional
+        Size of scalebar in units, by default 0.1.
+    units : str, optional
+        Units of scalebar, by default "um".
+    axis_visible : bool, optional
+        Whether to show axis, by default False.
+    frame_visible : bool, optional
+        Whether to show frame, by default True.
+    title : str, optional
+        Title of plot, by default None.
+    square : bool, optional
+        Whether to make axis square, by default False.
+    ax : matplotlib.axes.Axes, optional
+        Axis to plot on, by default None. If None, will use current axis.
+    sync_shapes : bool, optional
+        Whether to synchronize shapes with points, by default True.
+    fname : str, optional
+        Filename to save figure to, by default None. If None, will not save figure.
+    """
 
     ax = _setup_ax(
         ax=ax,
@@ -218,23 +329,6 @@ def _shapes(
     sync_shapes=True,
     **kwargs,
 ):
-    """Plot layer(s) of shapes.
-
-    Parameters
-    ----------
-    data : SpatialData
-        Spatial formatted SpatialData
-    shapes : list, optional
-        List of shapes to plot, by default None. If None, will plot cell and nucleus shapes by default.
-    color : str, optional
-        Color name, by default None. If None, will use default theme color.
-    color_style : "outline" or "fill"
-        Whether to color the outline or fill of the shape, by default "outline".
-    hide_outside : bool, optional
-        Whether to hide molecules outside of cells, by default True.
-    ax : matplotlib.axes.Axes, optional
-        Axis to plot on, by default None. If None, will use current axis.
-    """
     if shapes is None:
         shapes = ["cell", "nucleus"]
 
@@ -293,6 +387,39 @@ def flux(
     fname=None,
     **kwargs,
 ):
+    """Plot colorized representation of RNAflux embedding.
+
+    Parameters
+    ----------
+    data : SpatialData
+        Spatial formatted SpatialData
+    res : float, optional
+        Resolution of fluxmap, by default 0.05
+    shapes : list, optional
+        List of shapes to plot, by default None. If None, will plot cell and nucleus shapes by default.
+    hide_outside : bool, optional
+        Whether to hide molecules outside of cells, by default True.
+    axis_visible : bool, optional
+        Whether to show axis, by default False.
+    frame_visible : bool, optional
+        Whether to show frame, by default True.
+    title : str, optional
+        Title of plot, by default None.
+    dx : float, optional
+        Size of scalebar in units, by default 0.1.
+    units : str, optional
+        Units of scalebar, by default "um".
+    square : bool, optional
+        Whether to make axis square, by default False.
+    ax : matplotlib.axes.Axes, optional
+        Axis to plot on, by default None. If None, will use current axis.
+    sync_shapes : bool, optional
+        Whether to synchronize shapes with points, by default True.
+    shape_kws : dict, optional
+        Keyword arguments for shapes, by default {}.
+    fname : str, optional
+        Filename to save figure to, by default None. If None, will not save figure.
+    """
 
     ax = _setup_ax(
         ax=ax,
@@ -328,6 +455,45 @@ def fe(
     fname=None,
     **kwargs,
 ):
+    """Plot spatial heatmap of flux enrichment scores.
+    
+    Parameters
+    ----------
+    data : SpatialData
+        Spatial formatted SpatialData
+    gs : str
+        Gene set name
+    res : float, optional
+        Resolution of fluxmap, by default 0.05
+    shapes : list, optional    
+        List of shape names to plot, by default None. If None, will plot cell and nucleus shapes by default.
+    cmap : str, optional
+        Colormap, by default None. If None, will use red2blue colormap.
+    cbar : bool, optional
+        Whether to show colorbar, by default True
+    hide_outside : bool, optional
+        Whether to hide molecules outside of cells, by default True.
+    axis_visible : bool, optional
+        Whether to show axis, by default False.
+    frame_visible : bool, optional
+        Whether to show frame, by default True.
+    title : str, optional
+        Title of plot, by default None.
+    dx : float, optional
+        Size of scalebar in units, by default 0.1.
+    units : str, optional
+        Units of scalebar, by default "um".
+    square : bool, optional
+        Whether to make axis square, by default False.
+    ax : matplotlib.axes.Axes, optional
+        Axis to plot on, by default None. If None, will use current axis.
+    sync_shapes : bool, optional
+        Whether to synchronize shapes with points, by default True.
+    shape_kws : dict, optional
+        Keyword arguments for shapes, by default {}.
+    fname : str, optional
+        Filename to save figure to, by default None. If None, will not save figure.
+    """
 
     ax = _setup_ax(
         ax=ax,

@@ -1,3 +1,10 @@
+```{toctree}
+:maxdepth: 3
+:hidden: true
+
+
+```
+
 ```{eval-rst}
 .. module:: bento
 ```
@@ -19,6 +26,8 @@ Bento's API structure takes inspiration from other libraries in the Scverse ecos
 - `bt.datasets`: included spatial transcriptomics datasets `WIP`
 - `bt.ut`: utility functions
 
+---
+
 # Read/Write
 
 Bento is designed to work with [`SpatialData`](https://spatialdata.scverse.org/en/latest/) objects out of the box! Check out [SpatialData documentation](https://spatialdata.scverse.org/en/latest/tutorials/notebooks/notebooks.html) to learn how to bring your own data, whether it is from commercial platforms or a custom data format. 
@@ -28,9 +37,12 @@ Bento is designed to work with [`SpatialData`](https://spatialdata.scverse.org/e
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     prep
 ```
+
+---
 
 # Tools
 
@@ -43,33 +55,11 @@ Compute spatial summary statistics describing groups of molecules e.g. distance 
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     analyze_points
     list_point_features
     register_point_feature
-```
-
-### Point Feature Catalog
-
-The set of implemented point features is described below. Each feature is computed using the `bt.analyze_points()` function.
-
-```{eval-rst}
-.. currentmodule:: bento.tl
-
-.. autosummary::
-    :toctree: api
-
-    PointFeature
-    ShapeProximity
-    ShapeAsymmetry
-    PointDispersionNorm
-    ShapeDispersionNorm
-    ShapeDistance
-    ShapeOffset
-    PointDispersion
-    ShapeDispersion
-    RipleyStats
-    ShapeEnrichment
 ```
 
 ## Shape Features
@@ -81,6 +71,7 @@ Compute spatial properties of shape features e.g. area, aspect ratio, etc. of th
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     shape_stats
     analyze_shapes
@@ -97,6 +88,7 @@ The set of implemented shape features is described below. Each feature is comput
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     area
     aspect_ratio
@@ -120,13 +112,13 @@ Methods for computing RNAflux embeddings and semantic segmentation of subcellula
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     flux
     fluxmap
     fe
     fe_fazal2019
     fe_xia2019
-    gene_sets
     load_gene_sets
 ```
 
@@ -139,6 +131,7 @@ Perform multilabel classification of RNA localization patterns using spatial sum
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     lp
     lp_stats
@@ -155,10 +148,13 @@ Methods for compartments-ecific gene-gene colocalization analyses.
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     colocation
     coloc_quotient
 ```
+
+---
 
 # Plotting
 
@@ -171,6 +167,7 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     points
     density
@@ -184,6 +181,7 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     shape_stats
 ```
@@ -195,6 +193,7 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     flux
     fluxmap
@@ -209,10 +208,11 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     lp_diff_discrete
     lp_dist
-    gene_dist
+    lp_gene_dist
     lp_genes
 ```
 
@@ -223,12 +223,13 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     factor
     colocation
-
 ```
 
+---
 # Manipulating spatial data
 
 Convenient methods for setting, getting, and reformatting data. These functions are used internally by other functions in Bento.
@@ -238,6 +239,7 @@ Convenient methods for setting, getting, and reformatting data. These functions 
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
 
     sjoin_points
     sjoin_shapes
@@ -249,6 +251,8 @@ Convenient methods for setting, getting, and reformatting data. These functions 
     set_shape_metadata
 ```
 
+---
+
 # Utility functions
 
 ```{eval-rst}
@@ -256,3 +260,4 @@ Convenient methods for setting, getting, and reformatting data. These functions 
 
 .. autosummary::
     :toctree: api
+    :nosignatures:
