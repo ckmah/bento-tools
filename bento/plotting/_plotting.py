@@ -11,12 +11,12 @@ from ._layers import _raster, _scatter, _hist, _kde, _polygons
 from ._utils import savefig
 from ._colors import red2blue, red2blue_dark
 
-def _prepare_points_df(sdata, semantic_vars=None, hue=None, hue_order=None):
+def _prepare_points_df(sdata, points_key, instance_key, sync_points, semantic_vars=None, hue=None, hue_order=None):
     """
     Prepare points DataFrame for plotting. This function will concatenate the appropriate semantic variables as columns to points data.
     """
-    points = get_points(sdata, astype="pandas")
-    cols = list(set(["x", "y", "cell"]))
+    points = get_points(sdata, points_key=points_key, astype="pandas", sync=sync_points)
+    cols = list(set(["x", "y", instance_key]))
 
     if semantic_vars is None or len(semantic_vars) == 0:
         return points[cols]
@@ -32,7 +32,7 @@ def _prepare_points_df(sdata, semantic_vars=None, hue=None, hue_order=None):
         if var in points.columns:
             continue
         elif var in sdata.shapes:
-            points[var] = sdata.shapes[var].reindex(points["cell"].values)[var].values
+            points[var] = sdata.shapes[var].reindex(points[instance_key].values)[var].values
         else:
             raise ValueError(f"Variable {var} not found in points or obs")
     
@@ -93,6 +93,8 @@ def _setup_ax(
 @savefig
 def points(
     sdata,
+    points_key="transcripts",
+    instance_key="cell_boundaries",
     hue=None,
     hue_order=None,
     size=None,
@@ -106,6 +108,7 @@ def points(
     axis_visible=False,
     frame_visible=True,
     ax=None,
+    sync_points=True,
     sync_shapes=True,
     shapes_kws=dict(),
     fname=None,
@@ -121,13 +124,24 @@ def points(
         frame_visible=frame_visible,
         title=title,
     )
-    points = _prepare_points_df(sdata, semantic_vars=[hue, size, style], hue=hue, hue_order=hue_order)
+    points = _prepare_points_df(
+        sdata, 
+        points_key=points_key, 
+        instance_key=instance_key, 
+        sync_points=sync_points,
+        semantic_vars=[hue, size, style], 
+        hue=hue, 
+        hue_order=hue_order
+    )
+
     _scatter(points, hue=hue, size=size, style=style, ax=ax, **kwargs)
     _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shapes_kws)
 
 @savefig
 def density(
     sdata,
+    points_key="transcripts",
+    instance_key="cell_boundaries",
     kind="hist",
     hue=None,
     hue_order=None,
@@ -140,6 +154,7 @@ def density(
     units="um",
     square=False,
     ax=None,
+    sync_points=True,
     sync_shapes=True,
     shape_kws=dict(),
     fname=None,
@@ -156,7 +171,15 @@ def density(
         title=title,
     )
 
-    points = _prepare_points_df(sdata, semantic_vars=[hue], hue=hue, hue_order=hue_order)
+    points = _prepare_points_df(
+        sdata,
+        points_key=points_key,
+        instance_key=instance_key,
+        sync_points=sync_points,
+        semantic_vars=[hue], 
+        hue=hue, 
+        hue_order=hue_order
+    )
     if kind == "hist":
         _hist(points, hue=hue, ax=ax, **kwargs)
     elif kind == "kde":
@@ -210,6 +233,8 @@ def shapes(
 
 def _shapes(
     sdata,
+    instance_key="cell_boundaries",
+    nucleus_key="nucleus_boundaries",
     shapes=None,
     color=None,
     color_style="outline",
@@ -236,18 +261,11 @@ def _shapes(
         Axis to plot on, by default None. If None, will use current axis.
     """
     if shapes is None:
-        shapes = ["cell", "nucleus"]
-
-    shape_names = []
-    for s in shapes:
-        if str(s).endswith("_boundaries"):
-            shape_names.append(s)
-        else:
-            shape_names.append(f"{s}_boundaries")
+        shapes = [instance_key, nucleus_key]
 
     # Save list of names to remove if not in data.obs
-    shape_names = [name for name in shape_names if name in sdata.shapes.keys()]
-    missing_names = [name for name in shape_names if name not in sdata.shapes.keys()]
+    shape_names = [name for name in shapes if name in sdata.shapes.keys()]
+    missing_names = [name for name in shapes if name not in sdata.shapes.keys()]
 
     if len(missing_names) > 0:
         warnings.warn("Shapes not found in data: " + ", ".join(missing_names))
@@ -263,7 +281,7 @@ def _shapes(
 
     for name in shape_names:
         hide = False
-        if name == "cell_boundaries" and hide_outside:
+        if name == instance_key and hide_outside:
             hide = True
 
         _polygons(
@@ -278,6 +296,8 @@ def _shapes(
 @savefig
 def flux(
     sdata,
+    instance_key="cell_boundaries",
+    alpha=True,
     res=0.05,
     shapes=None,
     hide_outside=True,
@@ -303,14 +323,16 @@ def flux(
         frame_visible=frame_visible,
         title=title,
     )
-
-    _raster(sdata, res=res, color="flux_color", ax=ax, **kwargs)
+    
+    _raster(sdata, alpha=alpha, points_key=f"{instance_key}_raster", res=res, color="flux_color", ax=ax, **kwargs)
     _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shape_kws)
 
 @savefig
 def fe(
     sdata,
     gs,
+    instance_key="cell_boundaries",
+    alpha=True,
     res=0.05,
     shapes=None,
     cmap=None,
@@ -345,7 +367,7 @@ def fe(
         elif sns.axes_style()["axes.facecolor"] == "black":
             cmap = red2blue_dark
 
-    _raster(sdata, res=res, color=gs, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
+    _raster(sdata, alpha=alpha, points_key=f"{instance_key}_raster", res=res, color=gs, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
     _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shape_kws)
 
 @savefig
