@@ -88,8 +88,9 @@ def lp_gene_dist(sdata, fname=None):
 @savefig
 def lp_genes(
     sdata: SpatialData,
-    groupby: str = "gene",
+    groupby: str = "feature_name",
     points_key = "transcripts",
+    instance_key = "cell_boundaries",
     annotate: Union[int, List[str], None] = None,
     sizes: Tuple[int] = (2, 100),
     size_norm: Tuple[int] = (0, 100),
@@ -135,7 +136,7 @@ def lp_genes(
     
     cell_fraction = (
         100
-        * get_points(sdata, points_key, astype="pandas").groupby("gene", observed=True)["cell"].nunique()
+        * get_points(sdata, points_key, astype="pandas", sync=True).groupby(groupby, observed=True)[instance_key].nunique()
         / n_cells
     )
     gene_frac["cell_fraction"] = cell_fraction
