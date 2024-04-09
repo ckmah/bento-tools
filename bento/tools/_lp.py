@@ -22,7 +22,7 @@ def lp(
     sdata: SpatialData, 
     instance_key: str = "cell_boundaries",
     nucleus_key: str = "nucleus_boundaries",
-    groupby: Optional[Union[str, List[str]]] = "gene"
+    groupby: Optional[Union[str, List[str]]] = "feature_name"
 ):
     """Predict transcript subcellular localization patterns.
     Patterns include: cell edge, cytoplasmic, nuclear edge, nuclear, none
