@@ -20,7 +20,7 @@ from tqdm.auto import tqdm
 from ..geometry import get_points, get_shape, set_shape_metadata
 
 
-def _area(sdata: SpatialData, shape_key: str, recompute: bool = False):
+def area(sdata: SpatialData, shape_key: str, recompute: bool = False):
     """
     Compute the area of each shape.
 
@@ -71,7 +71,7 @@ def _poly_aspect_ratio(poly):
     return length / width
 
 
-def _aspect_ratio(sdata: SpatialData, shape_key: str, recompute: bool = False):
+def aspect_ratio(sdata: SpatialData, shape_key: str, recompute: bool = False):
     """Compute the aspect ratio of the minimum rotated rectangle that contains each shape.
 
         Parameters
@@ -95,7 +95,7 @@ def _aspect_ratio(sdata: SpatialData, shape_key: str, recompute: bool = False):
     set_shape_metadata(sdata=sdata, shape_key=shape_key, metadata=ar, column_names=feature_key)
 
 
-def _bounds(sdata: SpatialData, shape_key: str, recompute: bool = False):
+def bounds(sdata: SpatialData, shape_key: str, recompute: bool = False):
     """Compute the minimum and maximum coordinate values that bound each shape.
 
     Parameters
@@ -132,7 +132,7 @@ def _bounds(sdata: SpatialData, shape_key: str, recompute: bool = False):
     set_shape_metadata(sdata=sdata, shape_key=shape_key, metadata=bounds[feat_names], column_names=feature_keys)
 
 
-def _density(sdata: SpatialData, shape_key: str, recompute: bool = False):
+def density(sdata: SpatialData, shape_key: str, recompute: bool = False):
     """Compute the RNA density of each shape.
 
     Parameters
@@ -159,7 +159,7 @@ def _density(sdata: SpatialData, shape_key: str, recompute: bool = False):
         .value_counts()
         .compute()
     )
-    _area(sdata, shape_key)
+    area(sdata, shape_key)
 
     set_shape_metadata(
         sdata=sdata, 
@@ -169,7 +169,7 @@ def _density(sdata: SpatialData, shape_key: str, recompute: bool = False):
     )
 
 
-def _opening(sdata: SpatialData, shape_key: str, proportion: float, recompute: bool = False):
+def opening(sdata: SpatialData, shape_key: str, proportion: float, recompute: bool = False):
     """Compute the opening (morphological) of distance d for each cell.
 
     Parameters
@@ -177,7 +177,7 @@ def _opening(sdata: SpatialData, shape_key: str, proportion: float, recompute: b
     sdata : SpatialData
         Spatial formatted SpatialData
 
-    Fields
+    Returns
     -------
         .shapes[shape_key]['cell_open_{d}_shape'] : Polygons
             Ratio of long / short axis for each polygon in `.shapes[shape_key]['cell_boundaries']`
@@ -188,7 +188,7 @@ def _opening(sdata: SpatialData, shape_key: str, proportion: float, recompute: b
     if feature_key in sdata.shapes[shape_key].keys() and not recompute:
         return
 
-    _radius(sdata, shape_key)
+    radius(sdata, shape_key)
 
     shapes = get_shape(sdata, shape_key, sync=False)
     d = proportion * sdata.shapes[shape_key][f"{shape_key}_radius"]
@@ -213,7 +213,7 @@ def _second_moment_polygon(centroid, pts):
     return second_moment
 
 
-def _second_moment(sdata: SpatialData, shape_key: str, recompute: bool = False):
+def second_moment(sdata: SpatialData, shape_key: str, recompute: bool = False):
     """Compute the second moment of each shape.
 
     Parameters
@@ -221,7 +221,7 @@ def _second_moment(sdata: SpatialData, shape_key: str, recompute: bool = False):
     sdata : SpatialData
         Spatial formatted SpatialData
 
-    Fields
+    Returns
     -------
         .shapes[shape_key]['{shape}_moment'] : float
             The second moment for each polygon
@@ -278,7 +278,7 @@ def _raster_polygon(poly, step=1):
     return xy
 
 
-def _raster(
+def raster(
     sdata: SpatialData,
     shape_key: str,
     points_key: str = "transcripts",
@@ -293,7 +293,7 @@ def _raster(
     sdata : SpatialData
         Spatial formatted SpatialData
 
-    Fields
+    Returns
     -------
         .shapes[shape_key]['{shape}_raster'] : np.array
             Long DataFrame of points annotated by shape from `.shapes[shape_key]['{shape_key}']`
@@ -331,7 +331,7 @@ def _raster(
     sdata.points[feature_key].attrs = transform
 
 
-def _perimeter(sdata: SpatialData, shape_key: str, recompute: bool = False):
+def perimeter(sdata: SpatialData, shape_key: str, recompute: bool = False):
     """Compute the perimeter of each shape.
 
     Parameters
@@ -339,7 +339,7 @@ def _perimeter(sdata: SpatialData, shape_key: str, recompute: bool = False):
     sdata : SpatialData
         Spatial formatted SpatialData
 
-    Fields
+    Returns
     -------
         `.shapes[shape_key]['{shape}_perimeter']` : np.array
             Perimeter of each polygon
@@ -358,7 +358,7 @@ def _perimeter(sdata: SpatialData, shape_key: str, recompute: bool = False):
     )
 
 
-def _radius(sdata: SpatialData, shape_key: str, recompute: bool = False):
+def radius(sdata: SpatialData, shape_key: str, recompute: bool = False):
     """Compute the radius of each cell.
 
     Parameters
@@ -366,7 +366,7 @@ def _radius(sdata: SpatialData, shape_key: str, recompute: bool = False):
     sdata : SpatialData
         Spatial formatted SpatialData
 
-    Fields
+    Returns
     -------
         .shapes[shape_key]['{shape}_radius'] : np.array
             Radius of each polygon in `obs['cell_shape']`
@@ -393,7 +393,7 @@ def _shape_radius(poly):
     ).mean()
 
 
-def _span(sdata: SpatialData, shape_key: str, recompute: bool = False):
+def span(sdata: SpatialData, shape_key: str, recompute: bool = False):
     """Compute the length of the longest diagonal of each shape.
 
     Parameters
@@ -401,7 +401,7 @@ def _span(sdata: SpatialData, shape_key: str, recompute: bool = False):
     sdata : SpatialData
         Spatial formatted SpatialData
 
-    Fields
+    Returns
     -------
         .shapes[shape_key]['{shape}_span'] : float
             Length of longest diagonal for each polygon
@@ -443,20 +443,20 @@ def list_shape_features():
 
 
 shape_features = dict(
-    area=_area,
-    aspect_ratio=_aspect_ratio,
-    bounds=_bounds,
-    density=_density,
-    opening=_opening,
-    perimeter=_perimeter,
-    radius=_radius,
-    raster=_raster,
-    second_moment=_second_moment,
-    span=_span,
+    area=area,
+    aspect_ratio=aspect_ratio,
+    bounds=bounds,
+    density=density,
+    opening=opening,
+    perimeter=perimeter,
+    radius=radius,
+    raster=raster,
+    second_moment=second_moment,
+    span=span,
 )
 
 
-def obs_stats(
+def shape_stats(
     sdata: SpatialData,
     feature_names: List[str] = ["area", "aspect_ratio", "density"],
 ):
@@ -470,7 +470,7 @@ def obs_stats(
     feature_names : list
         List of features to compute. See list of available features in `bento.tl.shape_features`.
 
-    Fields
+    Returns
     -------
         .shapes[shape_key]['{shape}_{feature}'] : np.array
             Feature of each polygon

@@ -9,10 +9,10 @@ from spatialdata.models import ShapesModel, TableModel
 from ..geometry import sjoin_points, sjoin_shapes
 
 
-def format_sdata(
+def prep(
     sdata: SpatialData,
     points_key: str = "transcripts",
-    feature_key: str  = "feature_name",
+    feature_key: str = "feature_name",
     instance_key: str = "cell_boundaries",
     shape_keys: List[str] = ["cell_boundaries", "nucleus_boundaries"],
 ) -> SpatialData:
@@ -61,22 +61,22 @@ def format_sdata(
             shape_sjoin.append(shape_key)
 
     if len(point_sjoin) > 0:
-        sdata = sjoin_points(
-            sdata=sdata, points_key=points_key, shape_keys=point_sjoin
-        )
+        sdata = sjoin_points(sdata=sdata, points_key=points_key, shape_keys=point_sjoin)
     if len(shape_sjoin) > 0:
         sdata = sjoin_shapes(
             sdata=sdata, instance_key=instance_key, shape_keys=shape_sjoin
-        )  
+        )
 
     # Recompute count table
-    table = TableModel.parse(sdata.aggregate(
-        values=points_key,
-        instance_key=instance_key,
-        by=instance_key,
-        value_key=feature_key,
-        aggfunc="count",
-    ).table)
+    table = TableModel.parse(
+        sdata.aggregate(
+            values=points_key,
+            instance_key=instance_key,
+            by=instance_key,
+            value_key=feature_key,
+            aggfunc="count",
+        ).table
+    )
 
     del sdata.table
     sdata.table = table

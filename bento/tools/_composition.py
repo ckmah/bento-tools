@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 from ..geometry import get_points
-#from .._utils import track
+# from .._utils import track
 
 from spatialdata._core.spatialdata import SpatialData
 
@@ -57,9 +57,26 @@ def _get_compositions(points: pd.DataFrame, shape_names: list) -> pd.DataFrame:
     return comp_stats
 
 
-def comp_diff(
-    sdata: SpatialData, shape_names: list, groupby: str, ref_group: str
-):
+def comp(sdata: SpatialData, shape_names: list):
+    """Calculate the average gene composition for shapes across all cells.
+
+    Parameters
+    ----------
+    sdata : spatialdata.SpatialData
+        Spatial formatted SpatialData object.
+    shape_names : list of str
+        Names of shapes to calculate compositions for.
+
+    """
+    points = get_points(sdata, astype="pandas")
+
+    # Get average gene compositions for each batch
+    comp_stats = _get_compositions(points, shape_names)
+
+    sdata.table.uns["comp_stats"] = comp_stats
+
+
+def comp_diff(sdata: SpatialData, shape_names: list, groupby: str, ref_group: str):
     """Calculate the average difference in gene composition for shapes across batches of cells. Uses the Wasserstein distance.
 
     Parameters

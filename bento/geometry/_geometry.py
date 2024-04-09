@@ -54,15 +54,11 @@ def sjoin_points(
         points.rename(columns={"index_right": shape_key}, inplace=True)
 
         set_points_metadata(sdata, points_key, points[shape_key])
-    
+
     return sdata
 
 
-def sjoin_shapes(
-        sdata: SpatialData, 
-        instance_key: str, 
-        shape_keys: List[str]
-):
+def sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
     """Adds polygon indexes to sdata.shapes[instance_key][shape_key] for point feature analysis
 
     Parameters
@@ -104,7 +100,9 @@ def sjoin_shapes(
 
         # save shape index as column in instance_key shape
         parent_shape.rename(columns={"index_right": shape_key}, inplace=True)
-        set_shape_metadata(sdata, shape_key=instance_key, metadata=parent_shape[shape_key])
+        set_shape_metadata(
+            sdata, shape_key=instance_key, metadata=parent_shape[shape_key]
+        )
 
         # Add instance_key shape index to shape
         parent_shape.index.name = "parent_index"
@@ -116,6 +114,7 @@ def sjoin_shapes(
         set_shape_metadata(sdata, shape_key=shape_key, metadata=instance_index)
 
     return sdata
+
 
 def get_points(
     sdata: SpatialData,
@@ -167,7 +166,8 @@ def get_points(
         return gpd.GeoDataFrame(
             points, geometry=gpd.points_from_xy(points.x, points.y), copy=True
         )
-    
+
+
 def get_shape(sdata: SpatialData, shape_key: str, sync: bool = True) -> gpd.GeoSeries:
     """Get a GeoSeries of Polygon objects from an SpatialData object.
 
@@ -199,6 +199,7 @@ def get_shape(sdata: SpatialData, shape_key: str, sync: bool = True) -> gpd.GeoS
 
     return sdata.shapes[shape_key].geometry
 
+
 def get_points_metadata(
     sdata: SpatialData,
     metadata_keys: Union[str, List[str]],
@@ -226,14 +227,14 @@ def get_points_metadata(
     if points_key not in sdata.points.keys():
         raise ValueError(f"Points key {points_key} not found in sdata.points")
     if astype not in ["pandas", "dask"]:
-        raise ValueError(
-            f"astype must be one of ['dask', 'pandas'], not {astype}"
-        )
+        raise ValueError(f"astype must be one of ['dask', 'pandas'], not {astype}")
     if isinstance(metadata_keys, str):
         metadata_keys = [metadata_keys]
     for key in metadata_keys:
         if key not in sdata.points[points_key].columns:
-            raise ValueError(f"Metadata key {key} not found in sdata.points[{points_key}]")
+            raise ValueError(
+                f"Metadata key {key} not found in sdata.points[{points_key}]"
+            )
 
     metadata = sdata.points[points_key][metadata_keys]
 
@@ -241,7 +242,8 @@ def get_points_metadata(
         return metadata.compute()
     elif astype == "dask":
         return metadata
-    
+
+
 def get_shape_metadata(
     sdata: SpatialData,
     metadata_keys: Union[str, List[str]],
@@ -269,9 +271,12 @@ def get_shape_metadata(
         metadata_keys = [metadata_keys]
     for key in metadata_keys:
         if key not in sdata.shapes[shape_key].columns:
-            raise ValueError(f"Metadata key {key} not found in sdata.shapes[{shape_key}]")
+            raise ValueError(
+                f"Metadata key {key} not found in sdata.shapes[{shape_key}]"
+            )
 
     return sdata.shapes[shape_key][metadata_keys]
+
 
 def set_points_metadata(
     sdata: SpatialData,
@@ -294,7 +299,7 @@ def set_points_metadata(
     """
     if points_key not in sdata.points.keys():
         raise ValueError(f"{points_key} not found in sdata.points")
-    
+
     if isinstance(metadata, list):
         metadata = pd.Series(metadata, index=sdata.points[points_key].index)
 
@@ -306,12 +311,15 @@ def set_points_metadata(
             column_names = [column_names]
         for i in range(len(column_names)):
             metadata = metadata.rename(columns={metadata.columns[i]: column_names[i]})
-        
+
     sdata.points[points_key] = sdata.points[points_key].reset_index(drop=True)
     for name, series in metadata.iteritems():
         series = series.fillna("")
-        metadata_series = dd.from_pandas(series, npartitions=sdata.points[points_key].npartitions).reset_index(drop=True)
+        metadata_series = dd.from_pandas(
+            series, npartitions=sdata.points[points_key].npartitions
+        ).reset_index(drop=True)
         sdata.points[points_key][name] = metadata_series
+
 
 def set_shape_metadata(
     sdata: SpatialData,
@@ -334,7 +342,7 @@ def set_shape_metadata(
     """
     if shape_key not in sdata.shapes.keys():
         raise ValueError(f"Shape {shape_key} not found in sdata.shapes")
-    
+
     if isinstance(metadata, list):
         metadata = pd.Series(metadata, index=sdata.shapes[shape_key].index)
 
@@ -350,6 +358,7 @@ def set_shape_metadata(
     sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(
         sdata.shapes[shape_key].index
     ).fillna("")
+
 
 def _check_points_sync(sdata, points_key):
     """
@@ -370,8 +379,9 @@ def _check_points_sync(sdata, points_key):
     points = sdata.points[points_key]
     if points.attrs["spatialdata_attrs"]["instance_key"] not in points.columns:
         raise ValueError(
-            f"Points {points_key} not synced to instance_key shape element. Run bento.io.format_sdata() to setup SpatialData object for bento-tools."
+            f"Points {points_key} not synced to instance_key shape element. Run bento.io.prep() to setup SpatialData object for bento-tools."
         )
+
 
 def _check_shape_sync(sdata, shape_key, instance_key):
     """
@@ -396,5 +406,5 @@ def _check_shape_sync(sdata, shape_key, instance_key):
         and shape_key not in sdata.shapes[instance_key].columns
     ):
         raise ValueError(
-            f"Shape {shape_key} not synced to instance_key shape element. Run bento.io.format_sdata() to setup SpatialData object for bento-tools."
+            f"Shape {shape_key} not synced to instance_key shape element. Run bento.io.prep() to setup SpatialData object for bento-tools."
         )

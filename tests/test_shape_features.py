@@ -171,9 +171,9 @@ class TestShapeFeatures(unittest.TestCase):
             "transform" in self.data.shapes["nucleus_boundaries"].attrs.keys()
         )
 
-    # Test case to check if obs_stats function calculates area, aspect_ratio and density for both cell_boundaries and nucleus_boundaries
-    def test_obs_stats(self):
-        bt.tl.obs_stats(sdata=self.data)
+    # Test case to check if shape_stats function calculates area, aspect_ratio and density for both cell_boundaries and nucleus_boundaries
+    def test_shape_stats(self):
+        bt.tl.shape_stats(sdata=self.data)
 
         # Check if cell_boundaries and nucleus_boundaries shape features are calculated
         self.assertTrue(
