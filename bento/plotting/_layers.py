@@ -107,15 +107,22 @@ def _polygons(sdata, shape, ax, hue=None, hide_outside=False, sync_shapes=True, 
         )
 
 
-def _raster(sdata, res, color, points_key="cell_raster", cbar=False, ax=None, **kwargs):
+def _raster(sdata, res, color, points_key, alpha, cbar=False, ax=None, **kwargs):
     """Plot gradient."""
 
     if ax is None:
         ax = plt.gca()
 
-    points = get_points(sdata, points_key=points_key, astype="pandas")
+    points = get_points(sdata, points_key=points_key, astype="pandas", sync=True)
     step = 1 / res
-    color_values = np.array(get_points_metadata(sdata, metadata_key=color, points_key=points_key))
+    color_values = np.array(
+        get_points_metadata(
+            sdata, 
+            metadata_keys=color, 
+            points_key=points_key
+        )[color].replace("", np.float32('nan'))
+    )
+
     # Infer value format and convert values to rgb
     # Handle color names and (r, g, b) tuples with matplotlib
     v1 = color_values[0]
