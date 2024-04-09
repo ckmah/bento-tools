@@ -22,7 +22,7 @@ scanpy = "^1.9.1"
 scipy = "^1.7.0"
 seaborn = "^0.12.1"
 Shapely = "^2.0.1"
-Sphinx = { version = "^4.1.2", extras = ["docs"] }
+Sphinx = { version = "^5.0.2", extras = ["docs"] }
 sphinx-autobuild = { version = "^2021.3.14", extras = ["docs"] }
 sphinx-book-theme = {version = "^1.0.0", extras = ["docs"] }
 sphinx-gallery = { version = "^0.10.1", extras = ["docs"] }
