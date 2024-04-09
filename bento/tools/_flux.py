@@ -124,6 +124,7 @@ def flux(
 
     # Embed each cell neighborhood independently
     cell_fluxs = []
+    rpoint_counts = []
     for i, cell in enumerate(tqdm(cells, leave=False)):
         cell_points = points_grouped.get_group(cell)
         rpoints = rpoints_grouped.get_group(cell)
@@ -144,6 +145,10 @@ def flux(
                 agg=None,
             )
         gene_count = gene_count.toarray()
+
+        # Count points in each neighborhood
+        total_count = gene_count.sum(axis=1)
+
         # embedding: distance neighborhood composition and cell composition
         # Compute composition of neighborhood
         flux_composition = gene_count / (gene_count.sum(axis=1).reshape(-1, 1))
@@ -154,10 +159,12 @@ def flux(
         cflux = csr_matrix(cflux)
 
         cell_fluxs.append(cflux)
+        rpoint_counts.append(total_count)
 
     # Stack all cells
     cell_fluxs = vstack(cell_fluxs) if len(cell_fluxs) > 1 else cell_fluxs[0]
     cell_fluxs.data = np.nan_to_num(cell_fluxs.data)
+    rpoints_counts = np.concatenate(rpoint_counts)
     pbar.update()
 
     # todo: Slow step, try algorithm="randomized" may be faster
@@ -169,8 +176,6 @@ def flux(
     flux_embed = pca_model.transform(cell_fluxs)
     variance_ratio = pca_model.explained_variance_ratio_
 
-    # For color visualization of flux embeddings
-    flux_color = vec2color(flux_embed, fmt="hex", vmin=0.1, vmax=0.9)
     pbar.update()
     pbar.set_description(emoji.emojize("Saving"))
 
@@ -186,11 +191,14 @@ def flux(
         ignore_index=False,
     )
 
+    dims = [0, 1, 2]
+    flux_color = list(vec2color(raster_points[gene_names].values[:, dims], alpha_vec=rpoints_counts))
     raster_points["flux_color"] = flux_color
     flux_df = raster_points.drop(columns=["x", "y", instance_key])
     set_points_metadata(sdata, points_key=f"{instance_key}_raster", metadata=flux_df)
 
     sdata.table.uns["flux_variance_ratio"] = variance_ratio
+    sdata.table.uns["flux_counts"] = rpoints_counts
     sdata.table.uns["flux_genes"] = gene_names  # gene names
 
     pbar.set_description(emoji.emojize("Done. :bento_box:"))
