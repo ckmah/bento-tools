@@ -35,11 +35,20 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
     "sphinx.ext.intersphinx",
+    "sphinx.ext.autodoc",
+    "sphinx_autodoc_typehints",
     "myst_nb",
     "sphinx_design",
 ]
 
-myst_enable_extensions = ["colon_fence", "html_image", "dollarmath"]
+myst_enable_extensions = [
+    "amsmath",
+    "colon_fence",
+    "deflist",
+    "dollarmath",
+    "html_image",
+    "html_admonition",
+]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -75,14 +84,18 @@ html_static_path = ["_static"]
 
 html_css_files = ["custom.css"]
 
-# -- Options for Autosummary, Autodoc, Napolean docstring format -------------------------------------------------
+# -- Options for Autosummary, Autodoc, typehints, Napolean docstring format -------------------------------------------------
 
 autosummary_generate = True
 autodoc_docstring_signature = True
+typehint_defaults = "braces"
+typehints_use_signature_return = True
+typehints_document_rtype = True
+always_use_bar_union = True
 napoleon_google_docstring = False
 napoleon_numpy_docstring = True
 napoleon_use_param = False
-napoleon_use_rtype = False
+napoleon_use_rtype = True
 numpydoc_show_class_members = False
 
 html_title = "bento-tools"
@@ -91,3 +104,18 @@ html_logo = "_static/bento-name.png"
 # -- Options for extensions -------------------------------------------------------------------------------
 
 nb_execution_mode = "off"
+
+# This is for including API docs in the toctree
+def setup(app):
+    """App setup hook."""
+    app.add_config_value(
+        "recommonmark_config",
+        {
+            "auto_toc_tree_section": "Contents",
+            "enable_auto_toc_tree": True,
+            "enable_math": True,
+            "enable_inline_math": False,
+            "enable_eval_rst": True,
+        },
+        True,
+    )
