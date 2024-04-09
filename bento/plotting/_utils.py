@@ -44,39 +44,3 @@ def savefig(plot_fn):
             print(f"Saved to {fname}")
 
     return wrapper
-
-
-def vec2color(
-    vec: np.ndarray,
-    alpha_vec: Optional[np.ndarray] = None,
-    fmt: Literal[
-        "rgb",
-        "hex",
-    ] = "hex",
-    vmin: float = 0,
-    vmax: float = 1,
-):
-    """Convert vector to color."""
-
-    # Grab the first 3 channels
-    color = vec[:, :3]
-    color = quantile_transform(color[:,:3])
-    color = minmax_scale(color, feature_range=(vmin, vmax))
-
-    # If vec has fewer than 3 channels, fill empty channels with 0
-    if color.shape[1] < 3:
-        color = np.pad(color, ((0, 0), (0, 3 - color.shape[1])), constant_values=0)
-
-    
-    # Add alpha channel
-    if alpha_vec is not None:
-        alpha = alpha_vec.reshape(-1, 1)
-        # alpha = quantile_transform(alpha)
-        alpha = alpha / alpha.max()
-        color = np.c_[color, alpha]
-
-    if fmt == "rgb":
-        pass
-    elif fmt == "hex":
-        color = np.apply_along_axis(mpl.colors.to_hex, 1, color, keep_alpha=True)
-    return color
