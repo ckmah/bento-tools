@@ -313,7 +313,7 @@ def set_points_metadata(
             metadata = metadata.rename(columns={metadata.columns[i]: column_names[i]})
 
     sdata.points[points_key] = sdata.points[points_key].reset_index(drop=True)
-    for name, series in metadata.iteritems():
+    for name, series in metadata.items():
         series = series.fillna("")
         metadata_series = dd.from_pandas(
             series, npartitions=sdata.points[points_key].npartitions
