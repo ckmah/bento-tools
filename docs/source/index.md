@@ -1,9 +1,25 @@
+:::{image} https://badge.fury.io/py/bento-tools.svg
+:alt: PyPI version
+:target: https://badge.fury.io/py/bento-tools
+:class: inline-link
+:::
 
-[![PyPI version](https://badge.fury.io/py/bento-tools.svg)](https://badge.fury.io/py/bento-tools)
-[![codecov](https://codecov.io/gh/ckmah/bento-tools/branch/master/graph/badge.svg?token=XVHDKNDCDT)](https://codecov.io/gh/ckmah/bento-tools)
-[![Documentation Status](https://readthedocs.org/projects/bento-tools/badge/?version=latest)](https://bento-tools.readthedocs.io/en/latest/?badge=latest)
-![PyPI - Downloads](https://img.shields.io/pypi/dm/bento-tools)
-[![GitHub stars](https://badgen.net/github/stars/ckmah/bento-tools)](https://GitHub.com/Naereen/ckmah/bento-tools) 
+:::{image} https://codecov.io/gh/ckmah/bento-tools/branch/master/graph/badge.svg?token=XVHDKNDCDT
+:alt: codecov
+:target: https://codecov.io/gh/ckmah/bento-tools
+:class: inline-link
+:::
+
+:::{image} https://readthedocs.org/projects/bento-tools/badge/?version=latest
+:alt: Documentation Status
+:target: https://bento-tools.readthedocs.io/en/latest/?badge=latest
+:class: inline-link
+:::
+
+:::{image} https://img.shields.io/pypi/dm/bento-tools
+:alt: PyPI - Downloads
+:class: inline-link
+:::
 
 
 # Bento
@@ -35,11 +51,14 @@ Bento is a Python toolkit for performing subcellular analysis of spatial transcr
 ::::
 
 ---
-[![GitHub license](https://img.shields.io/github/license/ckmah/bento-tools.svg)](https://github.com/ckmah/bento-tools/blob/master/LICENSE)
-
+:::{image} https://img.shields.io/github/license/ckmah/bento-tools.svg
+:alt: GitHub license
+:target: 
+:class: inline-link
+:::
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 1
 :hidden: true
    
 installation

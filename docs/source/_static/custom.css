@@ -15,6 +15,10 @@
     var(--pst-font-family-monospace-system) !important;
 }
 
+.inline-link {
+  display: inline-block;
+}
+
 /* Font size */
 /* --pst-font-size-base: 14px; base font size - applied at body / html level */
 

@@ -1,8 +1,6 @@
 ```{toctree}
-:maxdepth: 3
+:maxdepth: 2
 :hidden: true
-
-
 ```
 
 ```{eval-rst}
@@ -13,20 +11,26 @@
 
 Import Bento with:
 
-```python
-import bento as bt
+```{eval-rst}
+.. code-block:: python
+
+    import bento as bt
 ```
+
 
 Bento's API structure takes inspiration from other libraries in the Scverse ecosystem. It is organized under a set of modules including:
 
-- `bt.io`: provides out of the box compatibility with `SpatialData` objects
-- `bt.tl`: subcellular analysis tools
-- `bt.pl`: conveniently plot spatial data and embeddings
-- `bt.geo`: manipulating data structures
-- `bt.datasets`: included spatial transcriptomics datasets `WIP`
-- `bt.ut`: utility functions
+`bt.io`: provides out of the box compatibility with `SpatialData` objects
 
----
+`bt.tl`: subcellular analysis tools
+
+`bt.pl`: conveniently plot spatial data and embeddings
+
+`bt.geo`: manipulating data structures
+
+`bt.datasets`: included spatial transcriptomics datasets `WIP`
+
+`bt.ut`: utility functions
 
 # Read/Write
 
@@ -41,8 +45,6 @@ Bento is designed to work with [`SpatialData`](https://spatialdata.scverse.org/e
 
     prep
 ```
-
----
 
 # Tools
 
@@ -154,8 +156,6 @@ Methods for compartments-ecific gene-gene colocalization analyses.
     coloc_quotient
 ```
 
----
-
 # Plotting
 
 These are convenient functions for static 2D plots of cells, molecules, and embeddings. We generate `matplotlib` style figures for accessible publication quality plots. There are a couple additional functions summarizing results from `bt.tl` analysis.
@@ -250,8 +250,6 @@ Convenient methods for setting, getting, and reformatting data. These functions 
     set_points_metadata
     set_shape_metadata
 ```
-
----
 
 # Utility functions
 
