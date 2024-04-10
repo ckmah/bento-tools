@@ -59,33 +59,6 @@ def lp_dist(sdata, percentage=False, scale=1, fname=None):
     plt.suptitle(f"Localization Patterns\n{sample_labels.shape[0]} samples")
 
 @savefig
-def lp_gene_dist(sdata, fname=None):
-    """Plot the cell fraction distribution of each pattern as a density plot.
-
-    Parameters
-    ----------
-    sdata : SpatialData
-        Spatial formatted SpatialData
-    fname : str, optional
-        Save the figure to specified filename, by default None
-    """
-    lp_stats(sdata)
-
-    col_names = [f"{p}_fraction" for p in PATTERN_NAMES]
-    gene_frac = sdata.table.var[col_names]
-    gene_frac.columns = PATTERN_NAMES
-    # Plot frequency distributions
-    sns.displot(
-        data=gene_frac,
-        kind="kde",
-        multiple="layer",
-        height=3,
-        palette=PATTERN_COLORS,
-    )
-    plt.xlim(0, 1)
-    sns.despine()
-
-@savefig
 def lp_genes(
     sdata: SpatialData,
     groupby: str = "feature_name",
@@ -122,7 +95,7 @@ def lp_genes(
     **kwargs
         Options to pass to matplotlib plotting method.
     """
-    lp_stats(sdata)
+    lp_stats(sdata, instance_key=instance_key)
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
 
