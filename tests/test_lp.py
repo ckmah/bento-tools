@@ -1,12 +1,18 @@
-import unittest
-import bento as bt
-import spatialdata as sd
 import random
+import unittest
+
+import matplotlib.pyplot as plt
+import spatialdata as sd
+
+import bento as bt
+import os
 
 
 class TestLp(unittest.TestCase):
     def setUp(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
+        self.imgdir = "/".join(bt.__file__.split("/")[:-2]) + "/tests/img/lp"
+        os.makedirs(self.imgdir, exist_ok=True)
         self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
         self.data = bt.io.format_sdata(
             sdata=self.data,
@@ -23,6 +29,17 @@ class TestLp(unittest.TestCase):
             groupby="feature_name",
         )
         bt.tl.lp_stats(sdata=self.data, instance_key="cell_boundaries")
+
+        # Assign random cell stage to each cell
+        stages = ["G0", "G1", "S", "G2", "M"]
+        phenotype = []
+        for i in range(len(self.data.shapes["cell_boundaries"])):
+            phenotype.append(random.choice(stages))
+        self.data.shapes["cell_boundaries"]["cell_stage"] = phenotype
+
+        bt.tl.lp_diff_discrete(
+            sdata=self.data, instance_key="cell_boundaries", phenotype="cell_stage"
+        )
 
     def test_lp(self):
         lp_columns = [
@@ -72,17 +89,6 @@ class TestLp(unittest.TestCase):
             "log2fc",
         ]
 
-        # Assign random cell stage to each cell
-        stages = ["G0", "G1", "S", "G2", "M"]
-        phenotype = []
-        for i in range(len(self.data.shapes["cell_boundaries"])):
-            phenotype.append(random.choice(stages))
-        self.data.shapes["cell_boundaries"]["cell_stage"] = phenotype
-
-        bt.tl.lp_diff_discrete(
-            sdata=self.data, instance_key="cell_boundaries", phenotype="cell_stage"
-        )
-
         # Check lp_diff_discrete dataframe in sdata.table.uns
         for column in lp_diff_discrete_columns:
             self.assertTrue(column in self.data.table.uns["diff_cell_stage"].columns)
@@ -115,3 +121,39 @@ class TestLp(unittest.TestCase):
             self.assertTrue(
                 column in self.data.table.uns["diff_cell_boundaries_area"].columns
             )
+
+    def test_lp_dist_plot(self):
+        plt.figure()
+        bt.pl.lp_dist(self.data, fname=f"{self.imgdir}/lp_dist.png")
+
+    def test_lp_genes_plot(self):
+        plt.figure()
+        bt.pl.lp_genes(
+            self.data,
+            groupby="feature_name",
+            points_key="transcripts",
+            instance_key="cell_boundaries",
+            fname=f"{self.imgdir}/lp_genes.png",
+        )
+
+    def test_lp_diff_discrete_plot(self):
+        area_binary = []
+        median = self.data.shapes["cell_boundaries"]["cell_boundaries_area"].median()
+        for i in range(len(self.data.shapes["cell_boundaries"])):
+            cell_boundaries_area = self.data.shapes["cell_boundaries"][
+                "cell_boundaries_area"
+            ][i]
+            if cell_boundaries_area > median:
+                area_binary.append("above")
+            else:
+                area_binary.append("below")
+        self.data.shapes["cell_boundaries"]["area_binary"] = area_binary
+
+        bt.tl.lp_diff_discrete(self.data, phenotype="area_binary")
+
+        plt.figure()
+        bt.pl.lp_diff_discrete(
+            self.data,
+            phenotype="area_binary",
+            fname=f"{self.imgdir}/lp_diff_discrete.png",
+        )

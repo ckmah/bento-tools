@@ -2,13 +2,14 @@ import unittest
 import bento as bt
 import spatialdata as sd
 import matplotlib.pyplot as plt
-
+import os
 
 # Test if plotting functions run without error
 class TestPlotting(unittest.TestCase):
     def setUp(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
-        self.imgdir = "/".join(bt.__file__.split("/")[:-2]) + "/tests/img/"
+        self.imgdir = "/".join(bt.__file__.split("/")[:-2]) + "/tests/img/plotting"
+        os.makedirs(self.imgdir, exist_ok=True)
         self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
         self.data = bt.io.format_sdata(
             sdata=self.data,
@@ -19,106 +20,106 @@ class TestPlotting(unittest.TestCase):
         )
 
     def test_points_plotting(self):
+        plt.figure()
         bt.pl.points(
             self.data, 
-            fname=f"{self.imgdir}points/points_uncolored_synced"
+            fname=f"{self.imgdir}/points_uncolored_synced"
         )
-        plt.figure()
 
+        plt.figure()
         bt.pl.points(
             self.data, 
             sync_points=False, 
-            fname=f"{self.imgdir}points/points_uncolored_unsynced"
+            fname=f"{self.imgdir}/points_uncolored_unsynced.png"
         )
-        plt.figure()
 
+        plt.figure()
         bt.pl.points(
             self.data, 
             hue="feature_name", 
             legend=False, 
-            fname=f"{self.imgdir}points/points_colored_synced"
+            fname=f"{self.imgdir}/points_colored_synced.png"
         )
-        plt.figure()
 
+        plt.figure()
         bt.pl.points(
             self.data, 
             hue="feature_name", 
             legend=False, 
             sync_points=False, 
-            fname=f"{self.imgdir}points/points_colored_unsynced"
+            fname=f"{self.imgdir}/points_colored_unsynced.png"
         )
-        plt.figure()
 
         genes = ["LUM", "POSTN", "CCDC80"]
+        plt.figure()
         bt.pl.points(
             self.data,
             hue="feature_name", 
             hue_order=genes, 
             legend=False, 
-            fname=f"{self.imgdir}points/points_subseted_genes_synced"
+            fname=f"{self.imgdir}/points_subseted_genes_synced.png"
         )
-        plt.figure()
 
+        plt.figure()
         bt.pl.points(
             self.data, 
             hue="feature_name", 
             hue_order=genes, 
             legend=False, 
             sync_points=False, 
-            fname=f"{self.imgdir}points/points_subseted_genes_unsynced"
+            fname=f"{self.imgdir}/points_subseted_genes_unsynced.png"
         )
-        plt.figure()
 
     def test_density_plotting(self):
+        plt.figure()
         bt.pl.density(
             self.data, 
-            fname=f"{self.imgdir}density/density_hist"
+            fname=f"{self.imgdir}/density_hist.png"
         )
-        plt.figure()
 
+        plt.figure()
         bt.pl.density(
             self.data, 
             kind="kde", 
-            fname=f"{self.imgdir}density/density_kde"
+            fname=f"{self.imgdir}/density_kde.png"
         )
-        plt.figure()
 
+        plt.figure()
         bt.pl.density(
             self.data, 
             hue="feature_name", 
             legend=False, 
-            fname=f"{self.imgdir}density/density_hist_gene"
+            fname=f"{self.imgdir}/density_hist_gene.png"
         )
-        plt.figure()
 
+        plt.figure()
         bt.pl.density(
             self.data, 
             hue="feature_name", 
             legend=False, 
             kind="kde", 
-            fname=f"{self.imgdir}density/density_kde_gene"
+            fname=f"{self.imgdir}/density_kde_gene.png"
         )
-        plt.figure()
 
         genes = ["LUM", "POSTN", "CCDC80"]
+        plt.figure()
         bt.pl.density(
             self.data, 
             hue="feature_name", 
             hue_order=genes, 
             legend=False, 
-            fname=f"{self.imgdir}density/density_hist_subsetted_genes"
+            fname=f"{self.imgdir}/density_hist_subsetted_genes.png"
         )
-        plt.figure()
         
+        plt.figure()
         bt.pl.density(
             self.data, 
             hue="feature_name", 
             hue_order=genes, 
             legend=False, 
             kind="kde", 
-            fname=f"{self.imgdir}density/density_kde_subsetted_genes"
+            fname=f"{self.imgdir}/density_kde_subsetted_genes.png"
         )
-        plt.figure()
 
         fig, axes = plt.subplots(1, 2, figsize=(8, 4))
         bt.pl.density(self.data, ax=axes[0], title="default styling")
@@ -129,56 +130,55 @@ class TestPlotting(unittest.TestCase):
             frame_visible=True,
             square=True,
             title="square plot + axis",
-            fname=f"{self.imgdir}density/density_square",
+            fname=f"{self.imgdir}/density_square.png"
         )
         plt.tight_layout()
-        plt.figure()
 
     def test_shapes_plotting(self):
+        plt.figure()
         bt.pl.shapes(
             self.data, 
-            fname=f"{self.imgdir}shapes/shapes_uncolored_synced"
+            fname=f"{self.imgdir}/shapes_uncolored_synced.png"
         )
-        plt.figure()
 
+        plt.figure()
         bt.pl.shapes(
             self.data,
             sync_shapes=False, 
-            fname=f"{self.imgdir}shapes/shapes_uncolored_unsynced"
+            fname=f"{self.imgdir}/shapes_uncolored_unsynced.png"
         )
-        plt.figure()
 
+        plt.figure()
         bt.pl.shapes(
             self.data, 
             color_style="fill", 
-            fname=f"{self.imgdir}shapes/shapes_colored_synced"
+            fname=f"{self.imgdir}/shapes_colored_synced.png"
         )
-        plt.figure()
 
+        plt.figure()
         bt.pl.shapes(
             self.data, 
             color_style="fill",
             sync_shapes=False, 
-            fname=f"{self.imgdir}shapes/shapes_colored_unsynced"
+            fname=f"{self.imgdir}/shapes_colored_unsynced.png"
         )
-        plt.figure()
 
+        plt.figure()
         bt.pl.shapes(
             self.data, 
             hue="cell",
             color_style="fill",
-            fname=f"{self.imgdir}shapes/shapes_cell_colored_synced"
+            fname=f"{self.imgdir}/shapes_cell_colored_synced.png"
         )
-        plt.figure()
 
+        plt.figure()
         bt.pl.shapes(
             self.data, 
             hue="cell",
             color_style="fill",
             sync_shapes=False, 
-            fname=f"{self.imgdir}shapes/shapes_cell_colored_unsynced"
+            fname=f"{self.imgdir}/shapes_cell_colored_unsynced.png"
         )
-        plt.figure()
         
         fig, ax = plt.subplots()
         bt.pl.shapes(self.data, shapes="cell_boundaries", linestyle="--", ax=ax)
@@ -188,6 +188,6 @@ class TestPlotting(unittest.TestCase):
             edgecolor="black",
             facecolor="lightseagreen",
             ax=ax,
-            fname=f"{self.imgdir}shapes/shapes_nucleus_colored_synced"
+            fname=f"{self.imgdir}/shapes_nucleus_colored_synced.png"
         )
     

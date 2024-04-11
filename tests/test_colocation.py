@@ -1,11 +1,17 @@
 import unittest
-import bento as bt
-import spatialdata as sd
 
+import spatialdata as sd
+from matplotlib import pyplot as plt
+
+import bento as bt
+import os
 
 class TestColocation(unittest.TestCase):
     def setUp(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
+        self.imgdir = "/".join(bt.__file__.split("/")[:-2]) + "/tests/img/colocation"
+        os.makedirs(self.imgdir, exist_ok=True)
+
         self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
         self.data = bt.io.format_sdata(
             sdata=self.data,
@@ -14,15 +20,15 @@ class TestColocation(unittest.TestCase):
             instance_key="cell_boundaries",
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
         )
-        
+
+        self.rank = 3
+
         bt.tl.coloc_quotient(self.data, shapes=["cell_boundaries"])
+        bt.tl.colocation(self.data, ranks=range(1, self.rank + 1), plot_error=False)
 
     def test_coloc_quotient(self):
         # Check that clq is in self.data.table.uns
         self.assertTrue("clq" in self.data.table.uns)
-
-    def test_colocation(self):
-        bt.tl.colocation(self.data, ranks=range(1, 3), plot_error=False)
 
         # Check that cell_boundaries is in self.data.table.uns["clq"]
         self.assertTrue("cell_boundaries" in self.data.table.uns["clq"])
@@ -63,3 +69,9 @@ class TestColocation(unittest.TestCase):
         self.assertTrue("factors_error" in self.data.table.uns)
         self.assertTrue("rmse" in self.data.table.uns["factors_error"])
         self.assertTrue("rank" in self.data.table.uns["factors_error"])
+
+    def test_colocation_plot(self):
+        plt.figure()
+        bt.pl.colocation(
+            self.data, rank=self.rank, fname=f"{self.imgdir}/colocation.png"
+        )
