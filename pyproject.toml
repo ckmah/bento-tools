@@ -44,6 +44,7 @@ docs = [
     "sphinx-autobuild>=2024.2.4",
     "sphinxawesome-theme>=5.1.1",
     "myst-nb>=1.0.0",
+    "sphinx-autodoc-typehints>=2.0.1",
 ]
 
 [build-system]
@@ -58,4 +59,4 @@ dev-dependencies = []
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/bento_tools"]
+packages = ["bento"]

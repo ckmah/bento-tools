@@ -1,11 +1,11 @@
 ```{toctree}
-:maxdepth: 2
 :hidden: true
 ```
 
 ```{eval-rst}
 .. module:: bento
 ```
+
 
 # {octicon}`code-square` API
 
@@ -32,7 +32,7 @@ Bento's API structure takes inspiration from other libraries in the Scverse ecos
 
 `bt.ut`: utility functions
 
-# Read/Write
+## Read/Write
 
 Bento is designed to work with [`SpatialData`](https://spatialdata.scverse.org/en/latest/) objects out of the box! Check out [SpatialData documentation](https://spatialdata.scverse.org/en/latest/tutorials/notebooks/notebooks.html) to learn how to bring your own data, whether it is from commercial platforms or a custom data format. 
 
@@ -46,9 +46,9 @@ Bento is designed to work with [`SpatialData`](https://spatialdata.scverse.org/e
     prep
 ```
 
-# Tools
+## Tools
 
-## Point Features
+### Point Features
 
 Compute spatial summary statistics describing groups of molecules e.g. distance to the cell membrane, relative symmetry, dispersion, etc. The set of available point features is described in the Point Feature Catalog. Use the function `bt.tl.analyze_points()` to compute features and add your own custom calculation. See the [tutorial](https://bento-tools.github.io/bento/tutorials/TBD.html) for more information.
 
@@ -64,12 +64,11 @@ Compute spatial summary statistics describing groups of molecules e.g. distance 
     register_point_feature
 ```
 
-## Shape Features
+### Shape Features
 
 Compute spatial properties of shape features e.g. area, aspect ratio, etc. of the cell, nucleus, or other region of interest. The set of available shape features is described in the Shape Feature Catalog. Use the function `bt.analyze_points()` to compute features and add your own custom calculation. See the [tutorial](https://bento-tools.github.io/bento/tutorials/TBD.html) for more information.
 
 ```{eval-rst}
-.. currentmodule:: bento.tl
 
 .. autosummary::
     :toctree: api
@@ -81,12 +80,11 @@ Compute spatial properties of shape features e.g. area, aspect ratio, etc. of th
     register_shape_feature
 ```
 
-### Shape Feature Catalog
+#### Shape Feature Catalog
 
 The set of implemented shape features is described below. Each feature is computed using the `bt.analyze_shapes()` function.
 
 ```{eval-rst}
-.. currentmodule:: bento.tl
 
 .. autosummary::
     :toctree: api
@@ -105,12 +103,11 @@ The set of implemented shape features is described below. Each feature is comput
 
 ```
 
-## RNAflux: Subcellular RNA embeddings and domains
+### RNAflux: Subcellular RNA embeddings and domains
 
 Methods for computing RNAflux embeddings and semantic segmentation of subcellular domains.
 
 ```{eval-rst}
-.. currentmodule:: bento.tl
 
 .. autosummary::
     :toctree: api
@@ -124,12 +121,11 @@ Methods for computing RNAflux embeddings and semantic segmentation of subcellula
     load_gene_sets
 ```
 
-## RNAforest: Predict RNA localization patterns
+### RNAforest: Predict RNA localization patterns
 
 Perform multilabel classification of RNA localization patterns using spatial summary statistics as features.
 
 ```{eval-rst}
-.. currentmodule:: bento.tl
 
 .. autosummary::
     :toctree: api
@@ -141,12 +137,11 @@ Perform multilabel classification of RNA localization patterns using spatial sum
     lp_diff_continuous
 ```
 
-## RNAcoloc: Colocalization analysis
+### RNAcoloc: Colocalization analysis
 
 Methods for compartments-ecific gene-gene colocalization analyses.
 
 ```{eval-rst}
-.. currentmodule:: bento.tl
 
 .. autosummary::
     :toctree: api
@@ -156,11 +151,11 @@ Methods for compartments-ecific gene-gene colocalization analyses.
     coloc_quotient
 ```
 
-# Plotting
+## Plotting
 
 These are convenient functions for static 2D plots of cells, molecules, and embeddings. We generate `matplotlib` style figures for accessible publication quality plots. There are a couple additional functions summarizing results from `bt.tl` analysis.
 
-## Spatial plots
+### Spatial plots
 
 ```{eval-rst}
 .. currentmodule:: bento.pl
@@ -174,10 +169,9 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
     shapes
 ```
 
-## Shape features
+### Shape features
 
 ```{eval-rst}
-.. currentmodule:: bento.pl
 
 .. autosummary::
     :toctree: api
@@ -186,10 +180,9 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
     shape_stats
 ```
 
-## RNAflux
+### RNAflux
 
 ```{eval-rst}
-.. currentmodule:: bento.pl
 
 .. autosummary::
     :toctree: api
@@ -201,10 +194,9 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
     fe
 ```
 
-## RNAforest
+### RNAforest
 
 ```{eval-rst}
-.. currentmodule:: bento.pl
 
 .. autosummary::
     :toctree: api
@@ -216,10 +208,9 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
     lp_genes
 ```
 
-## Colocalization analysis
+### Colocalization analysis
 
 ```{eval-rst}
-.. currentmodule:: bento.pl
 
 .. autosummary::
     :toctree: api
@@ -229,8 +220,7 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
     colocation
 ```
 
----
-# Manipulating spatial data
+## Manipulating spatial data
 
 Convenient methods for setting, getting, and reformatting data. These functions are used internally by other functions in Bento.
 
@@ -251,7 +241,7 @@ Convenient methods for setting, getting, and reformatting data. These functions 
     set_shape_metadata
 ```
 
-# Utility functions
+## Utility functions
 
 ```{eval-rst}
 .. currentmodule:: bento.ut
