@@ -5,25 +5,24 @@ import emoji
 import geopandas as gpd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-
 import numpy as np
 import pandas as pd
 import pkg_resources
 import rasterio
 import rasterio.features
 import shapely
-from spatialdata._core.spatialdata import SpatialData
-from spatialdata.models import PointsModel, ShapesModel
 from kneed import KneeLocator
 from minisom import MiniSom
-from shapely import Polygon
 from scipy.sparse import csr_matrix, vstack
+from shapely import Polygon
 from sklearn.decomposition import TruncatedSVD
 from sklearn.preprocessing import StandardScaler, minmax_scale, quantile_transform
 from sklearn.utils import resample
+from spatialdata._core.spatialdata import SpatialData
+from spatialdata.models import PointsModel, ShapesModel
 from tqdm.auto import tqdm
 
-from ..geometry import get_points, sjoin_points, set_points_metadata
+from ..geometry import get_points, get_shape_metadata, set_points_metadata, sjoin_points
 from ..tools._neighborhoods import _count_neighbors
 from ..tools._shape_features import analyze_shapes
 
@@ -35,8 +34,9 @@ def flux(
     feature_key: str = "feature_name",
     method: Literal["knn", "radius"] = "radius",
     n_neighbors: Optional[int] = None,
-    radius: Optional[int] = 50,
-    res: int = 0.1,
+    radius: Optional[float] = None,
+    res: Optional[float] = 1,
+    train_size: Optional[float] = 1,
     random_state: int = 11,
     recompute: bool = False,
 ):
@@ -60,7 +60,7 @@ def flux(
     n_neighbors : int
         Number of neighbors to use for local neighborhood.
     radius : float
-        Radius to use for local neighborhood.
+        Fraction of mean cell radius to use for local neighborhood.
     res : float
         Resolution to use for rendering embedding. Default 0.05 samples at 5% original resolution (5 units between pixels)
 
@@ -85,9 +85,24 @@ def flux(
     ):
         return
 
-    if n_neighbors is None and radius is None:
-        radius = 50
+    if method == "radius":
+        analyze_shapes(sdata, instance_key, "radius", progress=False, recompute=True)
+        mean_radius = (
+            get_shape_metadata(
+                sdata, shape_key=instance_key, metadata_keys=f"{instance_key}_radius"
+            )
+            .mean()
+            .values[0]
+        )
+        # Default radius = 50% of average cell radius
+        if radius is None:
+            radius = mean_radius / 2
+        # If radius is a fraction, use that fraction of average cell radius
+        elif radius <= 1:
+            radius = radius * mean_radius
+        # If radius is an integer, use that as the radius
 
+    attrs = sdata.points[points_key].attrs
     points = get_points(sdata, points_key=points_key, astype="pandas", sync=True)
     points = points[[instance_key, feature_key, "x", "y"]].sort_values(instance_key)
 
@@ -105,8 +120,11 @@ def flux(
     )
 
     raster_points = get_points(
-        sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=True
+        sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=False
     ).sort_values(instance_key)
+    raster_points = PointsModel.parse(raster_points)
+    sdata.points[f"{instance_key}_raster"] = raster_points
+    sdata.points[f"{instance_key}_raster"].attrs = attrs
 
     # Extract gene names and codes
     gene_names = points[feature_key].cat.categories.tolist()
@@ -170,32 +188,44 @@ def flux(
     # todo: Slow step, try algorithm="randomized" may be faster
     pbar.set_description(emoji.emojize("Reducing"))
     n_components = min(n_genes - 1, 10)
-    pca_model = TruncatedSVD(
+
+    train_n = int(train_size * len(cells))
+    train_x = resample(
+        cell_fluxs,
+        replace=False,
+        n_samples=train_n,
+        random_state=random_state,
+    )
+    model = TruncatedSVD(
         n_components=n_components, algorithm="randomized", random_state=random_state
-    ).fit(cell_fluxs)
-    flux_embed = pca_model.transform(cell_fluxs)
-    variance_ratio = pca_model.explained_variance_ratio_
+    ).fit(train_x)
+    flux_embed = model.transform(cell_fluxs)
+    variance_ratio = model.explained_variance_ratio_
 
     pbar.update()
     pbar.set_description(emoji.emojize("Saving"))
 
-    flux_df = pd.DataFrame(cell_fluxs.todense().tolist(), columns=gene_names)
-    flux_embed_df = pd.DataFrame(
-        flux_embed.tolist(),
-        columns=[f"flux_embed_{i}" for i in range(len(flux_embed.tolist()[0]))],
-    )
-    raster_points = pd.concat(
-        [raster_points, flux_df, flux_embed_df],
-        axis=1,
-        join="outer",
-        ignore_index=False,
-    )
+    embed_names = [f"flux_embed_{i}" for i in range(flux_embed.shape[1])]
+    flux_color = vec2color(flux_embed, alpha_vec=rpoints_counts)
 
-    dims = [0, 1, 2]
-    flux_color = list(vec2color(raster_points[gene_names].values[:, dims], alpha_vec=rpoints_counts))
-    raster_points["flux_color"] = flux_color
-    flux_df = raster_points.drop(columns=["x", "y", instance_key])
-    set_points_metadata(sdata, points_key=f"{instance_key}_raster", metadata=flux_df)
+    set_points_metadata(
+        sdata,
+        points_key=f"{instance_key}_raster",
+        metadata=cell_fluxs.todense().A,
+        column_names=gene_names,
+    )
+    set_points_metadata(
+        sdata,
+        points_key=f"{instance_key}_raster",
+        metadata=flux_embed,
+        column_names=embed_names,
+    )
+    set_points_metadata(
+        sdata,
+        points_key=f"{instance_key}_raster",
+        metadata=flux_color,
+        column_names="flux_color",
+    )
 
     sdata.table.uns["flux_variance_ratio"] = variance_ratio
     sdata.table.uns["flux_counts"] = rpoints_counts
@@ -220,14 +250,13 @@ def vec2color(
 
     # Grab the first 3 channels
     color = vec[:, :3]
-    color = quantile_transform(color[:,:3])
+    color = quantile_transform(color[:, :3])
     color = minmax_scale(color, feature_range=(vmin, vmax))
 
     # If vec has fewer than 3 channels, fill empty channels with 0
     if color.shape[1] < 3:
         color = np.pad(color, ((0, 0), (0, 3 - color.shape[1])), constant_values=0)
 
-    
     # Add alpha channel
     if alpha_vec is not None:
         alpha = alpha_vec.reshape(-1, 1)
@@ -248,8 +277,8 @@ def fluxmap(
     instance_key: str = "cell_boundaries",
     n_clusters: Union[Iterable[int], int] = range(2, 9),
     num_iterations: int = 1000,
-    train_size: float = 0.2,
-    res: float = 0.1,
+    train_size: float = 1,
+    res: float = 1,
     random_state: int = 11,
     plot_error: bool = True,
 ):
@@ -431,7 +460,7 @@ def fluxmap(
     for key in old_shapes:
         del sdata.shapes[key]
 
-    transform = sdata.shapes[instance_key].attrs
+    sd_attrs = sdata.shapes[instance_key].attrs
     fluxmap_df = fluxmap_df.reindex(sdata.table.obs_names).where(
         fluxmap_df.notna(), other=Polygon()
     )
@@ -439,7 +468,7 @@ def fluxmap(
         sdata.shapes[fluxmap] = ShapesModel.parse(
             gpd.GeoDataFrame(geometry=fluxmap_df[fluxmap])
         )
-        sdata.shapes[fluxmap].attrs = transform
+        sdata.shapes[fluxmap].attrs = sd_attrs
 
     old_cols = sdata.points[points_key].columns[
         sdata.points[points_key].columns.str.startswith("fluxmap")
