@@ -53,7 +53,7 @@ def sjoin_points(
         points.loc[points["index_right"].isna(), "index_right"] = ""
         points.rename(columns={"index_right": shape_key}, inplace=True)
 
-        set_points_metadata(sdata, points_key, points[shape_key])
+        set_points_metadata(sdata, points_key, points[shape_key].astype('category'))
     
     return sdata
 
