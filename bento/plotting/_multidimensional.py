@@ -78,7 +78,7 @@ def obs_stats(
 
     Parameters
     ----------
-    data : SpatialData
+    sdata : SpatialData
         Spatial formatted SpatialData
     cols : list
         List of columns to plot
