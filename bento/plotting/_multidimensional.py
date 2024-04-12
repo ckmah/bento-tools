@@ -58,6 +58,8 @@ def _quantiles(data: pd.DataFrame, x: str, **kwargs):
 @savefig
 def obs_stats(
     sdata,
+    instance_key="cell_boundaries",
+    nucleus_key="nucleus_boundaries",
     cols=[
         "cell_boundaries_area",
         "cell_boundaries_aspect_ratio",
@@ -76,10 +78,10 @@ def obs_stats(
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    sdata : SpatialData
+        Spatial formatted SpatialData
     cols : list
-        List of obs columns to plot
+        List of columns to plot
     groupby : str, optional
         Column in obs to groupby, by default None
     """
@@ -94,7 +96,6 @@ def obs_stats(
     stats_long["var"] = stats_long["variable"].apply(
         lambda x: "_".join(x.split("_")[2:])
     )
-
     # linecolor = sns.axes_style()["axes.edgecolor"]
 
     g = sns.FacetGrid(
