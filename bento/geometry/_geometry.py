@@ -53,7 +53,7 @@ def sjoin_points(
         points.loc[points["index_right"].isna(), "index_right"] = ""
         points.rename(columns={"index_right": shape_key}, inplace=True)
 
-        set_points_metadata(sdata, points_key, points[shape_key])
+        set_points_metadata(sdata, points_key, points[shape_key], columns=shape_key)
 
     return sdata
 
@@ -88,11 +88,19 @@ def sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
     if len(shape_keys) == 0:
         return sdata
 
-    parent_shape = sdata.shapes[instance_key]
+    parent_shape = gpd.GeoDataFrame(sdata.shapes[instance_key])
 
     # sjoin shapes to instance_key shape
     for shape_key in shape_keys:
-        child_shape = gpd.GeoDataFrame(geometry=sdata.shapes[shape_key]["geometry"])
+        child_shape = sdata.shapes[shape_key]["geometry"]
+
+        # Hack for polygons that are 99% contained in parent shape
+        child_shape = gpd.GeoDataFrame(
+            geometry=child_shape.buffer(
+                child_shape.minimum_bounding_radius().mean() * -0.05
+            )
+        )
+
         parent_shape = parent_shape.sjoin(child_shape, how="left", predicate="contains")
         parent_shape = parent_shape[~parent_shape.index.duplicated(keep="last")]
         parent_shape.loc[parent_shape["index_right"].isna(), "index_right"] = ""
@@ -282,7 +290,7 @@ def set_points_metadata(
     sdata: SpatialData,
     points_key: str,
     metadata: Union[List, pd.Series, pd.DataFrame, np.ndarray],
-    column_names: Optional[Union[str, List[str]]] = None,
+    columns: Union[str, List[str]],
 ):
     """Write metadata in SpatialData points element as column(s). Aligns metadata index to shape index if present.
 
@@ -292,26 +300,17 @@ def set_points_metadata(
         Spatial formatted SpatialData object
     points_key : str
         Name of element in sdata.points
-    metadata : pd.Series, pd.DataFrame
-        Metadata to set for points. Index must be a (sub)set of points index.
+    metadata : pd.Series, pd.DataFrame, np.ndarray
+        Metadata to set for points. Assumes input is already aligned to points index.
     column_names : str or list of str, optional
         Name of column(s) to set. If None, use metadata column name(s), by default None
     """
     if points_key not in sdata.points.keys():
         raise ValueError(f"{points_key} not found in sdata.points")
 
-    points_index = sdata.points[points_key].index
+    columns = [columns] if isinstance(columns, str) else columns
 
-    if isinstance(metadata, list):
-        metadata = pd.Series(metadata, index=points_index)
-
-    if isinstance(metadata, pd.Series) or isinstance(metadata, np.ndarray):
-        metadata = pd.DataFrame(metadata)
-
-    if column_names is not None:
-        metadata.columns = (
-            [column_names] if isinstance(column_names, str) else column_names
-        )
+    metadata = pd.DataFrame(np.array(metadata), columns=columns)
 
     sdata.points[points_key] = sdata.points[points_key].reset_index(drop=True)
     for name, series in metadata.items():

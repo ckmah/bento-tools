@@ -43,7 +43,7 @@ def flux(
     """
     RNAflux: Embedding each pixel as normalized local composition normalized by cell composition.
     For k-nearest neighborhoods or "knn", method, specify n_neighbors. For radius neighborhoods, specify radius.
-    The default method is "radius" with radius=50. RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
+    The default method is "radius" with radius = 1/2 of cell radius. RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
 
     Parameters
     ----------
@@ -212,19 +212,19 @@ def flux(
         sdata,
         points_key=f"{instance_key}_raster",
         metadata=cell_fluxs.todense().A,
-        column_names=gene_names,
+        columns=gene_names,
     )
     set_points_metadata(
         sdata,
         points_key=f"{instance_key}_raster",
         metadata=flux_embed,
-        column_names=embed_names,
+        columns=embed_names,
     )
     set_points_metadata(
         sdata,
         points_key=f"{instance_key}_raster",
         metadata=flux_color,
-        column_names="flux_color",
+        columns="flux_color",
     )
 
     sdata.table.uns["flux_variance_ratio"] = variance_ratio
@@ -316,7 +316,7 @@ def fluxmap(
     """
 
     raster_points = get_points(
-        sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=True
+        sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=False
     )
 
     # Check if flux embedding has been computed
@@ -392,7 +392,7 @@ def fluxmap(
         sdata,
         points_key=f"{instance_key}_raster",
         metadata=list(qnt_index),
-        column_names="fluxmap",
+        columns="fluxmap",
     )
 
     pbar.update()

@@ -81,8 +81,8 @@ class TestFlux(unittest.TestCase):
             self.assertTrue(f"fluxmap{i}_boundaries" in self.data.shapes)
 
     def test_flux_plot(self):
-        bt.pl.flux(self.data, res=1, fname=f"{self.imgdir}/flux.png")
         plt.figure()
+        bt.pl.flux(self.data, res=1, fname=f"{self.imgdir}/flux.png")
 
     def test_fe_fazal2019(self):
         bt.tl.fe_fazal2019(self.data)

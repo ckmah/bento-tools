@@ -56,9 +56,9 @@ def _kde(points, ax, hue=None, **kwargs):
     sns.kdeplot(data=points, x="x", y="y", hue=hue, ax=ax, **kde_kws)
 
 
-def _polygons(sdata, shape, ax, hue=None, hide_outside=False, sync_shapes=True, **kwargs):
+def _polygons(sdata, shape, ax, hue=None, hide_outside=False, **kwargs):
     """Plot shapes with GeoSeries plot function."""
-    shapes = gpd.GeoDataFrame(geometry=get_shape(sdata, shape, sync=sync_shapes))
+    shapes = gpd.GeoDataFrame(geometry=get_shape(sdata, shape, sync=hide_outside))
     edge_color = "none"
     face_color = "none"
 
@@ -103,7 +103,7 @@ def _polygons(sdata, shape, ax, hue=None, hide_outside=False, sync_shapes=True, 
             ax=ax,
             linewidth=0,
             facecolor=sns.axes_style()["axes.facecolor"],
-            zorder=1.99,
+            zorder=3,
         )
 
 
@@ -120,7 +120,7 @@ def _raster(sdata, res, color, points_key, alpha, cbar=False, ax=None, **kwargs)
             sdata, 
             metadata_keys=color, 
             points_key=points_key
-        )[color].replace("", np.float32('nan'))
+        )[color].replace("", np.nan)
     )
 
     # Infer value format and convert values to rgb

@@ -109,7 +109,6 @@ def points(
     frame_visible=True,
     ax=None,
     sync_points=True,
-    sync_shapes=True,
     shapes_kws=dict(),
     fname=None,
     **kwargs,
@@ -135,7 +134,7 @@ def points(
     )
 
     _scatter(points, hue=hue, size=size, style=style, ax=ax, **kwargs)
-    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shapes_kws)
+    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shapes_kws)
 
 @savefig
 def density(
@@ -155,7 +154,6 @@ def density(
     square=False,
     ax=None,
     sync_points=True,
-    sync_shapes=True,
     shape_kws=dict(),
     fname=None,
     **kwargs,
@@ -185,7 +183,7 @@ def density(
     elif kind == "kde":
         _kde(points, hue=hue, ax=ax, **kwargs)
 
-    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shape_kws)
+    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shape_kws)
 
 @savefig
 def shapes(
@@ -201,7 +199,6 @@ def shapes(
     title=None,
     square=False,
     ax=None,
-    sync_shapes=True,
     fname=None,
     **kwargs,
 ):
@@ -226,7 +223,6 @@ def shapes(
         color_style=color_style,
         hide_outside=hide_outside,
         ax=ax,
-        sync_shapes=sync_shapes,
         **kwargs,
     )
 
@@ -240,7 +236,6 @@ def _shapes(
     color_style="outline",
     hide_outside=True,
     ax=None,
-    sync_shapes=True,
     **kwargs,
 ):
     """Plot layer(s) of shapes.
@@ -261,11 +256,16 @@ def _shapes(
         Axis to plot on, by default None. If None, will use current axis.
     """
     if shapes is None:
-        shapes = [instance_key, nucleus_key]
+        shapes = [nucleus_key, instance_key]
 
     # Save list of names to remove if not in data.obs
     shape_names = [name for name in shapes if name in sdata.shapes.keys()]
     missing_names = [name for name in shapes if name not in sdata.shapes.keys()]
+
+    # Move instance_key to end of list
+    if instance_key in shape_names:
+        shape_names.remove(instance_key)
+        shape_names.append(instance_key)
 
     if len(missing_names) > 0:
         warnings.warn("Shapes not found in data: " + ", ".join(missing_names))
@@ -289,7 +289,6 @@ def _shapes(
             name,
             hide_outside=hide,
             ax=ax,
-            sync_shapes=sync_shapes,
             **geo_kws,
         )
 
@@ -308,7 +307,6 @@ def flux(
     units="um",
     square=False,
     ax=None,
-    sync_shapes=True,
     shape_kws=dict(),
     fname=None,
     **kwargs,
@@ -325,7 +323,7 @@ def flux(
     )
     
     _raster(sdata, alpha=alpha, points_key=f"{instance_key}_raster", res=res, color="flux_color", ax=ax, **kwargs)
-    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shape_kws)
+    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shape_kws)
 
 @savefig
 def fe(
@@ -345,7 +343,6 @@ def fe(
     units="um",
     square=False,
     ax=None,
-    sync_shapes=True,
     shape_kws=dict(),
     fname=None,
     **kwargs,
@@ -368,7 +365,7 @@ def fe(
             cmap = red2blue_dark
 
     _raster(sdata, alpha=alpha, points_key=f"{instance_key}_raster", res=res, color=gs, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
-    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shape_kws)
+    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shape_kws)
 
 @savefig
 def fluxmap(
@@ -380,7 +377,6 @@ def fluxmap(
     title=None,
     dx=0.1,
     ax=None,
-    sync_shapes=False,
     fname=None,
     **kwargs,
 ):
@@ -421,7 +417,6 @@ def fluxmap(
             title=title,
             dx=dx,
             ax=ax,
-            sync_shapes=sync_shapes,
             **shape_kws,
         )
         

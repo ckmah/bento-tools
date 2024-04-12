@@ -57,14 +57,14 @@ def _quantiles(data: pd.DataFrame, x: str, **kwargs):
 
 @savefig
 def obs_stats(
-    data,
-    obs_cols=[
-        "cell_area",
-        "cell_aspect_ratio",
-        "cell_density",
-        "nucleus_area",
-        "nucleus_aspect_ratio",
-        "nucleus_density",
+    sdata,
+    cols=[
+        "cell_boundaries_area",
+        "cell_boundaries_aspect_ratio",
+        "cell_boundaries_density",
+        "nucleus_boundaries_area",
+        "nucleus_boundaries_aspect_ratio",
+        "nucleus_boundaries_density",
     ],
     s=3,
     color="lightseagreen",
@@ -83,14 +83,16 @@ def obs_stats(
     groupby : str, optional
         Column in obs to groupby, by default None
     """
-    stats_long = data.obs.melt(value_vars=obs_cols)
+    cell_gdf = sdata[instance_key].melt(value_vars=cols[:3])
+    nucleus_gdf = sdata[nucleus_key].melt(value_vars=cols[3:])
+    stats_long = pd.concat([cell_gdf, nucleus_gdf])
     stats_long["quantile"] = stats_long.groupby("variable")["value"].transform(
         lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=100).flatten()
     )
 
     stats_long["shape"] = stats_long["variable"].apply(lambda x: x.split("_")[0])
     stats_long["var"] = stats_long["variable"].apply(
-        lambda x: "_".join(x.split("_")[1:])
+        lambda x: "_".join(x.split("_")[2:])
     )
 
     # linecolor = sns.axes_style()["axes.edgecolor"]
