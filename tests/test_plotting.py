@@ -29,7 +29,7 @@ class TestPlotting(unittest.TestCase):
         plt.figure()
         bt.pl.points(
             self.data, 
-            sync_points=False, 
+            hide_outside=False, 
             fname=f"{self.imgdir}/points_uncolored_unsynced.png"
         )
 
@@ -46,7 +46,7 @@ class TestPlotting(unittest.TestCase):
             self.data, 
             hue="feature_name", 
             legend=False, 
-            sync_points=False, 
+            hide_outside=False, 
             fname=f"{self.imgdir}/points_colored_unsynced.png"
         )
 
@@ -66,7 +66,7 @@ class TestPlotting(unittest.TestCase):
             hue="feature_name", 
             hue_order=genes, 
             legend=False, 
-            sync_points=False, 
+            hide_outside=False, 
             fname=f"{self.imgdir}/points_subseted_genes_unsynced.png"
         )
 
@@ -144,7 +144,7 @@ class TestPlotting(unittest.TestCase):
         plt.figure()
         bt.pl.shapes(
             self.data,
-            sync_shapes=False, 
+            hide_outside=False, 
             fname=f"{self.imgdir}/shapes_uncolored_unsynced.png"
         )
 
@@ -159,7 +159,7 @@ class TestPlotting(unittest.TestCase):
         bt.pl.shapes(
             self.data, 
             color_style="fill",
-            sync_shapes=False, 
+            hide_outside=False, 
             fname=f"{self.imgdir}/shapes_colored_unsynced.png"
         )
 
@@ -176,7 +176,7 @@ class TestPlotting(unittest.TestCase):
             self.data, 
             hue="cell",
             color_style="fill",
-            sync_shapes=False, 
+            hide_outside=False, 
             fname=f"{self.imgdir}/shapes_cell_colored_unsynced.png"
         )
         
