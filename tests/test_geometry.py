@@ -117,19 +117,19 @@ class TestGeometry(unittest.TestCase):
             sdata=self.data,
             points_key="transcripts",
             metadata=list_metadata,
-            column_names=column_names[0],
+            columns=column_names[0],
         )
         bt.geo.set_points_metadata(
             sdata=self.data,
             points_key="transcripts",
             metadata=series_metadata,
-            column_names=column_names[1],
+            columns=column_names[1],
         )
         bt.geo.set_points_metadata(
             sdata=self.data,
             points_key="transcripts",
             metadata=dataframe_metadata,
-            column_names=[column_names[2], column_names[3], column_names[4]],
+            columns=[column_names[2], column_names[3], column_names[4]],
         )
         for column in column_names:
             self.assertTrue(column in self.data.points["transcripts"])
@@ -178,13 +178,13 @@ class TestGeometry(unittest.TestCase):
             sdata=self.data,
             points_key="transcripts",
             metadata=list_metadata,
-            column_names=column_names[0],
+            columns=column_names[0],
         )
         bt.geo.set_points_metadata(
             sdata=self.data,
             points_key="transcripts",
             metadata=series_metadata,
-            column_names=column_names[1],
+            columns=column_names[1],
         )
 
         pd_metadata_single = bt.geo.get_points_metadata(

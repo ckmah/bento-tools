@@ -1,28 +1,33 @@
 import warnings
 
+from spatialdata import SpatialData
+
 warnings.filterwarnings("ignore")
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-from matplotlib_scalebar.scalebar import ScaleBar
 
 from ..geometry import get_points
 from ._layers import _raster, _scatter, _hist, _kde, _polygons
-from ._utils import savefig
-from ._colors import red2blue, red2blue_dark
+from ._utils import savefig, setup_ax
+from ._colors import red2blue, red2blue_dark 
+import geopandas as gpd
+from shapely.geometry import Polygon
 
-def _prepare_points_df(sdata, semantic_vars=None, hue=None, hue_order=None):
+def _prepare_points_df(sdata, points_key, instance_key, sync, semantic_vars=None, hue=None, hue_order=None):
     """
     Prepare points DataFrame for plotting. This function will concatenate the appropriate semantic variables as columns to points data.
     """
-    points = get_points(sdata, astype="pandas")
-    cols = list(set(["x", "y", "cell"]))
+    points = get_points(sdata, points_key=points_key, astype="pandas", sync=sync)
+    cols = list(set(["x", "y", instance_key]))
 
     if semantic_vars is None or len(semantic_vars) == 0:
         return points[cols]
     else:
         vars = [v for v in semantic_vars if v is not None]
     cols.extend(vars)
+
+    cols = list(set(cols))
 
     if hue_order is not None:
         points = points[points[hue].isin(hue_order)]
@@ -32,67 +37,19 @@ def _prepare_points_df(sdata, semantic_vars=None, hue=None, hue_order=None):
         if var in points.columns:
             continue
         elif var in sdata.shapes:
-            points[var] = sdata.shapes[var].reindex(points["cell"].values)[var].values
+            points[var] = sdata.shapes[var].reindex(points[instance_key].values)[var].values
         else:
             raise ValueError(f"Variable {var} not found in points or obs")
     
     return points[cols]
 
-def _setup_ax(
-    ax=None,
-    dx=0.1,
-    units="um",
-    square=False,
-    axis_visible=False,
-    frame_visible=True,
-    **kwargs,
-):
-    """Setup axis for plotting. TODO make decorator?"""
-    if ax is None:
-        ax = plt.gca()
-
-    # Infer font color from theme
-    edgecolor = sns.axes_style()["axes.edgecolor"]
-
-    scalebar = ScaleBar(
-        dx,
-        units,
-        location="lower right",
-        box_alpha=0,
-        color=edgecolor,
-        frameon=False,
-        scale_loc="top",
-    )
-    ax.add_artist(scalebar)
-
-    ax_kws = dict(aspect=1, box_aspect=None)
-
-    if not axis_visible:
-        ax_kws.update(
-            dict(
-                xticks=[],
-                yticks=[],
-                xticklabels=[],
-                yticklabels=[],
-                ylabel=None,
-                xlabel=None,
-                xmargin=0.01,
-                ymargin=0.01,
-            )
-        )
-
-    if square:
-        ax_kws["box_aspect"] = 1
-
-    ax_kws.update(kwargs)
-    plt.setp(ax, **ax_kws)
-    ax.spines[["top", "right", "bottom", "left"]].set_visible(frame_visible)
-
-    return ax
 
 @savefig
+@setup_ax
 def points(
-    sdata,
+    sdata: SpatialData,
+    points_key="transcripts",
+    instance_key="cell_boundaries",
     hue=None,
     hue_order=None,
     size=None,
@@ -106,28 +63,35 @@ def points(
     axis_visible=False,
     frame_visible=True,
     ax=None,
-    sync_shapes=True,
     shapes_kws=dict(),
     fname=None,
     **kwargs,
 ):
     
-    ax = _setup_ax(
-        ax=ax,
-        dx=dx,
-        units=units,
-        square=square,
-        axis_visible=axis_visible,
-        frame_visible=frame_visible,
-        title=title,
+    points = _prepare_points_df(
+        sdata, 
+        points_key=points_key, 
+        instance_key=instance_key, 
+        sync=hide_outside,
+        semantic_vars=[hue, size, style], 
+        hue=hue, 
+        hue_order=hue_order
     )
-    points = _prepare_points_df(sdata, semantic_vars=[hue, size, style], hue=hue, hue_order=hue_order)
+
+    if ax is None:
+        ax = plt.gca()
+
     _scatter(points, hue=hue, size=size, style=style, ax=ax, **kwargs)
-    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shapes_kws)
+    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shapes_kws)
+
+    return ax
 
 @savefig
+@setup_ax
 def density(
     sdata,
+    points_key="transcripts",
+    instance_key="cell_boundaries",
     kind="hist",
     hue=None,
     hue_order=None,
@@ -140,31 +104,33 @@ def density(
     units="um",
     square=False,
     ax=None,
-    sync_shapes=True,
     shape_kws=dict(),
     fname=None,
     **kwargs,
 ):
 
-    ax = _setup_ax(
-        ax=ax,
-        dx=dx,
-        units=units,
-        square=square,
-        axis_visible=axis_visible,
-        frame_visible=frame_visible,
-        title=title,
+    points = _prepare_points_df(
+        sdata,
+        points_key=points_key,
+        instance_key=instance_key,
+        sync=hide_outside,
+        semantic_vars=[hue], 
+        hue=hue, 
+        hue_order=hue_order
     )
 
-    points = _prepare_points_df(sdata, semantic_vars=[hue], hue=hue, hue_order=hue_order)
+    if ax is None:
+        ax = plt.gca()
+
     if kind == "hist":
         _hist(points, hue=hue, ax=ax, **kwargs)
     elif kind == "kde":
         _kde(points, hue=hue, ax=ax, **kwargs)
 
-    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shape_kws)
+    _shapes(sdata, shapes=shapes, instance_key=instance_key, hide_outside=hide_outside, ax=ax, **shape_kws)
 
 @savefig
+@setup_ax
 def shapes(
     sdata,
     shapes=None,
@@ -178,23 +144,15 @@ def shapes(
     title=None,
     square=False,
     ax=None,
-    sync_shapes=True,
     fname=None,
     **kwargs,
 ):
 
-    ax = _setup_ax(
-        ax=ax,
-        dx=dx,
-        units=units,
-        square=square,
-        axis_visible=axis_visible,
-        frame_visible=frame_visible,
-        title=title,
-    )
-
     if shapes and not isinstance(shapes, list):
         shapes = [shapes]
+
+    if ax is None:
+        ax = plt.gca()
 
     _shapes(
         sdata,
@@ -203,19 +161,19 @@ def shapes(
         color_style=color_style,
         hide_outside=hide_outside,
         ax=ax,
-        sync_shapes=sync_shapes,
         **kwargs,
     )
 
 
 def _shapes(
     sdata,
+    instance_key="cell_boundaries",
+    nucleus_key="nucleus_boundaries",
     shapes=None,
     color=None,
     color_style="outline",
     hide_outside=True,
     ax=None,
-    sync_shapes=True,
     **kwargs,
 ):
     """Plot layer(s) of shapes.
@@ -236,18 +194,16 @@ def _shapes(
         Axis to plot on, by default None. If None, will use current axis.
     """
     if shapes is None:
-        shapes = ["cell", "nucleus"]
-
-    shape_names = []
-    for s in shapes:
-        if str(s).endswith("_boundaries"):
-            shape_names.append(s)
-        else:
-            shape_names.append(f"{s}_boundaries")
+        shapes = [instance_key, nucleus_key]
 
     # Save list of names to remove if not in data.obs
-    shape_names = [name for name in shape_names if name in sdata.shapes.keys()]
-    missing_names = [name for name in shape_names if name not in sdata.shapes.keys()]
+    shape_names = [name for name in shapes if name in sdata.shapes.keys()]
+    missing_names = [name for name in shapes if name not in sdata.shapes.keys()]
+
+    # Always plot cell shape first (on bottom of all shapes)
+    if instance_key in shape_names:
+        shape_names.remove(instance_key)
+        shape_names.insert(0, instance_key)
 
     if len(missing_names) > 0:
         warnings.warn("Shapes not found in data: " + ", ".join(missing_names))
@@ -262,22 +218,45 @@ def _shapes(
     geo_kws.update(**kwargs)
 
     for name in shape_names:
-        hide = False
-        if name == "cell_boundaries" and hide_outside:
-            hide = True
-
         _polygons(
             sdata,
             name,
-            hide_outside=hide,
+            sync=hide_outside,
             ax=ax,
-            sync_shapes=sync_shapes,
             **geo_kws,
         )
 
+    if hide_outside and instance_key in shape_names:
+        # get axes limits
+        xmin, xmax = ax.get_xlim()
+        ymin, ymax = ax.get_ylim()
+
+        # get min range
+        min_range = min(xmax - xmin, ymax - ymin)
+        buffer_size = 0.01 * (min_range)
+
+        xmin = xmin - buffer_size
+        xmax = xmax + buffer_size
+        ymin = ymin - buffer_size
+        ymax = ymax + buffer_size
+
+        # Create shapely polygon from axes limits
+        axes_poly = gpd.GeoDataFrame(
+            geometry=gpd.GeoSeries(
+                [Polygon([(xmin, ymin), (xmin, ymax), (xmax, ymax), (xmax, ymin)])]
+            )
+            # .buffer(0)
+        )
+        axes_poly.overlay(sdata[instance_key], how="difference").plot(
+            ax=ax, linewidth=0, facecolor=sns.axes_style()["axes.facecolor"], zorder=2.001
+        )
+
 @savefig
+@setup_ax
 def flux(
     sdata,
+    instance_key="cell_boundaries",
+    alpha=True,
     res=0.05,
     shapes=None,
     hide_outside=True,
@@ -288,29 +267,24 @@ def flux(
     units="um",
     square=False,
     ax=None,
-    sync_shapes=True,
     shape_kws=dict(),
     fname=None,
     **kwargs,
 ):
 
-    ax = _setup_ax(
-        ax=ax,
-        dx=dx,
-        units=units,
-        square=square,
-        axis_visible=axis_visible,
-        frame_visible=frame_visible,
-        title=title,
-    )
-
-    _raster(sdata, res=res, color="flux_color", ax=ax, **kwargs)
-    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shape_kws)
+    if ax is None:
+        ax = plt.gca()
+    
+    _raster(sdata, alpha=alpha, points_key=f"{instance_key}_raster", res=res, color="flux_color", ax=ax, **kwargs)
+    _shapes(sdata, shapes=shapes, instance_key=instance_key, hide_outside=hide_outside, ax=ax, **shape_kws)
 
 @savefig
+@setup_ax
 def fe(
     sdata,
     gs,
+    instance_key="cell_boundaries",
+    alpha=True,
     res=0.05,
     shapes=None,
     cmap=None,
@@ -323,21 +297,13 @@ def fe(
     units="um",
     square=False,
     ax=None,
-    sync_shapes=True,
     shape_kws=dict(),
     fname=None,
     **kwargs,
 ):
 
-    ax = _setup_ax(
-        ax=ax,
-        dx=dx,
-        units=units,
-        square=square,
-        axis_visible=axis_visible,
-        frame_visible=frame_visible,
-        title=title,
-    )
+    if ax is None:
+        ax = plt.gca()
 
     if cmap is None:
         if sns.axes_style()["axes.facecolor"] == "white":
@@ -345,20 +311,21 @@ def fe(
         elif sns.axes_style()["axes.facecolor"] == "black":
             cmap = red2blue_dark
 
-    _raster(sdata, res=res, color=gs, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
-    _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, sync_shapes=sync_shapes, **shape_kws)
+    _raster(sdata, alpha=alpha, points_key=f"{instance_key}_raster", res=res, color=gs, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
+    _shapes(sdata, shapes=shapes, instance_key=instance_key, hide_outside=hide_outside, ax=ax, **shape_kws)
 
 @savefig
+@setup_ax
 def fluxmap(
     sdata,
     palette="tab10",
+    instance_key="cell_boundaries",
     hide_outside=True,
     axis_visible=False,
     frame_visible=True,
     title=None,
     dx=0.1,
     ax=None,
-    sync_shapes=False,
     fname=None,
     **kwargs,
 ):
@@ -376,7 +343,10 @@ def fluxmap(
         Filename to save figure to, by default None. If None, will not save figure.
     """
 
-    # Plot fluxmap shapes
+    if ax is None:
+        ax = plt.gca()
+
+    # Map shape names to colors
     if isinstance(palette, dict):
         colormap = palette
     else:
@@ -388,20 +358,19 @@ def fluxmap(
     shape_kws = dict(color_style="fill")
     shape_kws.update(kwargs)
 
-    for s, c in colormap.items():
-        shapes(
+    # Cycle through colormap and plot shapes
+    for shape, color in colormap.items():
+        _shapes(
             sdata,
-            shapes=s,
-            color=c,
+            shapes=shape,
+            instance_key=instance_key,
+            color=color,
             hide_outside=hide_outside,
             axis_visible=axis_visible,
             frame_visible=frame_visible,
-            title=title,
-            dx=dx,
             ax=ax,
-            sync_shapes=sync_shapes,
             **shape_kws,
         )
         
     # Plot base cell and nucleus shapes
-    shapes(sdata, ax=ax, fname=fname)
+    _shapes(sdata, instance_key=instance_key, ax=ax)
