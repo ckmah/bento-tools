@@ -27,6 +27,8 @@ def _prepare_points_df(sdata, points_key, instance_key, sync, semantic_vars=None
         vars = [v for v in semantic_vars if v is not None]
     cols.extend(vars)
 
+    cols = list(set(cols))
+
     if hue_order is not None:
         points = points[points[hue].isin(hue_order)]
 
