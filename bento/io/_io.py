@@ -4,19 +4,21 @@ from typing import List
 warnings.filterwarnings("ignore")
 
 from spatialdata._core.spatialdata import SpatialData
-from spatialdata.models import ShapesModel, TableModel
+from spatialdata.models import TableModel
 
 from ..geometry import sjoin_points, sjoin_shapes
 
 
-def format_sdata(
+def prep(
     sdata: SpatialData,
     points_key: str = "transcripts",
-    feature_key: str  = "feature_name",
+    feature_key: str = "feature_name",
     instance_key: str = "cell_boundaries",
     shape_keys: List[str] = ["cell_boundaries", "nucleus_boundaries"],
 ) -> SpatialData:
-    """Converts shape indices to strings and indexes points to shapes and add as columns to `data.points[point_key]`.
+    """Computes spatial indices for elements in SpatialData to enable usage of bento-tools.
+    
+    Specifically, this function indexes points to shapes and joins shapes to the instance shape. It also computes a count table for the points.
 
     Parameters
     ----------
@@ -61,22 +63,22 @@ def format_sdata(
             shape_sjoin.append(shape_key)
 
     if len(point_sjoin) > 0:
-        sdata = sjoin_points(
-            sdata=sdata, points_key=points_key, shape_keys=point_sjoin
-        )
+        sdata = sjoin_points(sdata=sdata, points_key=points_key, shape_keys=point_sjoin)
     if len(shape_sjoin) > 0:
         sdata = sjoin_shapes(
             sdata=sdata, instance_key=instance_key, shape_keys=shape_sjoin
-        )  
+        )
 
     # Recompute count table
-    table = TableModel.parse(sdata.aggregate(
-        values=points_key,
-        instance_key=instance_key,
-        by=instance_key,
-        value_key=feature_key,
-        aggfunc="count",
-    ).table)
+    table = TableModel.parse(
+        sdata.aggregate(
+            values=points_key,
+            instance_key=instance_key,
+            by=instance_key,
+            value_key=feature_key,
+            aggfunc="count",
+        ).table
+    )
 
     del sdata.table
     sdata.table = table

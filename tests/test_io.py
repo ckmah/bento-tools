@@ -7,7 +7,7 @@ class TestIO(unittest.TestCase):
     def setUp(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
         self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
-        self.data = bt.io.format_sdata(
+        self.data = bt.io.prep(
             self.data,
             points_key="transcripts",
             feature_key="feature_name",

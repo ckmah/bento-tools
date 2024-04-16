@@ -15,6 +15,19 @@
     var(--pst-font-family-monospace-system) !important;
 }
 
+.inline-link {
+  display: inline-block;
+}
+
+/* right margin */
+.sd-octicon {
+  margin-right: 0.3em !important;
+}
+
+/* .headerlink{
+
+} */
+
 /* Font size */
 /* --pst-font-size-base: 14px; base font size - applied at body / html level */
 

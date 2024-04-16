@@ -34,7 +34,7 @@ class TestGeometry(unittest.TestCase):
         )
 
     def test_get_points(self):
-        self.data = bt.io.format_sdata(
+        self.data = bt.io.prep(
             self.data,
             points_key="transcripts",
             feature_key="feature_name",
@@ -79,7 +79,7 @@ class TestGeometry(unittest.TestCase):
         self.assertTrue(len(dd_no_sync) == len(self.data.points["transcripts"]))
 
     def test_get_shape(self):
-        self.data = bt.io.format_sdata(
+        self.data = bt.io.prep(
             self.data,
             points_key="transcripts",
             feature_key="feature_name",

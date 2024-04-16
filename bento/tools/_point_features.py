@@ -29,7 +29,7 @@ def analyze_points(
     recompute=False,
     progress: bool = False,
 ):
-    """Calculate the set of specified `features` for each point group. Groups are within each cell.
+    """Calculate features for each point group. Groups are always within each cell.
         
         When creating the points_df, it first grabs sdata.points[points_key] and joins shape polygons from sdata.shapes[shape_keys].
         The second join is to sdata.shapes[instance_key] to pull in cell polygons and cell features.

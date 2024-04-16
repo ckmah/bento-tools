@@ -321,6 +321,7 @@ def set_points_metadata(
         sdata.points[points_key] = sdata.points[points_key].assign(**{name: series})
 
 
+
 def set_shape_metadata(
     sdata: SpatialData,
     shape_key: str,
@@ -380,7 +381,7 @@ def _check_points_sync(sdata, points_key):
     points = sdata.points[points_key]
     if points.attrs["spatialdata_attrs"]["instance_key"] not in points.columns:
         raise ValueError(
-            f"Points {points_key} not synced to instance_key shape element. Run bento.io.format_sdata() to setup SpatialData object for bento-tools."
+            f"Points {points_key} not synced to instance_key shape element. Run bento.io.prep() to setup SpatialData object for bento-tools."
         )
 
 
@@ -407,5 +408,5 @@ def _check_shape_sync(sdata, shape_key, instance_key):
         and shape_key not in sdata.shapes[instance_key].columns
     ):
         raise ValueError(
-            f"Shape {shape_key} not synced to instance_key shape element. Run bento.io.format_sdata() to setup SpatialData object for bento-tools."
+            f"Shape {shape_key} not synced to instance_key shape element. Run bento.io.prep() to setup SpatialData object for bento-tools."
         )
