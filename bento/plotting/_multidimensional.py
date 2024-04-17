@@ -56,7 +56,7 @@ def _quantiles(data: pd.DataFrame, x: str, **kwargs):
 
 
 @savefig
-def obs_stats(
+def shape_stats(
     sdata,
     instance_key="cell_boundaries",
     nucleus_key="nucleus_boundaries",
