@@ -1,13 +1,11 @@
 from typing import Iterable, Literal, Optional, Union
 
-import decoupler as dc
 import emoji
 import geopandas as gpd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pkg_resources
 import rasterio
 import rasterio.features
 import shapely
@@ -22,7 +20,7 @@ from spatialdata._core.spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel
 from tqdm.auto import tqdm
 
-from ..geometry import get_points, get_shape_metadata, set_points_metadata, sjoin_points
+from ..geometry import get_points, get_shape_metadata, set_points_metadata, sjoin_points, sjoin_shapes
 from ..tools._neighborhoods import _count_neighbors
 from ..tools._shape_features import analyze_shapes
 
@@ -116,6 +114,7 @@ def flux(
         instance_key,
         "raster",
         progress=False,
+        recompute=recompute,
         feature_kws=dict(raster={"step": step}),
     )
 
@@ -351,7 +350,7 @@ def fluxmap(
 
     # Perform SOM clustering over n_clusters range and pick best number of clusters using elbow heuristic
     pbar = tqdm(total=4)
-    pbar.set_description(emoji.emojize(f"Optimizing # of clusters"))
+    pbar.set_description(emoji.emojize("Optimizing # of clusters"))
     som_models = {}
     quantization_errors = []
     for k in tqdm(n_clusters, leave=False):
@@ -464,7 +463,8 @@ def fluxmap(
     fluxmap_df = fluxmap_df.reindex(sdata.table.obs_names).where(
         fluxmap_df.notna(), other=Polygon()
     )
-    for fluxmap in fluxmap_df.columns:
+    fluxmap_names = fluxmap_df.columns.tolist()
+    for fluxmap in fluxmap_names:
         sdata.shapes[fluxmap] = ShapesModel.parse(
             gpd.GeoDataFrame(geometry=fluxmap_df[fluxmap])
         )
@@ -477,8 +477,11 @@ def fluxmap(
 
     # TODO SLOW
     sjoin_points(
-        sdata=sdata, shape_keys=fluxmap_df.columns.tolist(), points_key=points_key
+        sdata=sdata, shape_keys=fluxmap_names, points_key=points_key
     )
+
+    sjoin_shapes(sdata=sdata, instance_key=instance_key, shape_keys=fluxmap_names)
+
     pbar.update()
     pbar.set_description("Done")
     pbar.close()
