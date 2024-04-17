@@ -47,7 +47,7 @@ def lp_dist(sdata, percentage=False, scale=1, fname=None):
         min_subset_size=sample_labels.shape[0] * 0.001,
         facecolor="lightgray",
         sort_by=None,
-        show_counts=(not percentage),
+        show_counts=not percentage,
         show_percentages=percentage,
     )
 
