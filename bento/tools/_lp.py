@@ -74,14 +74,14 @@ def lp(
             instance_key,
             ["proximity", "asymmetry", "ripley", "point_dispersion_norm"],
             groupby=groupby,
-            recompute=True,
+            recompute=False,
         )
         bento.tl.analyze_points(
             sdata,
             nucleus_key,
             ["proximity", "asymmetry", "shape_dispersion_norm"],
             groupby=groupby,
-            recompute=True,
+            recompute=False,
         )
 
     X_df = sdata.table.uns[feature_key][pattern_features]
