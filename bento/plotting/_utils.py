@@ -1,11 +1,9 @@
 import inspect
 from functools import wraps
-from typing import Literal, Optional
 
-import matplotlib as mpl
 import matplotlib.pyplot as plt
-import numpy as np
-from sklearn.preprocessing import minmax_scale, quantile_transform
+import seaborn as sns
+from matplotlib_scalebar.scalebar import ScaleBar
 
 
 def get_default_args(func):
@@ -17,17 +15,17 @@ def get_default_args(func):
     }
 
 
-def savefig(plot_fn):
+def savefig(plot_func):
     """
     Save figure from plotting function.
     """
 
-    @wraps(plot_fn)
+    @wraps(plot_func)
     def wrapper(*args, **kwds):
-        kwargs = get_default_args(plot_fn)
+        kwargs = get_default_args(plot_func)
         kwargs.update(kwds)
 
-        plot_fn(*args, **kwds)
+        plot_func(*args, **kwds)
 
         fname = kwargs["fname"]
         rc = {
@@ -46,37 +44,61 @@ def savefig(plot_fn):
     return wrapper
 
 
-def vec2color(
-    vec: np.ndarray,
-    alpha_vec: Optional[np.ndarray] = None,
-    fmt: Literal[
-        "rgb",
-        "hex",
-    ] = "hex",
-    vmin: float = 0,
-    vmax: float = 1,
-):
-    """Convert vector to color."""
+def setup_ax(plot_func):
+    @wraps(plot_func)
+    def wrapper(*args, **kwds):
+        kwargs = get_default_args(plot_func)
+        kwargs.update(kwds)
+        ax = kwargs.get("ax")
 
-    # Grab the first 3 channels
-    color = vec[:, :3]
-    color = quantile_transform(color[:,:3])
-    color = minmax_scale(color, feature_range=(vmin, vmax))
+        if ax is None:
+            ax = plt.gca()
 
-    # If vec has fewer than 3 channels, fill empty channels with 0
-    if color.shape[1] < 3:
-        color = np.pad(color, ((0, 0), (0, 3 - color.shape[1])), constant_values=0)
+        plot_func(*args, **kwds)
 
-    
-    # Add alpha channel
-    if alpha_vec is not None:
-        alpha = alpha_vec.reshape(-1, 1)
-        # alpha = quantile_transform(alpha)
-        alpha = alpha / alpha.max()
-        color = np.c_[color, alpha]
+        # Infer font color from theme
+        edgecolor = sns.axes_style()["axes.edgecolor"]
 
-    if fmt == "rgb":
-        pass
-    elif fmt == "hex":
-        color = np.apply_along_axis(mpl.colors.to_hex, 1, color, keep_alpha=True)
-    return color
+        scalebar = ScaleBar(
+            dx=kwargs.get("dx"),
+            units=kwargs.get("units"),
+            location="lower right",
+            box_alpha=0,
+            color=edgecolor,
+            frameon=False,
+            scale_loc="top",
+        )
+        ax.add_artist(scalebar)
+
+        ax_kws = dict(aspect=1, box_aspect=None)
+
+        if not kwargs.get("axis_visible"):
+            ax_kws.update(
+                dict(
+                    xticks=[],
+                    yticks=[],
+                    xticklabels=[],
+                    yticklabels=[],
+                    ylabel=None,
+                    xlabel=None,
+                    xmargin=0.01,
+                    ymargin=0.01,
+                )
+            )
+
+        if kwargs["square"]:
+            ax_kws["box_aspect"] = 1
+
+        # Update ax_kws with keys in kwds only if they exist in ax_kws
+        ax_kws.update((k, v) for k, v in kwds.items() if k in ax_kws)
+
+        plt.setp(ax, **ax_kws)
+        ax.spines[["top", "right", "bottom", "left"]].set_visible(
+            kwargs.get("frame_visible")
+        )
+
+        ax.set_title(kwargs.get("title", ""), color=edgecolor)
+
+        return ax
+
+    return wrapper

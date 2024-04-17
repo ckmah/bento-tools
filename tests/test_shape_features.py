@@ -6,7 +6,14 @@ import spatialdata as sd
 class TestShapeFeatures(unittest.TestCase):
     def setUp(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
-        self.data = sd.read_zarr(f"{datadir}/bt_small_data.zarr")
+        self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
+        self.data = bt.io.format_sdata(
+            sdata=self.data,
+            points_key="transcripts",
+            feature_key="feature_name",
+            instance_key="cell_boundaries",
+            shape_keys=["cell_boundaries", "nucleus_boundaries"],
+        )
 
         self.shape_features = bt.tl.list_shape_features().keys()
 
@@ -171,9 +178,9 @@ class TestShapeFeatures(unittest.TestCase):
             "transform" in self.data.shapes["nucleus_boundaries"].attrs.keys()
         )
 
-    # Test case to check if obs_stats function calculates area, aspect_ratio and density for both cell_boundaries and nucleus_boundaries
-    def test_obs_stats(self):
-        bt.tl.obs_stats(sdata=self.data)
+    # Test case to check if shape_stats function calculates area, aspect_ratio and density for both cell_boundaries and nucleus_boundaries
+    def test_shape_stats(self):
+        bt.tl.shape_stats(sdata=self.data)
 
         # Check if cell_boundaries and nucleus_boundaries shape features are calculated
         self.assertTrue(

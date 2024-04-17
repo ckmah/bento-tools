@@ -4,11 +4,8 @@ import decoupler as dc
 
 import numpy as np
 import pandas as pd
-import dask.dataframe as dd
-import pkg_resources
 from scipy import sparse
 from spatialdata._core.spatialdata import SpatialData
-from spatialdata.models import PointsModel
 
 from ..geometry import get_points, set_points_metadata
 
@@ -62,7 +59,7 @@ def fe(
     min_n: int = 0,
 ):
     """
-    Perform functional enrichment on point embeddings. Wrapper for decoupler wsum function.
+    Perform functional enrichment of RNAflux embeddings. Uses decoupler wsum function.
 
     Parameters
     ----------
@@ -97,14 +94,15 @@ def fe(
     else:
         print("Run bento.tl.flux first.")
         return
-    
-    flux_genes = sdata.table.uns["flux_genes"]
-    cell_raster_points = get_points(sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=True)[flux_genes].values
-    cell_raster_matrix = np.mat(cell_raster_points)
+
+    features = sdata.table.uns["flux_genes"]
+    cell_raster = get_points(
+        sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=False
+    )[features]
+    cell_raster_matrix = np.mat(cell_raster)
     mat = sparse.csr_matrix(cell_raster_matrix)  # sparse matrix in csr format
 
-    samples = sdata.points[f"{instance_key}_raster"].index.astype(str)
-    features = sdata.table.uns["flux_genes"]
+    samples = cell_raster.index.astype(str)
 
     enrichment = dc.run_wsum(
         mat=[mat, samples, features],
@@ -117,8 +115,13 @@ def fe(
         verbose=True,
     )
 
-    scores = enrichment[1].reindex(index=samples).add_prefix('flux_')
-    set_points_metadata(sdata, points_key=f"{instance_key}_raster", metadata=scores)
+    scores = enrichment[1].add_prefix("flux_")
+    set_points_metadata(
+        sdata,
+        points_key=f"{instance_key}_raster",
+        metadata=scores,
+        columns=scores.columns,
+    )
 
     _fe_stats(sdata, net, source=source, target=target)
 
@@ -159,7 +162,7 @@ gene_sets = dict(
 
 
 def load_gene_sets(name):
-    """Load a gene set from bento.
+    """Load a gene set; list available ones with `bento.tl.gene_sets`.
 
     Parameters
     ----------

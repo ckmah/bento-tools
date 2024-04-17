@@ -6,7 +6,14 @@ import spatialdata as sd
 class TestPointFeatures(unittest.TestCase):
     def setUp(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
-        self.data = sd.read_zarr(f"{datadir}/bt_small_data.zarr")
+        self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
+        self.data = bt.io.format_sdata(
+            sdata=self.data,
+            points_key="transcripts",
+            feature_key="feature_name",
+            instance_key="cell_boundaries",
+            shape_keys=["cell_boundaries", "nucleus_boundaries"],
+        )
 
         self.point_features = bt.tl.list_point_features().keys()
         self.instance_key = ["cell_boundaries"]

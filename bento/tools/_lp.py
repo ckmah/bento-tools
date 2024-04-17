@@ -22,7 +22,7 @@ def lp(
     sdata: SpatialData, 
     instance_key: str = "cell_boundaries",
     nucleus_key: str = "nucleus_boundaries",
-    groupby: Optional[Union[str, List[str]]] = "gene"
+    groupby: Optional[Union[str, List[str]]] = "feature_name"
 ):
     """Predict transcript subcellular localization patterns.
     Patterns include: cell edge, cytoplasmic, nuclear edge, nuclear, none
@@ -293,6 +293,7 @@ def lp_diff_discrete(
         .table.uns['diff_{phenotype}'] : DataFrame
             Long DataFrame with differential localization test results across phenotype groups.
     """
+    lp_stats(sdata, instance_key=instance_key)
     stats = sdata.table.uns["lp_stats"]
 
     # Retrieve cell phenotype

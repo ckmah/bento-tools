@@ -1,3 +1,7 @@
+```{toctree}
+:hidden: true
+```
+
 # {octicon}`gear` How it Works
 
 ## Data Structure

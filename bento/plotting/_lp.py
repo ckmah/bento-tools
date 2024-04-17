@@ -59,37 +59,11 @@ def lp_dist(sdata, percentage=False, scale=1, fname=None):
     plt.suptitle(f"Localization Patterns\n{sample_labels.shape[0]} samples")
 
 @savefig
-def lp_gene_dist(sdata, fname=None):
-    """Plot the cell fraction distribution of each pattern as a density plot.
-
-    Parameters
-    ----------
-    sdata : SpatialData
-        Spatial formatted SpatialData
-    fname : str, optional
-        Save the figure to specified filename, by default None
-    """
-    lp_stats(sdata)
-
-    col_names = [f"{p}_fraction" for p in PATTERN_NAMES]
-    gene_frac = sdata.table.var[col_names]
-    gene_frac.columns = PATTERN_NAMES
-    # Plot frequency distributions
-    sns.displot(
-        data=gene_frac,
-        kind="kde",
-        multiple="layer",
-        height=3,
-        palette=PATTERN_COLORS,
-    )
-    plt.xlim(0, 1)
-    sns.despine()
-
-@savefig
 def lp_genes(
     sdata: SpatialData,
-    groupby: str = "gene",
+    groupby: str = "feature_name",
     points_key = "transcripts",
+    instance_key = "cell_boundaries",
     annotate: Union[int, List[str], None] = None,
     sizes: Tuple[int] = (2, 100),
     size_norm: Tuple[int] = (0, 100),
@@ -121,7 +95,7 @@ def lp_genes(
     **kwargs
         Options to pass to matplotlib plotting method.
     """
-    lp_stats(sdata)
+    lp_stats(sdata, instance_key=instance_key)
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
 
@@ -135,7 +109,7 @@ def lp_genes(
     
     cell_fraction = (
         100
-        * get_points(sdata, points_key, astype="pandas").groupby("gene", observed=True)["cell"].nunique()
+        * get_points(sdata, points_key, astype="pandas", sync=True).groupby(groupby, observed=True)[instance_key].nunique()
         / n_cells
     )
     gene_frac["cell_fraction"] = cell_fraction
@@ -146,8 +120,8 @@ def lp_genes(
 
 @savefig
 def lp_diff_discrete(sdata: SpatialData, phenotype: str, fname: str = None):
-    """Visualize gene pattern frequencies between groups of cells by plotting
-    log2 fold change and -log10p, similar to volcano plot. Run after :func:`bento.tl.lp_diff()`
+    """Visualize gene pattern frequencies between groups of cells. Plots the
+    log2 fold change and -log10 p-value of each gene, similar to volcano plot. Run after :func:`bento.tl.lp_diff_discrete()`
 
     Parameters
     ----------
