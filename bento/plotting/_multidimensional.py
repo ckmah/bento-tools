@@ -1,8 +1,12 @@
 import warnings
+from typing import List, Optional, Tuple
 
 warnings.filterwarnings("ignore")
 
+from typing import Optional, Tuple, Union
+
 import matplotlib as mpl
+import matplotlib.axes
 import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import numpy as np
@@ -145,28 +149,57 @@ def shape_stats(
 
 
 @savefig
-def flux_summary(
-    data,
-    groupby=None,
-    group_order=None,
-    annotate=None,
-    adjust=True,
-    palette=red_light,
-    annot_color=None,
-    sizes=(5, 30),
-    size_norm=(10, 100),
-    dim_order=None,
-    legend=True,
-    height=5,
-    fname=None,
+def comp(
+    sdata,
+    groupby: Optional[str] = None,
+    group_order: Optional[List[str]] = None,
+    annotate: Optional[Union[bool, list[str]]] = None,
+    adjust: bool = True,
+    palette: str = red_light,
+    annot_color: Optional[str] = None,
+    sizes: Tuple[int, int] = (5, 30),
+    size_norm: Tuple[int, int] = (10, 100),
+    dim_order: Optional[str] = None,
+    legend: bool = True,
+    height: int = 5,
+    fname: Optional[str] = None,
 ):
     """
-    Plot RNAflux summary with a radviz plot describing gene embedding across flux clusters.
+    Plot gene composition across set of shapes. Ideally, these shapes are non-overlapping.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The spatial data to be plotted.
+    groupby : str
+        The column name in the data to group by.
+    group_order : list
+        The order of the groups for plotting.
+    annotate : bool or list of str
+        Whether to annotate the plot with gene names or a list of gene names to annotate.
+    adjust : bool
+        Whether to adjust the text positions, by default True.
+    palette : str
+        The color palette to use for the plot. Default is 'red_light'.
+    annot_color : str
+        The color to use for annotations. Default is None.
+    sizes : tuple
+        The minimum and maximum size of the points. Default is (5, 30).
+    size_norm : tuple
+        The normalization range for the point sizes. Default is (10, 100).
+    dim_order : str
+        The order of the dimensions for the plot. Default is None.
+    legend : bool
+        Whether to include a legend in the plot. Default is True.
+    height : int
+        The height of the plot. Default is 5.
+    fname : str
+        The filename to save the plot as. If None (default), the plot is not saved to file.
     """
 
     comp_key = f"{groupby}_comp_stats"
-    if groupby and comp_key in data.uns.keys():
-        comp_stats = data.uns[comp_key]
+    if groupby and comp_key in sdata.table.uns.keys():
+        comp_stats = sdata.table.uns[comp_key]
         if group_order is None:
             groups = list(comp_stats.keys())
         else:
@@ -198,8 +231,8 @@ def flux_summary(
             )
             ax.set_title(group, fontsize=12)
     else:
-        comp_key = f"comp_stats"
-        comp_stats = data.uns[comp_key]
+        comp_key = "comp_stats"
+        comp_stats = sdata.table.uns[comp_key]
         return _radviz(
             comp_stats,
             annotate=annotate,
@@ -214,37 +247,44 @@ def flux_summary(
 
 
 def _radviz(
-    comp_stats,
-    annotate=None,
-    adjust=True,
-    palette=red_light,
-    annot_color=None,
-    sizes=None,
-    size_norm=None,
-    dim_order="auto",
-    legend=True,
-    ax=None,
+    comp_stats: pd.DataFrame,
+    annotate: Union[int, List[str]] = None,
+    adjust: bool = True,
+    palette: str = red_light,
+    annot_color: Optional[str] = None,
+    sizes: Optional[Tuple[int, int]] = None,
+    size_norm: Optional[Tuple[int, int]] = None,
+    dim_order: Union[str, list, None] = "auto",
+    legend: bool = True,
+    ax: Optional[matplotlib.axes.Axes] = None,
 ):
-    """Plot a radviz plot of gene values across fields.
+    """
+    Plot a radviz plot of gene values across fields.
 
     Parameters
     ----------
     comp_stats : DataFrame
-        Gene composition stats
+        Gene composition stats.
+    annotate : int or list of str, optional
+        Number of top genes to annotate or list of genes to annotate, by default None.
+    adjust : bool, optional
+        Whether to adjust the text positions, by default True.
     palette : str, optional
-        Color palette, by default None
+        Color palette, by default red_light.
+    annot_color : str, optional
+        The color to use for annotations, by default None.
     sizes : tuple, optional
-        Size range for scatter plot, by default None
+        Size range for scatter plot, by default None.
     size_norm : tuple, optional
-        Size range for scatter plot, by default None
+        Normalization range for the point sizes, by default None.
     dim_order : "auto", None, or list, optional
         Sort dimensions for more intuitive visualization, by default "auto".
         If "auto", sort dimensions by maximizing cosine similarity of adjacent
         dimensions. If None, do not sort dimensions. If list, use provided order.
-    gridsize : int, optional
-        Gridsize for hexbin plot, by default 20
+    legend : bool, optional
+        Whether to include a legend in the plot, by default True.
     ax : matplotlib.Axes, optional
-        Axes to plot on, by default None
+        Axes to plot on, by default None.
     """
     with plt.rc_context({"font.size": 14}):
         # RADVIZ plot
@@ -335,8 +375,8 @@ def _radviz(
         hue_key = "Mean log2(cnt + 1)"
         xy[hue_key] = log_count
 
-        # Remove phantom points
-        # ax.collections = ax.collections[1:]
+        # Remove data points with invalid values (nan or inf)
+        xy = xy.replace([np.inf, -np.inf], np.nan).dropna()
 
         sns.kdeplot(
             data=xy,
@@ -383,6 +423,7 @@ def _radviz(
                 )
                 top_xy = xy.loc[top_genes]
             else:
+                # Parse list of genes
                 top_xy = xy.loc[[g for g in annotate if g in xy.index]]
 
             # Plot top points
@@ -426,10 +467,12 @@ def _radviz(
                 print("Adjusting text positions...")
                 adjust_text(
                     texts,
-                    expand_points=(2, 2),
-                    add_objects=[scatter],
-                    arrowprops=dict(arrowstyle="-", color=edgecolor, lw=1),
+                    # expand=(2, 2),
+                    objects=[scatter],
                     ax=ax,
+                    # arrowstyle="-",
+                    # color=edgecolor,
+                    # lw=1,
                 )
 
 

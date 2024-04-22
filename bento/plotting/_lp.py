@@ -16,15 +16,17 @@ from ._utils import savefig
 from ._multidimensional import _radviz
 
 @savefig
-def lp_dist(sdata, percentage=False, scale=1, fname=None):
+def lp_dist(sdata, show_counts="", show_percentages='{:.1%}', scale=1, fname=None):
     """Plot pattern combination frequencies as an UpSet plot.
 
     Parameters
     ----------
     sdata : SpatialData
         Spatial formatted SpatialData
-    percentage : bool, optional
-        If True, label each bar as a percentage else label as a count, by default False
+    show_counts : str, optional
+        Format count labels with this string, do not show counts if empty, by default ""
+    show_percentages : str, optional
+        Format count labels with this string, do not show counts if empty, by default ""
     scale : int, optional
         scale > 1 scales the plot larger, scale < 1 scales. the plot smaller, by default 1
     fname : str, optional
@@ -47,8 +49,8 @@ def lp_dist(sdata, percentage=False, scale=1, fname=None):
         min_subset_size=sample_labels.shape[0] * 0.001,
         facecolor="lightgray",
         sort_by=None,
-        show_counts=not percentage,
-        show_percentages=percentage,
+        show_counts=show_counts,
+        show_percentages=show_percentages,
     )
 
     for p, color in zip(PATTERN_NAMES, PATTERN_COLORS):

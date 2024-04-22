@@ -8,3 +8,4 @@ from ._geometry import (
     set_points_metadata,
     set_shape_metadata,
 )
+from ._ops import overlay, filter_by_gene
