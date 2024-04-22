@@ -86,6 +86,9 @@ def lp(
 
     X_df = sdata.table.uns[feature_key][pattern_features]
 
+    # Save which samples have nan feature values
+    invalid_samples = X_df.isna().any(axis=1)
+
     # Load trained model
     model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"
     model = pickle.load(open(f"{model_dir}/rf_calib_20220514.pkl", "rb"))
@@ -102,6 +105,9 @@ def lp(
 
     # Add cell and groupby identifiers
     pattern_prob.index = sdata.table.uns[feature_key].set_index([instance_key, *groupby]).index
+
+    # Set to no class if sample had nan feature values
+    pattern_prob.loc[:, invalid_samples] = 0
 
     # Threshold probabilities to get indicator matrix
     thresholds = [0.45300, 0.43400, 0.37900, 0.43700, 0.50500]
