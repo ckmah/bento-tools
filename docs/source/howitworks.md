@@ -4,19 +4,52 @@
 
 # {octicon}`gear` How it Works
 
-## Data Structure
+## Data Format
 
-Datasets are stored as `AnnData` objects, where observations are cells, variables are genes, and the X is the count matrix. Bento additionally stores molecular coordinates in `uns['points']` and polygons as columns in `obs`. 
+Under the hood, we use the [SpatialData](https://spatialdata.scverse.org/en/latest/) framework to manage `SpatialData` objects in Python, allowing us to store and manipulate spatial data in a standardized format. Briefly, `SpatialData` objects are stored on-disk in the Zarr storage format. We aim to be fully compatible with SpatialData, so you can use the same objects in both Bento and SpatialData.
 
-```{figure}  _static/tutorial_img/bento_data_structure.png
-:class: p-2
+To enable scalable and performant operation with Bento, we perform spatial indexing on the data upfront and store these indices as metadata. This allows us to quickly query points within shapes, and shapes that contain points. Bento adopts a cell-centric approach, where each cell is treated as an independent unit of analysis. This allows us to perform subcellular spatial analysis within individual cells, and aggregate results across cells.
 
-AnnData adapted to hold spatial data
-``` 
+.. code-block:: python
+    :caption: Example SpatialData object
+
+    from spatialdata.datasets import blobs
+    sdata = blobs()
+    print(sdata)
+..
+
+```
+SpatialData object
+├── Images
+│     ├── 'blobs_image': SpatialImage[cyx] (3, 512, 512)
+│     └── 'blobs_multiscale_image': MultiscaleSpatialImage[cyx] (3, 512, 512), (3, 256, 256), (3, 128, 128)
+├── Labels
+│     ├── 'blobs_labels': SpatialImage[yx] (512, 512)
+│     └── 'blobs_multiscale_labels': MultiscaleSpatialImage[yx] (512, 512), (256, 256), (128, 128)
+├── Points
+│     └── 'blobs_points': DataFrame with shape: (<Delayed>, 4) (2D points)
+├── Shapes
+│     ├── 'blobs_circles': GeoDataFrame shape: (5, 2) (2D shapes)
+│     ├── 'blobs_multipolygons': GeoDataFrame shape: (2, 1) (2D shapes)
+│     └── 'blobs_polygons': GeoDataFrame shape: (5, 1) (2D shapes)
+└── Tables
+      └── 'table': AnnData (26, 3)
+with coordinate systems:
+    ▸ 'global', with elements:
+        blobs_image (Images), blobs_multiscale_image (Images), blobs_labels (Labels), blobs_multiscale_labels (Labels), blobs_points (Points), blobs_circles (Shapes), blobs_multipolygons (Shapes), blobs_polygons (Shapes)
+```
+
+The `SpatialData` object is a container for the following elements:
+- `Images`: raw images, segmented images
+- `Labels`: cell masks, nucleus masks
+- `Points`: transcript coordinates, cell coordinates, landmarks
+- `Shapes`: boundaries, circles, polygons
+- `Tables`: annotations, count matrices
 
 ### Shapes
 
-Currently, shapes are stored as `GeoSeries` columns according to which cell they belong to. These columns are identified with the suffix `"_shape"`. Each element in the `GeoSeries` is either a shapely `Polygon` or `MultiPolygon`. Shape properties are also stored as columns and identified with the corresponding shape name as the prefix e.g. `"cell"`, `"nucleus"`, etc.
+AnnData adapted to hold spatial data
+Shapes usually represent boundaries e.g. cell, nucleus, or other subcellular compartments. They are stored as GeoPandas dataframes in 
 
 ### Points
 For fast spatial queries, Bento indexes points to shape layers upfront, and saves them as columns `points`, denoted as `"shape index"` above. For example, `"cell"` and `"nucleus"` columns are added to indicate whether points are within the shape.
