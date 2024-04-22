@@ -11,6 +11,7 @@ from ..geometry import get_points
 from ._layers import _raster, _scatter, _hist, _kde, _polygons
 from ._utils import savefig, setup_ax
 from ._colors import red2blue, red2blue_dark 
+import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Polygon
 
@@ -31,6 +32,7 @@ def _prepare_points_df(sdata, points_key, instance_key, sync, semantic_vars=None
 
     if hue_order is not None:
         points = points[points[hue].isin(hue_order)]
+        points[hue] = pd.Categorical(points[hue], categories=hue_order)
 
     # Add semantic variables to points; priority: points, obs, points metadata
     for var in vars:
@@ -285,7 +287,6 @@ def _shapes(
     **kwargs,
 ):
     
-        
     if shapes is None:
         shapes = [instance_key, nucleus_key]
 
@@ -295,12 +296,6 @@ def _shapes(
     # Save list of names to remove if not in data.obs
     shape_names = [name for name in shapes if name in sdata.shapes.keys()]
     missing_names = [name for name in shapes if name not in sdata.shapes.keys()]
-
-    # Always plot cell shape first (on bottom of all shapes)
-    if instance_key in shape_names:
-        shape_names.remove(instance_key)
-        shape_names.insert(0, instance_key)
-
 
     if len(missing_names) > 0:
         warnings.warn("Shapes not found in data: " + ", ".join(missing_names))
@@ -358,7 +353,7 @@ def flux(
     sdata,
     instance_key="cell_boundaries",
     alpha=True,
-    res=0.05,
+    res=1,
     shapes=None,
     hide_outside=True,
     axis_visible=False,
@@ -379,7 +374,7 @@ def flux(
     data : SpatialData
         Spatial formatted SpatialData
     res : float, optional
-        Resolution of fluxmap, by default 0.05
+        Resolution of fluxmap, by default 1
     shapes : list, optional
         List of shapes to plot, by default None. If None, will plot cell and nucleus shapes by default.
     hide_outside : bool, optional
@@ -418,8 +413,8 @@ def fe(
     sdata,
     gs,
     instance_key="cell_boundaries",
-    alpha=True,
-    res=0.05,
+    alpha=False,
+    res=1,
     shapes=None,
     cmap=None,
     cbar=True,
@@ -444,7 +439,7 @@ def fe(
     gs : str
         Gene set name
     res : float, optional
-        Resolution of fluxmap, by default 0.05
+        Resolution of fluxmap, by default 1
     shapes : list, optional    
         List of shape names to plot, by default None. If None, will plot cell and nucleus shapes by default.
     cmap : str, optional
@@ -486,6 +481,7 @@ def fe(
 
     _raster(sdata, alpha=alpha, points_key=f"{instance_key}_raster", res=res, color=gs, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
     _shapes(sdata, shapes=shapes, instance_key=instance_key, hide_outside=hide_outside, ax=ax, **shape_kws)
+    # _shapes(sdata, instance_key=instance_key, hide_outside=hide_outside, ax=ax, **shape_kws)
 
 @savefig
 @setup_ax

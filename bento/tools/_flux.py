@@ -41,7 +41,7 @@ def flux(
     """
     Compute RNAflux embeddings of each pixel as local composition normalized by cell composition.
     For k-nearest neighborhoods or "knn", method, specify n_neighbors. For radius neighborhoods, specify radius.
-    The default method is "radius" with radius = 1/2 of cell radius. RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
+    The default method is "radius" with radius = 1/4 of cell radius. RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
 
     Parameters
     ----------
@@ -60,7 +60,7 @@ def flux(
     radius : float
         Fraction of mean cell radius to use for local neighborhood.
     res : float
-        Resolution to use for rendering embedding. Default 0.05 samples at 5% original resolution (5 units between pixels)
+        Resolution to use for rendering embedding.
 
     Returns
     -------
@@ -92,9 +92,9 @@ def flux(
             .mean()
             .values[0]
         )
-        # Default radius = 50% of average cell radius
+        # Default radius = 25% of average cell radius
         if radius is None:
-            radius = mean_radius / 2
+            radius = mean_radius / 4
         # If radius is a fraction, use that fraction of average cell radius
         elif radius <= 1:
             radius = radius * mean_radius
@@ -310,8 +310,8 @@ def fluxmap(
     sdata : SpatialData
         .points["points"] : DataFrame
             Adds "fluxmap" column denoting cluster membership.
-        .shapes["fluxmap#_shape"] : GeoSeries
-            Adds "fluxmap#_shape" columns for each cluster rendered as (Multi)Polygon shapes.
+        .shapes["fluxmap#"] : GeoSeries
+            Adds "fluxmap#" columns for each cluster rendered as (Multi)Polygon shapes.
     """
 
     raster_points = get_points(
@@ -443,7 +443,7 @@ def fluxmap(
         fluxmap_df[cell] = shapes
 
     fluxmap_df = pd.DataFrame.from_dict(fluxmap_df).T
-    fluxmap_df.columns = "fluxmap" + fluxmap_df.columns.astype(str) + "_boundaries"
+    fluxmap_df.columns = "fluxmap" + fluxmap_df.columns.astype(str)
 
     # Upscale to match original resolution
     fluxmap_df = fluxmap_df.apply(

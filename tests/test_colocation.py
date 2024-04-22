@@ -1,19 +1,22 @@
+import matplotlib
+matplotlib.use("Agg")
 import unittest
 
 import spatialdata as sd
-from matplotlib import pyplot as plt
+from unittest.mock import patch
 
 import bento as bt
 import os
 
 class TestColocation(unittest.TestCase):
-    def setUp(self):
+    @classmethod
+    def setUpClass(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
         self.imgdir = "/".join(bt.__file__.split("/")[:-2]) + "/tests/img/colocation"
         os.makedirs(self.imgdir, exist_ok=True)
 
-        self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
-        self.data = bt.io.format_sdata(
+        self.data = sd.read_zarr(f"{datadir}/merfish_sample.zarr")
+        self.data = bt.io.prep(
             sdata=self.data,
             points_key="transcripts",
             feature_key="feature_name",
@@ -70,8 +73,11 @@ class TestColocation(unittest.TestCase):
         self.assertTrue("rmse" in self.data.table.uns["factors_error"])
         self.assertTrue("rank" in self.data.table.uns["factors_error"])
 
-    def test_colocation_plot(self):
-        plt.figure()
+    @patch("matplotlib.pyplot.savefig")
+    def test_colocation_plot(self, mock_savefig):
         bt.pl.colocation(
             self.data, rank=self.rank, fname=f"{self.imgdir}/colocation.png"
         )
+
+        self.assertTrue(os.path.exists(f"{self.imgdir}/colocation.png"))
+        mock_savefig.assert_called()

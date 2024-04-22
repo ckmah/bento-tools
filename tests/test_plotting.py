@@ -3,15 +3,20 @@ import bento as bt
 import spatialdata as sd
 import matplotlib.pyplot as plt
 import os
+from unittest.mock import patch
 
 # Test if plotting functions run without error
+
+@patch("matplotlib.pyplot.savefig")
 class TestPlotting(unittest.TestCase):
-    def setUp(self):
+
+    @classmethod
+    def setUpClass(self, mock_savefig):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
         self.imgdir = "/".join(bt.__file__.split("/")[:-2]) + "/tests/img/plotting"
         os.makedirs(self.imgdir, exist_ok=True)
-        self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
-        self.data = bt.io.format_sdata(
+        self.data = sd.read_zarr(f"{datadir}/merfish_sample.zarr")
+        self.data = bt.io.prep(
             sdata=self.data,
             points_key="transcripts",
             feature_key="feature_name",
@@ -19,7 +24,7 @@ class TestPlotting(unittest.TestCase):
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
         )
 
-    def test_points_plotting(self):
+    def test_points_plotting(self, mock_savefig):
         plt.figure()
         bt.pl.points(
             self.data, 
@@ -69,8 +74,9 @@ class TestPlotting(unittest.TestCase):
             hide_outside=False, 
             fname=f"{self.imgdir}/points_subseted_genes_unsynced.png"
         )
+        mock_savefig.assert_called()
 
-    def test_density_plotting(self):
+    def test_density_plotting(self, mock_savefig):
         plt.figure()
         bt.pl.density(
             self.data, 
@@ -133,8 +139,9 @@ class TestPlotting(unittest.TestCase):
             fname=f"{self.imgdir}/density_square.png"
         )
         plt.tight_layout()
+        mock_savefig.assert_called()
 
-    def test_shapes_plotting(self):
+    def test_shapes_plotting(self, mock_savefig):
         plt.figure()
         bt.pl.shapes(
             self.data, 
@@ -191,3 +198,4 @@ class TestPlotting(unittest.TestCase):
             fname=f"{self.imgdir}/shapes_nucleus_colored_synced.png"
         )
     
+        mock_savefig.assert_called()
