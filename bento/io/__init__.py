@@ -1,1 +1,1 @@
-from ._io import prep
+from ._io import prep, read_zarr
