@@ -4,9 +4,11 @@ import spatialdata as sd
 
 
 class TestFluxEnrichement(unittest.TestCase):
+
+    @classmethod
     def setUpClass(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
-        self.data = sd.read_zarr(f"{datadir}/merfish_sample.zarr")
+        self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
         self.data = bt.io.prep(
             sdata=self.data,
             points_key="transcripts",

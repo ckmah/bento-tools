@@ -7,9 +7,11 @@ import dask as dd
 
 
 class TestGeometry(unittest.TestCase):
+
+    @classmethod
     def setUpClass(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
-        self.data = sd.read_zarr(f"{datadir}/merfish_sample.zarr")
+        self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
 
     def test_sjoin_points(self):
         self.data = bt.geo.sjoin_points(

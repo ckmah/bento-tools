@@ -4,9 +4,10 @@ import spatialdata as sd
 
 
 class TestPointFeatures(unittest.TestCase):
+    @classmethod
     def setUpClass(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
-        self.data = sd.read_zarr(f"{datadir}/merfish_sample.zarr")
+        self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
         self.data = bt.io.prep(
             sdata=self.data,
             points_key="transcripts",
@@ -47,7 +48,7 @@ class TestPointFeatures(unittest.TestCase):
 
     # Test case to check if features are calculated for a single shape and a single group
     def test_single_shape_single_group(self):
-        data = bt.tl.analyze_points(
+        bt.tl.analyze_points(
             sdata=self.data,
             shape_keys=["cell_boundaries"],
             feature_names=self.point_features,
@@ -63,12 +64,12 @@ class TestPointFeatures(unittest.TestCase):
         # Check if cell_boundaries point features are calculated
         for feature in point_features:
             self.assertTrue(
-                feature in data.table.uns["cell_boundaries_features"].columns
+                feature in self.data.table.uns["cell_boundaries_features"].columns
             )
 
     # Test case to check if features are calculated for a single shape and multiple groups
     def test_single_shape_multiple_groups(self):
-        data = bt.tl.analyze_points(
+        bt.tl.analyze_points(
             sdata=self.data,
             shape_keys=["cell_boundaries"],
             feature_names=self.point_features,
@@ -88,12 +89,12 @@ class TestPointFeatures(unittest.TestCase):
         for feature in point_features:
             self.assertTrue(
                 feature
-                in data.table.uns["cell_boundaries_feature_name_features"].columns
+                in self.data.table.uns["cell_boundaries_feature_name_features"].columns
             )
 
     # Test case to check if point features are calculated for multiple shapes and a single group
     def test_multiple_shapes_single_group(self):
-        data = bt.tl.analyze_points(
+        bt.tl.analyze_points(
             sdata=self.data,
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
             feature_names=self.point_features,
@@ -112,12 +113,12 @@ class TestPointFeatures(unittest.TestCase):
         # Check if cell_boundaries and nucleus_boundaries point features are calculated
         for feature in point_features:
             self.assertTrue(
-                feature in data.table.uns["cell_boundaries_features"].columns
+                feature in self.data.table.uns["cell_boundaries_features"].columns
             )
 
     # Test case to check if multiple shape features are calculated for multiple shapes
     def test_multiple_shapes_multiple_groups(self):
-        data = bt.tl.analyze_points(
+        bt.tl.analyze_points(
             sdata=self.data,
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
             feature_names=self.point_features,
@@ -138,5 +139,5 @@ class TestPointFeatures(unittest.TestCase):
         for feature in point_features:
             self.assertTrue(
                 feature
-                in data.table.uns["cell_boundaries_feature_name_features"].columns
+                in self.data.table.uns["cell_boundaries_feature_name_features"].columns
             )

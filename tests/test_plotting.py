@@ -7,15 +7,14 @@ from unittest.mock import patch
 
 # Test if plotting functions run without error
 
-@patch("matplotlib.pyplot.savefig")
 class TestPlotting(unittest.TestCase):
 
     @classmethod
-    def setUpClass(self, mock_savefig):
+    def setUpClass(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
         self.imgdir = "/".join(bt.__file__.split("/")[:-2]) + "/tests/img/plotting"
         os.makedirs(self.imgdir, exist_ok=True)
-        self.data = sd.read_zarr(f"{datadir}/merfish_sample.zarr")
+        self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
         self.data = bt.io.prep(
             sdata=self.data,
             points_key="transcripts",
@@ -24,6 +23,7 @@ class TestPlotting(unittest.TestCase):
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
         )
 
+    @patch("matplotlib.pyplot.savefig")
     def test_points_plotting(self, mock_savefig):
         plt.figure()
         bt.pl.points(
@@ -76,6 +76,7 @@ class TestPlotting(unittest.TestCase):
         )
         mock_savefig.assert_called()
 
+    @patch("matplotlib.pyplot.savefig")
     def test_density_plotting(self, mock_savefig):
         plt.figure()
         bt.pl.density(
@@ -141,6 +142,7 @@ class TestPlotting(unittest.TestCase):
         plt.tight_layout()
         mock_savefig.assert_called()
 
+    @patch("matplotlib.pyplot.savefig")
     def test_shapes_plotting(self, mock_savefig):
         plt.figure()
         bt.pl.shapes(
