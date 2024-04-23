@@ -141,3 +141,6 @@ tests/data/processed/data.pt
 tests/data/processed/pre_filter.pt
 tests/data/processed/pre_transform.pt
 .DS_Store
+
+requirements.lock
+requirements-dev.lock
