@@ -89,8 +89,8 @@ def shape_stats(
     groupby : str, optional
         Column in obs to groupby, by default None
     """
-    cell_gdf = sdata[instance_key].melt(value_vars=cols[:3])
-    nucleus_gdf = sdata[nucleus_key].melt(value_vars=cols[3:])
+    cell_gdf = sdata[instance_key].melt(value_vars=[c for c in cols if instance_key in c])
+    nucleus_gdf = sdata[nucleus_key].melt(value_vars=[c for c in cols if nucleus_key in c])
     stats_long = pd.concat([cell_gdf, nucleus_gdf])
     stats_long["quantile"] = stats_long.groupby("variable")["value"].transform(
         lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=100).flatten()
