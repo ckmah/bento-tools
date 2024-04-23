@@ -27,7 +27,6 @@ dependencies = [
     "xgboost>=2.0.3",
     "statsmodels>=0.14.1",
     "scikit-learn>=1.4.2",
-    "torch>=2.2.2",
 ]
 license = "BSD-2-Clause"
 readme = "README.md"
@@ -47,8 +46,12 @@ docs = [
     "sphinx-autodoc-typehints>=2.0.1",
     "sphinx-autobuild<=2024.2.4",
 ]
+torch = [
+    "torch>=2.2.2",
+]
 all = [
     "bento-tools[docs]",
+    "bento-tools[torch]",
 ]
 
 [build-system]
