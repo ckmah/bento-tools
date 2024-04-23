@@ -171,7 +171,6 @@ def analyze_points(
         sdata.table.uns[output_key] = output.reset_index().rename(columns={f"{instance_key}_index": instance_key})
 
     print("Done.")
-    return sdata
 
 class PointFeature(metaclass=ABCMeta):
     """Abstract class for calculating sample features. A sample is defined as the set of

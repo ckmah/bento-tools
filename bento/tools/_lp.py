@@ -38,9 +38,9 @@ def lp(
     Returns
     -------
     sdata : SpatialData
-        .table.uns['lp']: DataFrame
+        .table.uns['lp']
             Localization pattern indicator matrix.
-        .table.uns['lpp']: DataFrame
+        .table.uns['lpp']
             Localization pattern probabilities.
     """
 
@@ -288,15 +288,14 @@ def lp_diff_discrete(
     sdata : SpatialData
         Spatial formatted SpatialData object.
     instance_key : str
-        cell boundaries instance key
+        cell boundaries instance key.
     phenotype : str
         Variable grouping cells for differential analysis. Must be in sdata.shape["cell_boundaries].columns.
 
     Returns
     -------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-        .table.uns['diff_{phenotype}'] : DataFrame
+        .table.uns['diff_{phenotype}']
             Long DataFrame with differential localization test results across phenotype groups.
     """
     lp_stats(sdata, instance_key=instance_key)
@@ -358,15 +357,14 @@ def lp_diff_continuous(
     sdata : SpatialData
         Spatial formatted SpatialData object.
     instance_key : str
-        cell boundaries instance key
+        cell boundaries instance key.
     phenotype : str
         Variable grouping cells for differential analysis. Must be in sdata.shape["cell_boundaries].columns.
 
     Returns
     -------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-        .table.uns['diff_{phenotype}'] : DataFrame
+        .table.uns['diff_{phenotype}']
             Long DataFrame with differential localization test results across phenotype groups.
     """
     stats = sdata.table.uns["lp_stats"]
