@@ -26,9 +26,8 @@ Bento's API structure takes inspiration from other libraries in the Scverse ecos
 - `bt.pl`: conveniently plot spatial data and embeddings
 - `bt.geo`: manipulating data structures
 - `bt.datasets`: included spatial transcriptomics datasets `WIP`
-- `bt.ut`: utility functions
 
-## Read/Write
+## Read and Write
 
 Bento is designed to work with [`SpatialData`](https://spatialdata.scverse.org/en/latest/) objects out of the box! Check out [SpatialData documentation](https://spatialdata.scverse.org/en/latest/tutorials/notebooks/notebooks.html) to learn how to bring your own data, whether it is from commercial platforms or a custom data format. 
 
