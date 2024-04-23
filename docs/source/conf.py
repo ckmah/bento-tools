@@ -15,7 +15,7 @@ from dataclasses import asdict
 
 from sphinxawesome_theme import LinkIcon, ThemeOptions
 
-sys.path.insert(0, os.path.abspath(".."))  # Source code dir relative to this file
+sys.path.insert(0, os.path.abspath("../.."))  # Source code dir relative to this file
 
 
 # -- Project information -----------------------------------------------------
