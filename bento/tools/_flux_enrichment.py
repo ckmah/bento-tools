@@ -174,7 +174,7 @@ def load_gene_sets(name):
     DataFrame
         Gene set.
     """
-    from importlib_resources import files, as_file
+    from importlib.resources import files, as_file
 
     fname = gene_sets[name]
     ref = files(__name__) / f"gene_sets/{fname}"

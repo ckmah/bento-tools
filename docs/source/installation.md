@@ -50,4 +50,9 @@ Run tests:
 
 ## GPU Support (Optional)
 
-Bento currently only uses GPUs to accelerate tensor decomposition (via [Tensorly](https://tensorly.org/stable/index.html)). PyTorch is already installed, but users should consult [PyTorch installation instructions](https://pytorch.org/get-started/locally/) for enabling GPU support, as installation varies by platform.
+   ```console
+      pip install -e ".[torch]"
+   ```
+
+
+Bento currently only uses GPUs to accelerate tensor decomposition (via [Tensorly](https://tensorly.org/stable/index.html)). PyTorch can be installed with the `torch` extra, but users should consult [PyTorch installation instructions](https://pytorch.org/get-started/locally/) for enabling GPU support, as installation varies by platform.

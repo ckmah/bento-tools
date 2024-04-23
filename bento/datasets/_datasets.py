@@ -1,8 +1,4 @@
-import os
-
-import pandas as pd
-import spatialdata as sd
-from importlib_resources import as_file, files
+from importlib.resources import as_file, files
 
 from ..io import read_zarr
 
