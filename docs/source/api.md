@@ -86,6 +86,7 @@ TODO
 Compute spatial properties of shape features e.g. area, aspect ratio, etc. of the cell, nucleus, or other region of interest. The set of available shape features is described in the Shape Feature Catalog. Use the function `bt.analyze_points()` to compute features and add your own custom calculation. See the [tutorial](https://bento-tools.github.io/bento/tutorials/TBD.html) for more information.
 
 ```{eval-rst}
+.. currentmodule:: bento.tl
 
 .. autosummary::
     :toctree: api
@@ -102,6 +103,7 @@ Compute spatial properties of shape features e.g. area, aspect ratio, etc. of th
 The set of implemented shape features is described below. Each feature is computed using the `bt.analyze_shapes()` function.
 
 ```{eval-rst}
+.. currentmodule:: bento.tl
 
 .. autosummary::
     :toctree: api
@@ -125,6 +127,7 @@ The set of implemented shape features is described below. Each feature is comput
 Methods for computing RNAflux embeddings and semantic segmentation of subcellular domains.
 
 ```{eval-rst}
+.. currentmodule:: bento.tl
 
 .. autosummary::
     :toctree: api
@@ -143,6 +146,7 @@ Methods for computing RNAflux embeddings and semantic segmentation of subcellula
 Perform multilabel classification of RNA localization patterns using spatial summary statistics as features.
 
 ```{eval-rst}
+.. currentmodule:: bento.tl
 
 .. autosummary::
     :toctree: api
@@ -159,6 +163,7 @@ Perform multilabel classification of RNA localization patterns using spatial sum
 Methods for compartments-ecific gene-gene colocalization analyses.
 
 ```{eval-rst}
+.. currentmodule:: bento.tl
 
 .. autosummary::
     :toctree: api
@@ -202,6 +207,7 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
 ### Shape features
 
 ```{eval-rst}
+.. currentmodule:: bento.pl
 
 .. autosummary::
     :toctree: api
@@ -213,6 +219,7 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
 ### RNAflux
 
 ```{eval-rst}
+.. currentmodule:: bento.pl
 
 .. autosummary::
     :toctree: api
@@ -226,6 +233,7 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
 ### RNAforest
 
 ```{eval-rst}
+.. currentmodule:: bento.pl
 
 .. autosummary::
     :toctree: api
@@ -239,6 +247,7 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
 ### Colocalization analysis
 
 ```{eval-rst}
+.. currentmodule:: bento.pl
 
 .. autosummary::
     :toctree: api
