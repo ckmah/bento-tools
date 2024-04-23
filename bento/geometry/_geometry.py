@@ -357,6 +357,16 @@ def set_shape_metadata(
             [column_names] if isinstance(column_names, str) else column_names
         )
 
+    # Fill missing values in string columns with empty string
+    str_columns = metadata.select_dtypes(include="object").columns
+    metadata[str_columns] = metadata[str_columns].fillna("")
+
+    # Fill missing values in categorical columns with empty string
+    cat_columns = metadata.select_dtypes(include="category").columns
+    for col in cat_columns:
+        if "" not in metadata[col].cat.categories:
+            metadata[col] = metadata[col].cat.add_categories([""]).fillna("")
+
     sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(
         shape_index
     ).fillna("")

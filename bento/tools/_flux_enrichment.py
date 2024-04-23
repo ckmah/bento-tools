@@ -174,12 +174,11 @@ def load_gene_sets(name):
     DataFrame
         Gene set.
     """
-    global pkg_resources
-    if pkg_resources is None:
-        import pkg_resources
+    from importlib_resources import files, as_file
 
     fname = gene_sets[name]
-    stream = pkg_resources.resource_stream(__name__, f"gene_sets/{fname}")
-    gs = pd.read_csv(stream)
+    ref = files(__name__) / f"gene_sets/{fname}"
+    with as_file(ref) as path:
+        gs = pd.read_csv(path)
 
-    return gs
+        return gs

@@ -1,13 +1,11 @@
 from typing import Iterable, Literal, Optional, Union
 
-import decoupler as dc
 import emoji
 import geopandas as gpd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pkg_resources
 import rasterio
 import rasterio.features
 import shapely
@@ -22,7 +20,7 @@ from spatialdata._core.spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel
 from tqdm.auto import tqdm
 
-from ..geometry import get_points, get_shape_metadata, set_points_metadata, sjoin_points
+from ..geometry import get_points, get_shape_metadata, set_points_metadata, sjoin_points, sjoin_shapes
 from ..tools._neighborhoods import _count_neighbors
 from ..tools._shape_features import analyze_shapes
 
@@ -43,7 +41,7 @@ def flux(
     """
     Compute RNAflux embeddings of each pixel as local composition normalized by cell composition.
     For k-nearest neighborhoods or "knn", method, specify n_neighbors. For radius neighborhoods, specify radius.
-    The default method is "radius" with radius = 1/2 of cell radius. RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
+    The default method is "radius" with radius = 1/4 of cell radius. RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
 
     Parameters
     ----------
@@ -62,7 +60,7 @@ def flux(
     radius : float
         Fraction of mean cell radius to use for local neighborhood.
     res : float
-        Resolution to use for rendering embedding. Default 0.05 samples at 5% original resolution (5 units between pixels)
+        Resolution to use for rendering embedding.
 
     Returns
     -------
@@ -94,9 +92,9 @@ def flux(
             .mean()
             .values[0]
         )
-        # Default radius = 50% of average cell radius
+        # Default radius = 25% of average cell radius
         if radius is None:
-            radius = mean_radius / 2
+            radius = mean_radius / 4
         # If radius is a fraction, use that fraction of average cell radius
         elif radius <= 1:
             radius = radius * mean_radius
@@ -116,6 +114,7 @@ def flux(
         instance_key,
         "raster",
         progress=False,
+        recompute=recompute,
         feature_kws=dict(raster={"step": step}),
     )
 
@@ -311,8 +310,8 @@ def fluxmap(
     sdata : SpatialData
         .points["points"] : DataFrame
             Adds "fluxmap" column denoting cluster membership.
-        .shapes["fluxmap#_shape"] : GeoSeries
-            Adds "fluxmap#_shape" columns for each cluster rendered as (Multi)Polygon shapes.
+        .shapes["fluxmap#"] : GeoSeries
+            Adds "fluxmap#" columns for each cluster rendered as (Multi)Polygon shapes.
     """
 
     raster_points = get_points(
@@ -351,7 +350,7 @@ def fluxmap(
 
     # Perform SOM clustering over n_clusters range and pick best number of clusters using elbow heuristic
     pbar = tqdm(total=4)
-    pbar.set_description(emoji.emojize(f"Optimizing # of clusters"))
+    pbar.set_description(emoji.emojize("Optimizing # of clusters"))
     som_models = {}
     quantization_errors = []
     for k in tqdm(n_clusters, leave=False):
@@ -444,7 +443,7 @@ def fluxmap(
         fluxmap_df[cell] = shapes
 
     fluxmap_df = pd.DataFrame.from_dict(fluxmap_df).T
-    fluxmap_df.columns = "fluxmap" + fluxmap_df.columns.astype(str) + "_boundaries"
+    fluxmap_df.columns = "fluxmap" + fluxmap_df.columns.astype(str)
 
     # Upscale to match original resolution
     fluxmap_df = fluxmap_df.apply(
@@ -464,7 +463,8 @@ def fluxmap(
     fluxmap_df = fluxmap_df.reindex(sdata.table.obs_names).where(
         fluxmap_df.notna(), other=Polygon()
     )
-    for fluxmap in fluxmap_df.columns:
+    fluxmap_names = fluxmap_df.columns.tolist()
+    for fluxmap in fluxmap_names:
         sdata.shapes[fluxmap] = ShapesModel.parse(
             gpd.GeoDataFrame(geometry=fluxmap_df[fluxmap])
         )
@@ -477,8 +477,11 @@ def fluxmap(
 
     # TODO SLOW
     sjoin_points(
-        sdata=sdata, shape_keys=fluxmap_df.columns.tolist(), points_key=points_key
+        sdata=sdata, shape_keys=fluxmap_names, points_key=points_key
     )
+
+    sjoin_shapes(sdata=sdata, instance_key=instance_key, shape_keys=fluxmap_names)
+
     pbar.update()
     pbar.set_description("Done")
     pbar.close()

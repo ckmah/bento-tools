@@ -5,39 +5,32 @@ import matplotlib.pyplot as plt
 import spatialdata as sd
 
 import bento as bt
+from unittest.mock import patch
 
 
 class TestFlux(unittest.TestCase):
-    def setUp(self):
+
+    @classmethod
+    def setUpClass(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
         self.imgdir = "/".join(bt.__file__.split("/")[:-2]) + "/tests/img/flux"
         os.makedirs(self.imgdir, exist_ok=True)
         self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
-        self.data = bt.io.format_sdata(
+        self.data = bt.io.prep(
             sdata=self.data,
             points_key="transcripts",
             feature_key="feature_name",
             instance_key="cell_boundaries",
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
         )
-
+        self.res=0.1
         bt.tl.flux(
             sdata=self.data,
             points_key="transcripts",
             instance_key="cell_boundaries",
             feature_key="feature_name",
-            res=1,
+            res=self.res,
             radius=0.5,
-        )
-
-        bt.tl.fluxmap(
-            sdata=self.data,
-            points_key="transcripts",
-            instance_key="cell_boundaries",
-            res=1,
-            train_size=1,
-            n_clusters=3,
-            plot_error=False,
         )
 
         self.fe_fazal2019_features = [
@@ -73,15 +66,24 @@ class TestFlux(unittest.TestCase):
             )
 
     def test_fluxmap(self):
+        bt.tl.fluxmap(
+            sdata=self.data,
+            points_key="transcripts",
+            instance_key="cell_boundaries",
+            res=self.res,
+            train_size=1,
+            n_clusters=3,
+            plot_error=False,
+        )
         self.assertTrue("fluxmap" in self.data.points["cell_boundaries_raster"].columns)
         for i in range(1, 4):
             self.assertTrue(
-                f"fluxmap{i}_boundaries" in self.data.points["transcripts"].columns
+                f"fluxmap{i}" in self.data.points["transcripts"].columns
             )
-            self.assertTrue(f"fluxmap{i}_boundaries" in self.data.shapes)
+            self.assertTrue(f"fluxmap{i}" in self.data.shapes)
 
-    def test_flux_plot(self):
-        plt.figure()
+    @patch("matplotlib.pyplot.savefig")
+    def test_flux_plot(self, mock_savefig):
         bt.pl.flux(self.data, res=1, fname=f"{self.imgdir}/flux.png")
 
     def test_fe_fazal2019(self):
@@ -129,7 +131,7 @@ class TestFlux(unittest.TestCase):
             sdata=self.data,
             points_key="transcripts",
             instance_key="cell_boundaries",
-            res=1,
+            res=self.res,
             train_size=1,
             n_clusters=3,
             plot_error=False,
@@ -138,26 +140,23 @@ class TestFlux(unittest.TestCase):
         bt.pl.fluxmap(self.data, fname=f"{self.imgdir}/fluxmap.png")
 
     def test_fe_plot(self):
+        # TODO this test is so slow
         bt.tl.fluxmap(
             sdata=self.data,
             points_key="transcripts",
             instance_key="cell_boundaries",
-            res=1,
+            res=self.res,
             train_size=1,
             n_clusters=3,
             plot_error=False,
         )
         bt.tl.fe_fazal2019(self.data)
-        self.data = bt.geo.sjoin_shapes(
-            self.data,
-            instance_key="cell_boundaries",
-            shape_keys=["fluxmap1_boundaries"],
-        )
+
         plt.figure()
         bt.pl.fe(
             self.data,
             "flux_OMM",
-            res=1,
+            res=self.res,
             shapes=["cell_boundaries", "fluxmap1_boundaries"],
             fname=f"{self.imgdir}/fe_flux_OMM_fluxmap1.png",
         )

@@ -75,7 +75,7 @@ def _polygons(sdata, shape, ax, hue=None, sync=True, **kwargs):
         face_color = "none"  # let GeoDataFrame plot function handle facecolor
 
     style_kwds = dict(
-        linewidth=0.5, edgecolor=edge_color, facecolor=face_color, zorder=1
+        linewidth=0.5, edgecolor=edge_color, facecolor=face_color
     )
     style_kwds.update(kwargs)
     shapes.plot(ax=ax, column=hue, **style_kwds)
@@ -131,7 +131,7 @@ def _raster(sdata, res, color, points_key, alpha, cbar=False, ax=None, **kwargs)
         )
     img = np.stack(values, axis=-1)
 
-    img_kws = dict(interpolation="none")
+    img_kws = dict(interpolation="none", zorder=1)
     img_kws.update(kwargs)
 
     im = ax.imshow(img, extent=(minx, maxx, miny, maxy), origin="lower", **img_kws)

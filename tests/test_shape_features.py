@@ -4,10 +4,11 @@ import spatialdata as sd
 
 
 class TestShapeFeatures(unittest.TestCase):
-    def setUp(self):
+    @classmethod
+    def setUpClass(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
         self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
-        self.data = bt.io.format_sdata(
+        self.data = bt.io.prep(
             sdata=self.data,
             points_key="transcripts",
             feature_key="feature_name",
@@ -37,7 +38,7 @@ class TestShapeFeatures(unittest.TestCase):
 
     # Simplest test to check if a single shape feature is calculated for a single shape
     def test_single_shape_single_feature(self):
-        self.data = bt.tl.analyze_shapes(
+        bt.tl.analyze_shapes(
             sdata=self.data,
             shape_keys="cell_boundaries",
             feature_names="area",
@@ -54,7 +55,7 @@ class TestShapeFeatures(unittest.TestCase):
 
     # Test case to check if multiple shape features are calculated for a single shape
     def test_single_shape_multiple_features(self):
-        self.data = bt.tl.analyze_shapes(
+        bt.tl.analyze_shapes(
             sdata=self.data,
             shape_keys="cell_boundaries",
             feature_names=self.shape_features,
@@ -91,7 +92,7 @@ class TestShapeFeatures(unittest.TestCase):
 
     # Test case to check if a single shape feature is calculated for multiple shapes
     def test_multiple_shapes_single_feature(self):
-        self.data = bt.tl.analyze_shapes(
+        bt.tl.analyze_shapes(
             sdata=self.data,
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
             feature_names="area",
@@ -114,7 +115,7 @@ class TestShapeFeatures(unittest.TestCase):
 
     # Test case to check if multiple shape features are calculated for multiple shapes
     def test_multiple_shapes_multiple_features(self):
-        self.data = bt.tl.analyze_shapes(
+        bt.tl.analyze_shapes(
             sdata=self.data,
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
             feature_names=self.shape_features,

@@ -11,6 +11,7 @@ from ..geometry import get_points
 from ._layers import _raster, _scatter, _hist, _kde, _polygons
 from ._utils import savefig, setup_ax
 from ._colors import red2blue, red2blue_dark 
+import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Polygon
 
@@ -31,6 +32,7 @@ def _prepare_points_df(sdata, points_key, instance_key, sync, semantic_vars=None
 
     if hue_order is not None:
         points = points[points[hue].isin(hue_order)]
+        points[hue] = pd.Categorical(points[hue], categories=hue_order)
 
     # Add semantic variables to points; priority: points, obs, points metadata
     for var in vars:
@@ -259,9 +261,6 @@ def shapes(
         Filename to save figure to, by default None. If None, will not save figure.
     """
 
-    if shapes and not isinstance(shapes, list):
-        shapes = [shapes]
-
     if ax is None:
         ax = plt.gca()
 
@@ -287,17 +286,16 @@ def _shapes(
     ax=None,
     **kwargs,
 ):
+    
     if shapes is None:
         shapes = [instance_key, nucleus_key]
+
+    if shapes and not isinstance(shapes, list):
+        shapes = [shapes]
 
     # Save list of names to remove if not in data.obs
     shape_names = [name for name in shapes if name in sdata.shapes.keys()]
     missing_names = [name for name in shapes if name not in sdata.shapes.keys()]
-
-    # Always plot cell shape first (on bottom of all shapes)
-    if instance_key in shape_names:
-        shape_names.remove(instance_key)
-        shape_names.insert(0, instance_key)
 
     if len(missing_names) > 0:
         warnings.warn("Shapes not found in data: " + ", ".join(missing_names))
@@ -312,6 +310,10 @@ def _shapes(
     geo_kws.update(**kwargs)
 
     for name in shape_names:
+        if name == instance_key:
+            geo_kws.update(zorder=2.001)
+        else:
+            geo_kws.update(zorder=2)
         _polygons(
             sdata,
             name,
@@ -342,7 +344,7 @@ def _shapes(
             # .buffer(0)
         )
         axes_poly.overlay(sdata[instance_key], how="difference").plot(
-            ax=ax, linewidth=0, facecolor=sns.axes_style()["axes.facecolor"], zorder=2.001
+            ax=ax, linewidth=0, facecolor=sns.axes_style()["axes.facecolor"], zorder=2.0001
         )
 
 @savefig
@@ -351,7 +353,7 @@ def flux(
     sdata,
     instance_key="cell_boundaries",
     alpha=True,
-    res=0.05,
+    res=1,
     shapes=None,
     hide_outside=True,
     axis_visible=False,
@@ -372,7 +374,7 @@ def flux(
     data : SpatialData
         Spatial formatted SpatialData
     res : float, optional
-        Resolution of fluxmap, by default 0.05
+        Resolution of fluxmap, by default 1
     shapes : list, optional
         List of shapes to plot, by default None. If None, will plot cell and nucleus shapes by default.
     hide_outside : bool, optional
@@ -411,8 +413,8 @@ def fe(
     sdata,
     gs,
     instance_key="cell_boundaries",
-    alpha=True,
-    res=0.05,
+    alpha=False,
+    res=1,
     shapes=None,
     cmap=None,
     cbar=True,
@@ -437,7 +439,7 @@ def fe(
     gs : str
         Gene set name
     res : float, optional
-        Resolution of fluxmap, by default 0.05
+        Resolution of fluxmap, by default 1
     shapes : list, optional    
         List of shape names to plot, by default None. If None, will plot cell and nucleus shapes by default.
     cmap : str, optional
@@ -479,6 +481,7 @@ def fe(
 
     _raster(sdata, alpha=alpha, points_key=f"{instance_key}_raster", res=res, color=gs, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
     _shapes(sdata, shapes=shapes, instance_key=instance_key, hide_outside=hide_outside, ax=ax, **shape_kws)
+    # _shapes(sdata, instance_key=instance_key, hide_outside=hide_outside, ax=ax, **shape_kws)
 
 @savefig
 @setup_ax
@@ -491,6 +494,8 @@ def fluxmap(
     frame_visible=True,
     title=None,
     dx=0.1,
+    units="um",
+    square=False,
     ax=None,
     fname=None,
     **kwargs,
@@ -508,7 +513,6 @@ def fluxmap(
     fname : str, optional
         Filename to save figure to, by default None. If None, will not save figure.
     """
-
     if ax is None:
         ax = plt.gca()
 
@@ -531,9 +535,7 @@ def fluxmap(
             shapes=shape,
             instance_key=instance_key,
             color=color,
-            hide_outside=hide_outside,
-            axis_visible=axis_visible,
-            frame_visible=frame_visible,
+            hide_outside=False,
             ax=ax,
             **shape_kws,
         )

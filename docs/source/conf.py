@@ -54,6 +54,14 @@ myst_enable_extensions = [
     "html_admonition",
 ]
 
+intersphinx_mapping = {
+    "geopandas": ("https://geopandas.org/en/stable/", None),
+    "shapely": ("https://shapely.readthedocs.io/en/stable/", None),
+    "spatialdata": ("https://spatialdata.readthedocs.io/en/stable/", None),
+    "scanpy": ("https://scanpy.readthedocs.io/en/stable/", None),
+    "anndata": ("https://anndata.readthedocs.io/en/stable/", None),
+}
+
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
 
@@ -71,6 +79,8 @@ html_theme = "sphinxawesome_theme"
 
 
 theme_options = ThemeOptions(
+    logo_light= "_static/no_image.png",
+    logo_dark= "_static/no_image.png",
     show_scrolltop=True,
     show_breadcrumbs=True,
     awesome_external_links=True,
@@ -118,7 +128,6 @@ napoleon_use_rtype = True
 numpydoc_show_class_members = False
 
 html_title = "bento-tools"
-html_logo = "_static/no_image.png"
 
 # -- Options for extensions -------------------------------------------------------------------------------
 

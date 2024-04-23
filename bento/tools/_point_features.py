@@ -171,7 +171,6 @@ def analyze_points(
         sdata.table.uns[output_key] = output.reset_index().rename(columns={f"{instance_key}_index": instance_key})
 
     print("Done.")
-    return sdata
 
 class PointFeature(metaclass=ABCMeta):
     """Abstract class for calculating sample features. A sample is defined as the set of
@@ -242,16 +241,16 @@ class ShapeProximity(PointFeature):
         try:
             if isnan(shape):
                 return {
-                f"{self.shape_key}_inner_proximity": 0,
-                f"{self.shape_key}_outer_proximity": 0,
+                f"{self.shape_key}_inner_proximity": np.nan,
+                f"{self.shape_key}_outer_proximity": np.nan,
             }
         except:
             pass
 
         if not shape:
             return {
-                f"{self.shape_key}_inner_proximity": 0,
-                f"{self.shape_key}_outer_proximity": 0,
+                f"{self.shape_key}_inner_proximity": np.nan,
+                f"{self.shape_key}_outer_proximity": np.nan,
             }
 
         # Get points
@@ -328,16 +327,16 @@ class ShapeAsymmetry(PointFeature):
         try:
             if isnan(shape):
                 return {
-                    f"{self.shape_key}_inner_asymmetry": 0,
-                    f"{self.shape_key}_outer_asymmetry": 0,
+                    f"{self.shape_key}_inner_asymmetry": np.nan,
+                    f"{self.shape_key}_outer_asymmetry": np.nan,
                 }
         except:
             pass
 
         if shape is None:
             return {
-                f"{self.shape_key}_inner_asymmetry": 0,
-                f"{self.shape_key}_outer_asymmetry": 0,
+                f"{self.shape_key}_inner_asymmetry": np.nan,
+                f"{self.shape_key}_outer_asymmetry": np.nan,
             }
 
         # Get points

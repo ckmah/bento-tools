@@ -76,7 +76,7 @@ def colocation(
     if self_pairs == "only":
         labels["pair"] = [p.split("_")[0] for p in labels["pair"]]
 
-    factor(
+    return factor(
         factors,
         labels,
         names,
@@ -175,6 +175,8 @@ def factor(
             ax=axes[i],
             square=square,
         )
+
+    return fig
 
 
 def _plot_loading(df, name, n_top, cut, show_labels, cluster, ax, **kwargs):

@@ -1,12 +1,27 @@
+from pathlib import Path
 import warnings
-from typing import List
+from typing import List, Optional, Union
 
 warnings.filterwarnings("ignore")
 
-from spatialdata._core.spatialdata import SpatialData
+import spatialdata as sd
+from spatialdata import SpatialData
 from spatialdata.models import TableModel
 
 from ..geometry import sjoin_points, sjoin_shapes
+import zarr
+
+
+def read_zarr(
+    store: Union[str, Path, zarr.Group],
+    selection: Optional[tuple[str]] = None,
+    points_key: str = "transcripts",
+    feature_key: str = "feature_name",
+    instance_key: str = "cell_boundaries",
+    shape_keys: List[str] = ["cell_boundaries", "nucleus_boundaries"],
+) -> SpatialData:
+    sdata = sd.read_zarr(store, selection=selection)
+    return prep(sdata)
 
 
 def prep(
@@ -17,7 +32,7 @@ def prep(
     shape_keys: List[str] = ["cell_boundaries", "nucleus_boundaries"],
 ) -> SpatialData:
     """Computes spatial indices for elements in SpatialData to enable usage of bento-tools.
-    
+
     Specifically, this function indexes points to shapes and joins shapes to the instance shape. It also computes a count table for the points.
 
     Parameters

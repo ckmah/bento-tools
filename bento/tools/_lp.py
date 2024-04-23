@@ -38,9 +38,9 @@ def lp(
     Returns
     -------
     sdata : SpatialData
-        .table.uns['lp']: DataFrame
+        .table.uns['lp']
             Localization pattern indicator matrix.
-        .table.uns['lpp']: DataFrame
+        .table.uns['lpp']
             Localization pattern probabilities.
     """
 
@@ -74,17 +74,20 @@ def lp(
             instance_key,
             ["proximity", "asymmetry", "ripley", "point_dispersion_norm"],
             groupby=groupby,
-            recompute=True,
+            recompute=False,
         )
         bento.tl.analyze_points(
             sdata,
             nucleus_key,
             ["proximity", "asymmetry", "shape_dispersion_norm"],
             groupby=groupby,
-            recompute=True,
+            recompute=False,
         )
 
     X_df = sdata.table.uns[feature_key][pattern_features]
+
+    # Save which samples have nan feature values
+    invalid_samples = X_df.isna().any(axis=1)
 
     # Load trained model
     model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"
@@ -102,6 +105,9 @@ def lp(
 
     # Add cell and groupby identifiers
     pattern_prob.index = sdata.table.uns[feature_key].set_index([instance_key, *groupby]).index
+
+    # Set to no class if sample had nan feature values
+    pattern_prob.loc[:, invalid_samples] = 0
 
     # Threshold probabilities to get indicator matrix
     thresholds = [0.45300, 0.43400, 0.37900, 0.43700, 0.50500]
@@ -282,15 +288,14 @@ def lp_diff_discrete(
     sdata : SpatialData
         Spatial formatted SpatialData object.
     instance_key : str
-        cell boundaries instance key
+        cell boundaries instance key.
     phenotype : str
         Variable grouping cells for differential analysis. Must be in sdata.shape["cell_boundaries].columns.
 
     Returns
     -------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-        .table.uns['diff_{phenotype}'] : DataFrame
+        .table.uns['diff_{phenotype}']
             Long DataFrame with differential localization test results across phenotype groups.
     """
     lp_stats(sdata, instance_key=instance_key)
@@ -352,15 +357,14 @@ def lp_diff_continuous(
     sdata : SpatialData
         Spatial formatted SpatialData object.
     instance_key : str
-        cell boundaries instance key
+        cell boundaries instance key.
     phenotype : str
         Variable grouping cells for differential analysis. Must be in sdata.shape["cell_boundaries].columns.
 
     Returns
     -------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-        .table.uns['diff_{phenotype}'] : DataFrame
+        .table.uns['diff_{phenotype}']
             Long DataFrame with differential localization test results across phenotype groups.
     """
     stats = sdata.table.uns["lp_stats"]

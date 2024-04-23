@@ -74,17 +74,17 @@ def _poly_aspect_ratio(poly):
 def aspect_ratio(sdata: SpatialData, shape_key: str, recompute: bool = False):
     """Compute the aspect ratio of the minimum rotated rectangle that contains each shape.
 
-        Parameters
-        ----------
-        sdata : SpatialData
-            Spatial formatted SpatialData
-        shape_key : str
-            Key in `sdata.shapes[shape_key]` that contains the shape information.
-    1
-        Fields
-        ------
-            .shapes[shape_key]['{shape}_aspect_ratio'] : float
-                Ratio of major to minor axis for each polygon
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial formatted SpatialData
+    shape_key : str
+        Key in `sdata.shapes[shape_key]` that contains the shape information.
+
+    Fields
+    ------
+        .shapes[shape_key]['{shape}_aspect_ratio'] : float
+            Ratio of major to minor axis for each polygon
     """
 
     feature_key = f"{shape_key}_aspect_ratio"
@@ -232,7 +232,7 @@ def second_moment(sdata: SpatialData, shape_key: str, recompute: bool = False):
     if feature_key in sdata.shapes[shape_key].keys() and not recompute:
         return
 
-    _raster(sdata, shape_key, recompute=recompute)
+    raster(sdata, shape_key, recompute=recompute)
 
     rasters = sdata.shapes[shape_key][f"{shape_key}_raster"]
     shape_centroids = get_shape(sdata, shape_key, sync=False).centroid
@@ -533,7 +533,6 @@ def analyze_shapes(
 
         shape_features[feature](sdata, shape, **kws)
 
-    return sdata
 
 
 def register_shape_feature(name: str, func: Callable):
