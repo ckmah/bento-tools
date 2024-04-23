@@ -1,5 +1,6 @@
 ```{toctree}
 :hidden: true
+:maxdepth: 2
 ```
 
 ```{eval-rst}
@@ -20,17 +21,12 @@ Import Bento with:
 
 Bento's API structure takes inspiration from other libraries in the Scverse ecosystem. It is organized under a set of modules including:
 
-`bt.io`: provides out of the box compatibility with `SpatialData` objects
-
-`bt.tl`: subcellular analysis tools
-
-`bt.pl`: conveniently plot spatial data and embeddings
-
-`bt.geo`: manipulating data structures
-
-`bt.datasets`: included spatial transcriptomics datasets `WIP`
-
-`bt.ut`: utility functions
+- `bt.io`: provides out of the box compatibility with `SpatialData` objects
+- `bt.tl`: subcellular analysis tools
+- `bt.pl`: conveniently plot spatial data and embeddings
+- `bt.geo`: manipulating data structures
+- `bt.datasets`: included spatial transcriptomics datasets `WIP`
+- `bt.ut`: utility functions
 
 ## Read/Write
 
@@ -48,6 +44,22 @@ Bento is designed to work with [`SpatialData`](https://spatialdata.scverse.org/e
 
 ## Tools
 
+Bento provides a set of tools to analyze the spatial composition of cells and molecules. These tools are designed to work with `SpatialData` objects and can be used to compute spatial summary statistics, shape features, and RNA localization patterns.
+
+### Composition
+
+
+```{eval-rst}
+.. currentmodule:: bento.tl
+
+.. autosummary::
+    :toctree: api
+    :nosignatures:
+
+    comp
+    comp_diff
+```
+
 ### Point Features
 
 Compute spatial summary statistics describing groups of molecules e.g. distance to the cell membrane, relative symmetry, dispersion, etc. The set of available point features is described in the Point Feature Catalog. Use the function `bt.tl.analyze_points()` to compute features and add your own custom calculation. See the [tutorial](https://bento-tools.github.io/bento/tutorials/TBD.html) for more information.
@@ -63,6 +75,12 @@ Compute spatial summary statistics describing groups of molecules e.g. distance 
     list_point_features
     register_point_feature
 ```
+
+#### Point Feature Catalog
+
+The set of implemented point features is described below. Each feature is computed using the `bt.tl.analyze_points()` function.
+
+TODO
 
 ### Shape Features
 
@@ -169,6 +187,19 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
     shapes
 ```
 
+### Composition
+
+```{eval-rst}
+.. currentmodule:: bento.pl
+
+.. autosummary::
+    :toctree: api
+    :nosignatures:
+
+    comp
+```
+
+
 ### Shape features
 
 ```{eval-rst}
@@ -190,7 +221,6 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
 
     flux
     fluxmap
-    flux_summary
     fe
 ```
 
@@ -202,10 +232,9 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
     :toctree: api
     :nosignatures:
 
-    lp_diff_discrete
     lp_dist
-    lp_gene_dist
     lp_genes
+    lp_diff_discrete
 ```
 
 ### Colocalization analysis
@@ -231,21 +260,17 @@ Convenient methods for setting, getting, and reformatting data. These functions 
     :toctree: api
     :nosignatures:
 
+    get_points
+    get_points_metadata
+    set_points_metadata
+    
+    get_shape
+    get_shape_metadata
+    set_shape_metadata
+
+    overlay
+    filter_by_gene
+
     sjoin_points
     sjoin_shapes
-    get_points
-    get_shape
-    get_points_metadata
-    get_shape_metadata
-    set_points_metadata
-    set_shape_metadata
 ```
-
-## Utility functions
-
-```{eval-rst}
-.. currentmodule:: bento.ut
-
-.. autosummary::
-    :toctree: api
-    :nosignatures:

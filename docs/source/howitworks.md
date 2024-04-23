@@ -10,13 +10,14 @@ Under the hood, we use the [SpatialData](https://spatialdata.scverse.org/en/late
 
 To enable scalable and performant operation with Bento, we perform spatial indexing on the data upfront and store these indices as metadata. This allows us to quickly query points within shapes, and shapes that contain points. Bento adopts a cell-centric approach, where each cell is treated as an independent unit of analysis. This allows us to perform subcellular spatial analysis within individual cells, and aggregate results across cells.
 
+```{eval-rst}
 .. code-block:: python
     :caption: Example SpatialData object
 
     from spatialdata.datasets import blobs
     sdata = blobs()
     print(sdata)
-..
+```
 
 ```
 SpatialData object
@@ -46,15 +47,6 @@ The `SpatialData` object is a container for the following elements:
 - `Shapes`: boundaries, circles, polygons
 - `Tables`: annotations, count matrices
 
-### Shapes
-
-AnnData adapted to hold spatial data
-Shapes usually represent boundaries e.g. cell, nucleus, or other subcellular compartments. They are stored as GeoPandas dataframes in 
-
-### Points
-For fast spatial queries, Bento indexes points to shape layers upfront, and saves them as columns `points`, denoted as `"shape index"` above. For example, `"cell"` and `"nucleus"` columns are added to indicate whether points are within the shape.
-
-Metadata for points are stored as matrices `uns`. These metadata matrices are the same length as `points`, which makes it easy to query points and associated metadata. All metadata keys are registered to `uns['points_metadata']`, which is used to keep them in sync.
 
 ## RNAflux
 
