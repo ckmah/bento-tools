@@ -358,7 +358,7 @@ def set_shape_metadata(
         )
 
     # Fill missing values in string columns with empty string
-    str_columns = metadata.select_dtypes(include="object").columns
+    str_columns = metadata.select_dtypes(include="object", exclude="number").columns
     metadata[str_columns] = metadata[str_columns].fillna("")
 
     # Fill missing values in categorical columns with empty string
@@ -369,7 +369,7 @@ def set_shape_metadata(
 
     sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(
         shape_index
-    ).fillna("")
+    )
 
 
 def _check_points_sync(sdata, points_key):

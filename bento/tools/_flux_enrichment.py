@@ -177,7 +177,7 @@ def load_gene_sets(name):
     from importlib.resources import files, as_file
 
     fname = gene_sets[name]
-    ref = files(__name__) / f"gene_sets/{fname}"
+    ref = files(__package__) / f"gene_sets/{fname}"
     with as_file(ref) as path:
         gs = pd.read_csv(path)
 

@@ -78,13 +78,16 @@ def prep(
             shape_sjoin.append(shape_key)
 
     if len(point_sjoin) > 0:
+        print("Indexing points...")
         sdata = sjoin_points(sdata=sdata, points_key=points_key, shape_keys=point_sjoin)
     if len(shape_sjoin) > 0:
+        print("Indexing shapes...")
         sdata = sjoin_shapes(
             sdata=sdata, instance_key=instance_key, shape_keys=shape_sjoin
         )
 
     # Recompute count table
+    print("Aggregating counts...")
     table = TableModel.parse(
         sdata.aggregate(
             values=points_key,
@@ -95,10 +98,16 @@ def prep(
         ).table
     )
 
-    del sdata.table
+    try:
+        del sdata.table
+    except KeyError:
+        pass
+    
     sdata.table = table
     # Set instance key to cell_shape_key for all points and table
     sdata.points[points_key].attrs["spatialdata_attrs"]["instance_key"] = instance_key
     sdata.points[points_key].attrs["spatialdata_attrs"]["feature_key"] = feature_key
+
+    print("Done.")
 
     return sdata

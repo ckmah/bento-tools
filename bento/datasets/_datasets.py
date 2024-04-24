@@ -102,6 +102,6 @@ from ..io import read_zarr
 
 
 def sample_data():
-    ref = files(__name__) / "merfish_sample.zarr"
+    ref = files(__package__) / "merfish_sample.zarr"
     with as_file(ref) as path:
         return read_zarr(path)
