@@ -4,8 +4,7 @@ from scipy.stats import wasserstein_distance
 from sklearn.metrics.pairwise import paired_distances
 from spatialdata._core.spatialdata import SpatialData
 
-from .._utils import get_feature_key, get_instance_key
-from ..geometry import get_points
+from .._utils import get_feature_key, get_instance_key, get_points
 
 
 def _get_compositions(

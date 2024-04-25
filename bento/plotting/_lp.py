@@ -11,7 +11,7 @@ from upsetplot import UpSet, from_indicators
 
 from .._constants import PATTERN_COLORS, PATTERN_NAMES
 from ..tools import lp_stats
-from ..geometry import get_points
+from .._utils import get_points
 from ._utils import savefig
 from ._multidimensional import _radviz
 

@@ -11,7 +11,7 @@ from scipy.interpolate import griddata
 from shapely.geometry import Polygon
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-from ..geometry import get_points, get_shape, get_points_metadata
+from .._utils import get_points, get_shape, get_points_metadata
 
 
 def _scatter(points, ax, hue=None, size=None, style=None, **kwargs):
@@ -87,6 +87,7 @@ def _raster(sdata, res, color, points_key, alpha, cbar=False, ax=None, **kwargs)
     if ax is None:
         ax = plt.gca()
 
+    # 
     points = get_points(sdata, points_key=points_key, astype="pandas", sync=True)
     step = 1 / res
     color_values = np.array(

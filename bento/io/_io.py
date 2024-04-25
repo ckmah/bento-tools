@@ -1,27 +1,15 @@
-from pathlib import Path
 import warnings
-from typing import List, Optional, Union
+from typing import List
 
-warnings.filterwarnings("ignore")
-
-import spatialdata as sd
+import emoji
 from spatialdata import SpatialData
 from spatialdata.models import TableModel
+from tqdm.auto import tqdm
 
-from ..geometry import sjoin_points, sjoin_shapes
-import zarr
+from .._utils import _sync_points
+from ._index import _sjoin_points, _sjoin_shapes
 
-
-def read_zarr(
-    store: Union[str, Path, zarr.Group],
-    selection: Optional[tuple[str]] = None,
-    points_key: str = "transcripts",
-    feature_key: str = "feature_name",
-    instance_key: str = "cell_boundaries",
-    shape_keys: List[str] = ["cell_boundaries", "nucleus_boundaries"],
-) -> SpatialData:
-    sdata = sd.read_zarr(store, selection=selection)
-    return prep(sdata)
+warnings.filterwarnings("ignore")
 
 
 def prep(
@@ -77,17 +65,31 @@ def prep(
         ):
             shape_sjoin.append(shape_key)
 
+    pbar = tqdm(total=3)
     if len(point_sjoin) > 0:
-        print("Indexing points...")
-        sdata = sjoin_points(sdata=sdata, points_key=points_key, shape_keys=point_sjoin)
+        pbar.set_description("Mapping points")
+        sdata = _sjoin_points(
+            sdata=sdata,
+            points_key=points_key,
+            shape_keys=point_sjoin,
+        )
+    
+    pbar.update()
+    
     if len(shape_sjoin) > 0:
-        print("Indexing shapes...")
-        sdata = sjoin_shapes(
+        pbar.set_description("Mapping shapes")
+        sdata = _sjoin_shapes(
             sdata=sdata, instance_key=instance_key, shape_keys=shape_sjoin
         )
 
+    pbar.update()
+
+    # Only keep points within instance_key shape
+    _sync_points(sdata, points_key)
+
     # Recompute count table
-    print("Aggregating counts...")
+    pbar.set_description("Agg. counts")
+
     table = TableModel.parse(
         sdata.aggregate(
             values=points_key,
@@ -98,16 +100,19 @@ def prep(
         ).table
     )
 
+    pbar.update()
+
     try:
         del sdata.table
     except KeyError:
         pass
-    
+
     sdata.table = table
     # Set instance key to cell_shape_key for all points and table
     sdata.points[points_key].attrs["spatialdata_attrs"]["instance_key"] = instance_key
     sdata.points[points_key].attrs["spatialdata_attrs"]["feature_key"] = feature_key
 
-    print("Done.")
+    pbar.set_description(emoji.emojize("Done :bento_box:"))
+    pbar.close()
 
     return sdata

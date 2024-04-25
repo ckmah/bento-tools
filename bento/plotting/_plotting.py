@@ -7,7 +7,7 @@ warnings.filterwarnings("ignore")
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from ..geometry import get_points
+from .._utils import get_points
 from ._layers import _raster, _scatter, _hist, _kde, _polygons
 from ._utils import savefig, setup_ax
 from ._colors import red2blue, red2blue_dark 
@@ -374,7 +374,7 @@ def flux(
     data : SpatialData
         Spatial formatted SpatialData
     res : float, optional
-        Resolution of fluxmap, by default 1
+        Resolution of flux, by default 1
     shapes : list, optional
         List of shapes to plot, by default None. If None, will plot cell and nucleus shapes by default.
     hide_outside : bool, optional
@@ -439,7 +439,7 @@ def fe(
     gs : str
         Gene set name
     res : float, optional
-        Resolution of fluxmap, by default 1
+        Resolution of flux, by default 1
     shapes : list, optional    
         List of shape names to plot, by default None. If None, will plot cell and nucleus shapes by default.
     cmap : str, optional
@@ -525,7 +525,7 @@ def fluxmap(
         colors = sns.color_palette(palette, n_colors=len(fluxmap_shapes))
         colormap = dict(zip(fluxmap_shapes, colors))
 
-    shape_kws = dict(color_style="fill")
+    shape_kws = dict(color_style="fill", linewidth=0)
     shape_kws.update(kwargs)
 
     # Cycle through colormap and plot shapes

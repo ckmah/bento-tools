@@ -9,7 +9,7 @@ from spatialdata._core.spatialdata import SpatialData
 from kneed import KneeLocator
 from tqdm.auto import tqdm
 
-from ..geometry import get_points
+from .._utils import get_points
 from ._neighborhoods import _count_neighbors
 from ._decomposition import decompose
 

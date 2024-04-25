@@ -7,7 +7,7 @@ import pandas as pd
 from scipy import sparse
 from spatialdata._core.spatialdata import SpatialData
 
-from ..geometry import get_points, set_points_metadata
+from .._utils import get_points, set_points_metadata
 
 
 def fe_fazal2019(sdata: SpatialData, **kwargs):

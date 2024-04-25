@@ -257,12 +257,12 @@ These are convenient functions for static 2D plots of cells, molecules, and embe
     colocation
 ```
 
-## Manipulating spatial data
+## Utilities for data manipulation
 
 Convenient methods for setting, getting, and reformatting data. These functions are used internally by other functions in Bento.
 
 ```{eval-rst}
-.. currentmodule:: bento.geo
+.. currentmodule:: bento.ut
 
 .. autosummary::
     :toctree: api
@@ -276,9 +276,15 @@ Convenient methods for setting, getting, and reformatting data. These functions 
     get_shape_metadata
     set_shape_metadata
 
-    overlay
-    filter_by_gene
-
-    sjoin_points
-    sjoin_shapes
 ```
+
+## Geometric operations
+
+```{eval-rst}
+.. currentmodule:: bento.geo
+
+.. autosummary::
+    :toctree: api
+    :nosignatures:
+    
+    overlay

@@ -1,6 +1,7 @@
 from importlib.resources import as_file, files
 
-from ..io import read_zarr
+import spatialdata as sd
+from ..io import prep
 
 # def get_dataset_info():
 #     """Return DataFrame with info about builtin datasets.
@@ -104,4 +105,6 @@ from ..io import read_zarr
 def sample_data():
     ref = files(__package__) / "merfish_sample.zarr"
     with as_file(ref) as path:
-        return read_zarr(path)
+        sdata = sd.read_zarr(path)
+        sdata = prep(sdata, points_key="transcripts", instance_key="feature_name", shape_keys=["cell_boundaries", "nucleus_boundaries"])
+        return sdata

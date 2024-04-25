@@ -17,7 +17,7 @@ from math import isnan
 import re
 
 from .. import tools as tl
-from ..geometry import get_points
+from .._utils import get_points
 
 def analyze_points(
     sdata: SpatialData,

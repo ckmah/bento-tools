@@ -17,10 +17,11 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.preprocessing import StandardScaler, minmax_scale, quantile_transform
 from sklearn.utils import resample
 from spatialdata._core.spatialdata import SpatialData
-from spatialdata.models import PointsModel, ShapesModel
+from spatialdata.models import ShapesModel
 from tqdm.auto import tqdm
 
-from ..geometry import get_points, get_shape_metadata, set_points_metadata, sjoin_points, sjoin_shapes
+from .._utils import get_points, get_shape_metadata, set_points_metadata
+from ..io._index import _sjoin_points, _sjoin_shapes
 from ..tools._neighborhoods import _count_neighbors
 from ..tools._shape_features import analyze_shapes
 
@@ -100,9 +101,9 @@ def flux(
             radius = radius * mean_radius
         # If radius is an integer, use that as the radius
 
-    attrs = sdata.points[points_key].attrs
+    # Grab molecules
     points = get_points(sdata, points_key=points_key, astype="pandas", sync=True)
-    points = points[[instance_key, feature_key, "x", "y"]].sort_values(instance_key)
+    points = points[[instance_key, feature_key, "x", "y"]]
 
     # embeds points on a uniform grid
     pbar = tqdm(total=3)
@@ -118,12 +119,10 @@ def flux(
         feature_kws=dict(raster={"step": step}),
     )
 
+    # Grab raster points
     raster_points = get_points(
         sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=False
-    ).sort_values(instance_key)
-    raster_points = PointsModel.parse(raster_points)
-    sdata.points[f"{instance_key}_raster"] = raster_points
-    sdata.points[f"{instance_key}_raster"].attrs = attrs
+    )
 
     # Extract gene names and codes
     gene_names = points[feature_key].cat.categories.tolist()
@@ -132,6 +131,7 @@ def flux(
     points_grouped = points.groupby(instance_key)
     rpoints_grouped = raster_points.groupby(instance_key)
     cells = list(points_grouped.groups.keys())
+    cells.sort()
 
     cell_composition = sdata.table[cells, gene_names].X.toarray()
 
@@ -142,9 +142,11 @@ def flux(
     # Embed each cell neighborhood independently
     cell_fluxs = []
     rpoint_counts = []
+    rpoint_index = []
     for i, cell in enumerate(tqdm(cells, leave=False)):
         cell_points = points_grouped.get_group(cell)
         rpoints = rpoints_grouped.get_group(cell)
+        rpoint_index.extend(rpoints.index.tolist())
         if method == "knn":
             gene_count = _count_neighbors(
                 cell_points,
@@ -207,17 +209,28 @@ def flux(
     embed_names = [f"flux_embed_{i}" for i in range(flux_embed.shape[1])]
     flux_color = vec2color(flux_embed, alpha_vec=rpoints_counts)
 
+    # Save flux embeddings and colors after reindexing to raster points
+    cell_fluxs = pd.DataFrame(cell_fluxs.todense().A, index=rpoint_index).reindex(
+        raster_points.index
+    )
     set_points_metadata(
         sdata,
         points_key=f"{instance_key}_raster",
-        metadata=cell_fluxs.todense().A,
+        metadata=cell_fluxs,
         columns=gene_names,
+    )
+    flux_embed = pd.DataFrame(flux_embed, index=rpoint_index).reindex(
+        raster_points.index
     )
     set_points_metadata(
         sdata,
         points_key=f"{instance_key}_raster",
         metadata=flux_embed,
         columns=embed_names,
+    )
+
+    flux_color = pd.DataFrame(flux_color, index=rpoint_index).reindex(
+        raster_points.index
     )
     set_points_metadata(
         sdata,
@@ -276,10 +289,11 @@ def fluxmap(
     instance_key: str = "cell_boundaries",
     n_clusters: Union[Iterable[int], int] = range(2, 9),
     num_iterations: int = 1000,
+    min_count: int = 50,
     train_size: float = 1,
     res: float = 1,
     random_state: int = 11,
-    plot_error: bool = True,
+    plot_error: bool = False,
 ):
     """Cluster flux embeddings using self-organizing maps (SOMs) and vectorize clusters as Polygon shapes.
 
@@ -317,6 +331,7 @@ def fluxmap(
     raster_points = get_points(
         sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=False
     )
+    rpoints_index = raster_points.index
 
     # Check if flux embedding has been computed
     if "flux_embed_0" not in raster_points.columns:
@@ -325,10 +340,15 @@ def fluxmap(
         )
 
     flux_embed = raster_points.filter(like="flux_embed_")
-    sorted_column_names = sorted(
-        flux_embed.columns.tolist(), key=lambda x: int(x.split("_")[-1])
-    )
-    flux_embed = flux_embed[sorted_column_names].to_numpy()
+
+    # Keep only points with minimum neighborhood count
+    flux_counts = sdata.table.uns["flux_counts"]
+    valid_points = flux_counts >= min_count
+    flux_embed = flux_embed[valid_points]
+    embed_index = flux_embed.index
+
+    # Sort columns
+    flux_embed = flux_embed[sorted(flux_embed.columns.tolist())].to_numpy()
 
     if isinstance(n_clusters, int):
         n_clusters = [n_clusters]
@@ -384,8 +404,11 @@ def fluxmap(
     som = som_models[best_k]
     winner_coordinates = np.array([som.winner(x) for x in flux_embed]).T
 
-    # Indices start at 0, so add 1
+    # Indices start at 0, so add 1; we will treat 0 as background
     qnt_index = np.ravel_multi_index(winner_coordinates, (1, best_k)) + 1
+    qnt_index = pd.Series(qnt_index, index=embed_index).reindex(
+        rpoints_index, fill_value=0
+    )
     raster_points["fluxmap"] = qnt_index
     set_points_metadata(
         sdata,
@@ -393,7 +416,6 @@ def fluxmap(
         metadata=list(qnt_index),
         columns="fluxmap",
     )
-
     pbar.update()
 
     # Vectorize polygons in each cell
@@ -475,12 +497,8 @@ def fluxmap(
     ]
     sdata.points[points_key] = sdata.points[points_key].drop(old_cols, axis=1)
 
-    # TODO SLOW
-    sjoin_points(
-        sdata=sdata, shape_keys=fluxmap_names, points_key=points_key
-    )
-
-    sjoin_shapes(sdata=sdata, instance_key=instance_key, shape_keys=fluxmap_names)
+    _sjoin_points(sdata=sdata, shape_keys=fluxmap_names, points_key=points_key)
+    _sjoin_shapes(sdata=sdata, instance_key=instance_key, shape_keys=fluxmap_names)
 
     pbar.update()
     pbar.set_description("Done")

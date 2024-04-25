@@ -13,28 +13,6 @@ class TestGeometry(unittest.TestCase):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
         self.data = sd.read_zarr(f"{datadir}/small_data.zarr")
 
-    def test_sjoin_points(self):
-        self.data = bt.geo.sjoin_points(
-            sdata=self.data,
-            points_key="transcripts",
-            shape_keys=["cell_boundaries", "nucleus_boundaries"],
-        )
-        self.assertTrue("cell_boundaries" in self.data.points["transcripts"].columns)
-        self.assertTrue("nucleus_boundaries" in self.data.points["transcripts"].columns)
-
-    def test_sjoin_shapes(self):
-        self.data = bt.geo.sjoin_shapes(
-            sdata=self.data,
-            instance_key="cell_boundaries",
-            shape_keys=["nucleus_boundaries"],
-        )
-        self.assertTrue(
-            "cell_boundaries" in self.data.shapes["nucleus_boundaries"].columns
-        )
-        self.assertTrue(
-            "nucleus_boundaries" in self.data.shapes["cell_boundaries"].columns
-        )
-
     def test_get_points(self):
         self.data = bt.io.prep(
             self.data,
@@ -44,10 +22,10 @@ class TestGeometry(unittest.TestCase):
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
         )
 
-        pd_sync = bt.geo.get_points(
+        pd_sync = bt.ut.get_points(
             sdata=self.data, points_key="transcripts", astype="pandas", sync=True
         )
-        pd_no_sync = bt.geo.get_points(
+        pd_no_sync = bt.ut.get_points(
             sdata=self.data, points_key="transcripts", astype="pandas", sync=False
         )
 
@@ -56,10 +34,10 @@ class TestGeometry(unittest.TestCase):
         self.assertTrue(len(pd_sync) != len(self.data.points["transcripts"]))
         self.assertTrue(len(pd_no_sync) == len(self.data.points["transcripts"]))
 
-        gdf_sync = bt.geo.get_points(
+        gdf_sync = bt.ut.get_points(
             sdata=self.data, points_key="transcripts", astype="geopandas", sync=True
         )
-        gdf_no_sync = bt.geo.get_points(
+        gdf_no_sync = bt.ut.get_points(
             sdata=self.data, points_key="transcripts", astype="geopandas", sync=False
         )
 
@@ -68,10 +46,10 @@ class TestGeometry(unittest.TestCase):
         self.assertTrue(len(gdf_sync) != len(self.data.points["transcripts"]))
         self.assertTrue(len(gdf_no_sync) == len(self.data.points["transcripts"]))
 
-        dd_sync = bt.geo.get_points(
+        dd_sync = bt.ut.get_points(
             sdata=self.data, points_key="transcripts", astype="dask", sync=True
         )
-        dd_no_sync = bt.geo.get_points(
+        dd_no_sync = bt.ut.get_points(
             sdata=self.data, points_key="transcripts", astype="dask", sync=False
         )
 
@@ -89,10 +67,10 @@ class TestGeometry(unittest.TestCase):
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
         )
 
-        sync = bt.geo.get_shape(
+        sync = bt.ut.get_shape(
             sdata=self.data, shape_key="nucleus_boundaries", sync=True
         )
-        no_sync = bt.geo.get_shape(
+        no_sync = bt.ut.get_shape(
             sdata=self.data, shape_key="nucleus_boundaries", sync=False
         )
 
@@ -115,19 +93,19 @@ class TestGeometry(unittest.TestCase):
             "dataframe_metadata2",
         ]
 
-        bt.geo.set_points_metadata(
+        bt.ut.set_points_metadata(
             sdata=self.data,
             points_key="transcripts",
             metadata=list_metadata,
             columns=column_names[0],
         )
-        bt.geo.set_points_metadata(
+        bt.ut.set_points_metadata(
             sdata=self.data,
             points_key="transcripts",
             metadata=series_metadata,
             columns=column_names[1],
         )
-        bt.geo.set_points_metadata(
+        bt.ut.set_points_metadata(
             sdata=self.data,
             points_key="transcripts",
             metadata=dataframe_metadata,
@@ -150,19 +128,19 @@ class TestGeometry(unittest.TestCase):
             "dataframe_metadata2",
         ]
 
-        bt.geo.set_shape_metadata(
+        bt.ut.set_shape_metadata(
             sdata=self.data,
             shape_key="cell_boundaries",
             metadata=list_metadata,
             column_names=column_names[0],
         )
-        bt.geo.set_shape_metadata(
+        bt.ut.set_shape_metadata(
             sdata=self.data,
             shape_key="cell_boundaries",
             metadata=series_metadata,
             column_names=column_names[1],
         )
-        bt.geo.set_shape_metadata(
+        bt.ut.set_shape_metadata(
             sdata=self.data,
             shape_key="cell_boundaries",
             metadata=dataframe_metadata,
@@ -176,38 +154,38 @@ class TestGeometry(unittest.TestCase):
         series_metadata = pd.Series(list_metadata)
         column_names = ["list_metadata", "series_metadata"]
 
-        bt.geo.set_points_metadata(
+        bt.ut.set_points_metadata(
             sdata=self.data,
             points_key="transcripts",
             metadata=list_metadata,
             columns=column_names[0],
         )
-        bt.geo.set_points_metadata(
+        bt.ut.set_points_metadata(
             sdata=self.data,
             points_key="transcripts",
             metadata=series_metadata,
             columns=column_names[1],
         )
 
-        pd_metadata_single = bt.geo.get_points_metadata(
+        pd_metadata_single = bt.ut.get_points_metadata(
             sdata=self.data,
             points_key="transcripts",
             metadata_keys=column_names[0],
             astype="pandas",
         )
-        dd_metadata_single = bt.geo.get_points_metadata(
+        dd_metadata_single = bt.ut.get_points_metadata(
             sdata=self.data,
             points_key="transcripts",
             metadata_keys=column_names[0],
             astype="dask",
         )
-        pd_metadata = bt.geo.get_points_metadata(
+        pd_metadata = bt.ut.get_points_metadata(
             sdata=self.data,
             points_key="transcripts",
             metadata_keys=[column_names[0], column_names[1]],
             astype="pandas",
         )
-        dd_metadata = bt.geo.get_points_metadata(
+        dd_metadata = bt.ut.get_points_metadata(
             sdata=self.data,
             points_key="transcripts",
             metadata_keys=[column_names[0], column_names[1]],
@@ -233,22 +211,22 @@ class TestGeometry(unittest.TestCase):
         series_metadata = pd.Series(list_metadata)
         column_names = ["list_metadata", "series_metadata"]
 
-        bt.geo.set_shape_metadata(
+        bt.ut.set_shape_metadata(
             sdata=self.data,
             shape_key="cell_boundaries",
             metadata=list_metadata,
             column_names=column_names[0],
         )
-        bt.geo.set_shape_metadata(
+        bt.ut.set_shape_metadata(
             sdata=self.data,
             shape_key="cell_boundaries",
             metadata=series_metadata,
             column_names=column_names[1],
         )
-        metadata_single = bt.geo.get_shape_metadata(
+        metadata_single = bt.ut.get_shape_metadata(
             sdata=self.data, shape_key="cell_boundaries", metadata_keys=column_names[0]
         )
-        metadata = bt.geo.get_shape_metadata(
+        metadata = bt.ut.get_shape_metadata(
             sdata=self.data,
             shape_key="cell_boundaries",
             metadata_keys=[column_names[0], column_names[1]],

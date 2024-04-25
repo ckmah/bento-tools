@@ -17,7 +17,7 @@ from spatialdata._core.spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel
 from tqdm.auto import tqdm
 
-from ..geometry import get_points, get_shape, set_shape_metadata
+from .._utils import get_points, get_shape, set_shape_metadata
 
 
 def area(sdata: SpatialData, shape_key: str, recompute: bool = False):
