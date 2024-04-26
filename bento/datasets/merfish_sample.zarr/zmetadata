@@ -107,7 +107,7 @@
         },
         "shapes/cell_boundaries/Index/.zarray": {
             "chunks": [
-                15
+                14
             ],
             "compressor": {
                 "blocksize": 0,
@@ -126,13 +126,13 @@
             ],
             "order": "C",
             "shape": [
-                15
+                14
             ],
             "zarr_format": 2
         },
         "shapes/cell_boundaries/coords/.zarray": {
             "chunks": [
-                1443,
+                1224,
                 2
             ],
             "compressor": {
@@ -148,14 +148,14 @@
             "filters": null,
             "order": "C",
             "shape": [
-                1443,
+                1224,
                 2
             ],
             "zarr_format": 2
         },
         "shapes/cell_boundaries/offset0/.zarray": {
             "chunks": [
-                16
+                15
             ],
             "compressor": {
                 "blocksize": 0,
@@ -170,13 +170,13 @@
             "filters": null,
             "order": "C",
             "shape": [
-                16
+                15
             ],
             "zarr_format": 2
         },
         "shapes/cell_boundaries/offset1/.zarray": {
             "chunks": [
-                16
+                15
             ],
             "compressor": {
                 "blocksize": 0,
@@ -191,7 +191,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                16
+                15
             ],
             "zarr_format": 2
         },
@@ -246,7 +246,7 @@
         },
         "shapes/nucleus_boundaries/Index/.zarray": {
             "chunks": [
-                15
+                12
             ],
             "compressor": {
                 "blocksize": 0,
@@ -265,13 +265,13 @@
             ],
             "order": "C",
             "shape": [
-                15
+                12
             ],
             "zarr_format": 2
         },
         "shapes/nucleus_boundaries/coords/.zarray": {
             "chunks": [
-                2877,
+                2136,
                 2
             ],
             "compressor": {
@@ -287,14 +287,14 @@
             "filters": null,
             "order": "C",
             "shape": [
-                2877,
+                2136,
                 2
             ],
             "zarr_format": 2
         },
         "shapes/nucleus_boundaries/offset0/.zarray": {
             "chunks": [
-                16
+                13
             ],
             "compressor": {
                 "blocksize": 0,
@@ -309,13 +309,13 @@
             "filters": null,
             "order": "C",
             "shape": [
-                16
+                13
             ],
             "zarr_format": 2
         },
         "shapes/nucleus_boundaries/offset1/.zarray": {
             "chunks": [
-                16
+                13
             ],
             "compressor": {
                 "blocksize": 0,
@@ -330,7 +330,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                16
+                13
             ],
             "zarr_format": 2
         },
@@ -353,7 +353,7 @@
             "encoding-type": "csr_matrix",
             "encoding-version": "0.1.0",
             "shape": [
-                15,
+                14,
                 135
             ]
         },
@@ -362,7 +362,7 @@
         },
         "table/table/X/data/.zarray": {
             "chunks": [
-                2025
+                1890
             ],
             "compressor": {
                 "blocksize": 0,
@@ -377,13 +377,13 @@
             "filters": null,
             "order": "C",
             "shape": [
-                2025
+                1890
             ],
             "zarr_format": 2
         },
         "table/table/X/indices/.zarray": {
             "chunks": [
-                2025
+                1890
             ],
             "compressor": {
                 "blocksize": 0,
@@ -398,13 +398,13 @@
             "filters": null,
             "order": "C",
             "shape": [
-                2025
+                1890
             ],
             "zarr_format": 2
         },
         "table/table/X/indptr/.zarray": {
             "chunks": [
-                16
+                15
             ],
             "compressor": {
                 "blocksize": 0,
@@ -419,7 +419,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                16
+                15
             ],
             "zarr_format": 2
         },
@@ -444,7 +444,7 @@
         },
         "table/table/obs/_index/.zarray": {
             "chunks": [
-                15
+                14
             ],
             "compressor": {
                 "blocksize": 0,
@@ -463,7 +463,7 @@
             ],
             "order": "C",
             "shape": [
-                15
+                14
             ],
             "zarr_format": 2
         },
@@ -473,7 +473,7 @@
         },
         "table/table/obs/cell_boundaries/.zarray": {
             "chunks": [
-                15
+                14
             ],
             "compressor": {
                 "blocksize": 0,
@@ -492,7 +492,7 @@
             ],
             "order": "C",
             "shape": [
-                15
+                14
             ],
             "zarr_format": 2
         },
@@ -539,7 +539,7 @@
         },
         "table/table/obs/region/codes/.zarray": {
             "chunks": [
-                15
+                14
             ],
             "compressor": {
                 "blocksize": 0,
@@ -554,7 +554,7 @@
             "filters": null,
             "order": "C",
             "shape": [
-                15
+                14
             ],
             "zarr_format": 2
         },

@@ -38,9 +38,7 @@ def filter_by_gene(
         .table is updated to remove genes with low expression.
     """
     gene_filter = (sdata.table.X >= min_count).sum(axis=0) > 0
-    table_transform = sdata.table.attrs
     filtered_table = sdata.table[:, gene_filter]
-    filtered_table.attrs = table_transform
 
     filtered_genes = list(sdata.table.var_names.difference(filtered_table.var_names))
     points = get_points(sdata, points_key=points_key, astype="pandas", sync=False)

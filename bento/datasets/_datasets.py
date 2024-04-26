@@ -106,5 +106,11 @@ def sample_data():
     ref = files(__package__) / "merfish_sample.zarr"
     with as_file(ref) as path:
         sdata = sd.read_zarr(path)
-        sdata = prep(sdata, points_key="transcripts", instance_key="feature_name", shape_keys=["cell_boundaries", "nucleus_boundaries"])
+        sdata = prep(
+            sdata,
+            points_key="transcripts",
+            instance_key="cell_boundaries",
+            feature_key="feature_name",
+            shape_keys=["cell_boundaries", "nucleus_boundaries"],
+        )
         return sdata
