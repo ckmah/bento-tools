@@ -93,9 +93,9 @@ def flux(
             .mean()
             .values[0]
         )
-        # Default radius = 25% of average cell radius
+        # Default radius = 33% of average cell radius
         if radius is None:
-            radius = mean_radius / 4
+            radius = mean_radius / 3
         # If radius is a fraction, use that fraction of average cell radius
         elif radius <= 1:
             radius = radius * mean_radius
@@ -239,8 +239,11 @@ def flux(
         columns="flux_color",
     )
 
-    sdata.table.uns["flux_variance_ratio"] = variance_ratio
+    rpoints_counts = pd.Series(rpoints_counts, index=rpoint_index).reindex(
+        raster_points.index
+    )
     sdata.table.uns["flux_counts"] = rpoints_counts
+    sdata.table.uns["flux_variance_ratio"] = variance_ratio
     sdata.table.uns["flux_genes"] = gene_names  # gene names
 
     pbar.set_description(emoji.emojize("Done. :bento_box:"))
