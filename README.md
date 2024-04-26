@@ -1,5 +1,3 @@
-# NOTE: If you are interested in analyzing your own data with `bento-tools`, we will have support in late April! Please reach out to @ckmah for more info + check back in late April for compatibility with [`SpatialData`](https://github.com/scverse/spatialdata). I look forward to learning about the community's use cases!
-
 [![PyPI version](https://badge.fury.io/py/bento-tools.svg)](https://badge.fury.io/py/bento-tools)
 [![codecov](https://codecov.io/gh/ckmah/bento-tools/branch/master/graph/badge.svg?token=XVHDKNDCDT)](https://codecov.io/gh/ckmah/bento-tools)
 [![Documentation Status](https://readthedocs.org/projects/bento-tools/badge/?version=latest)](https://bento-tools.readthedocs.io/en/latest/?badge=latest)
