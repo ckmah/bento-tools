@@ -115,7 +115,7 @@ def fe(
         verbose=True,
     )
 
-    scores = enrichment[1].add_prefix("flux_")
+    scores = enrichment[1].add_prefix("flux_").reindex(samples)
     set_points_metadata(
         sdata,
         points_key=f"{instance_key}_raster",
