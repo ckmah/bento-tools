@@ -11,7 +11,7 @@ from scipy.interpolate import griddata
 from shapely.geometry import Polygon
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-from ..geometry import get_points, get_shape, get_points_metadata
+from .._utils import get_points, get_shape, get_points_metadata
 
 
 def _scatter(points, ax, hue=None, size=None, style=None, **kwargs):
@@ -23,7 +23,7 @@ def _scatter(points, ax, hue=None, size=None, style=None, **kwargs):
     if ax is None:
         ax = plt.gca()
 
-    scatter_kws = dict(s=2, c="grey", linewidth=0)
+    scatter_kws = dict(s=2, linewidth=0, zorder=1, rasterized=True)
     scatter_kws.update(kwargs)
 
     # Let matplotlib scatter handle color if it's in hex format
@@ -37,18 +37,14 @@ def _scatter(points, ax, hue=None, size=None, style=None, **kwargs):
 
 
 def _hist(points, ax, hue=None, **kwargs):
-    if ax is None:
-        ax = plt.gca()
 
-    hist_kws = dict()
+    hist_kws = dict(zorder=1)
     hist_kws.update(kwargs)
 
     sns.histplot(data=points, x="x", y="y", hue=hue, ax=ax, **hist_kws)
 
 
 def _kde(points, ax, hue=None, **kwargs):
-    if ax is None:
-        ax = plt.gca()
 
     kde_kws = dict(zorder=1, fill=True)
     kde_kws.update(kwargs)
@@ -56,66 +52,60 @@ def _kde(points, ax, hue=None, **kwargs):
     sns.kdeplot(data=points, x="x", y="y", hue=hue, ax=ax, **kde_kws)
 
 
-def _polygons(adata, shape, ax, hue=None, hide_outside=False, **kwargs):
+def _polygons(sdata, shape, ax, hue=None, sync=True, **kwargs):
     """Plot shapes with GeoSeries plot function."""
-
-    shapes = gpd.GeoDataFrame(geometry=get_shape(adata, shape))
-
+    shapes = gpd.GeoDataFrame(geometry=get_shape(sdata, shape, sync=sync))
     edge_color = "none"
     face_color = "none"
 
     # If hue is specified, use it to color faces
     if hue:
-        shapes[hue] = adata.obs.reset_index()[hue].values
+        df = (
+            shapes.reset_index()
+            .merge(
+                sdata.shapes[shape], how="left", left_on="geometry", right_on="geometry"
+            )
+            .set_index("index")
+        )
+        if hue == "cell":
+            shapes[hue] = df.index
+        else:
+            shapes[hue] = df.reset_index()[hue].values
         edge_color = sns.axes_style()["axes.edgecolor"]
         face_color = "none"  # let GeoDataFrame plot function handle facecolor
 
     style_kwds = dict(
-        linewidth=0.5, edgecolor=edge_color, facecolor=face_color, zorder=2
+        linewidth=0.5, edgecolor=edge_color, facecolor=face_color
     )
     style_kwds.update(kwargs)
     shapes.plot(ax=ax, column=hue, **style_kwds)
 
-    if hide_outside:
-        # get axes limits
-        xmin, xmax = ax.get_xlim()
-        ymin, ymax = ax.get_ylim()
 
-        # get min range
-        # min_range = min(xmax - xmin, ymax - ymin)
-        # buffer_size = 0.0 * (min_range)
-
-        # Create shapely polygon from axes limits
-        axes_poly = gpd.GeoDataFrame(
-            geometry=gpd.GeoSeries(
-                [Polygon([(xmin, ymin), (xmin, ymax), (xmax, ymax), (xmax, ymin)])]
-            )
-            # .buffer(0)
-        )
-        axes_poly.overlay(shapes, how="difference").plot(
-            ax=ax,
-            linewidth=0,
-            facecolor=sns.axes_style()["axes.facecolor"],
-            zorder=1.99,
-        )
-
-
-def _raster(adata, res, color, points_key="cell_raster", cbar=False, ax=None, **kwargs):
+def _raster(sdata, res, color, points_key, alpha, cbar=False, ax=None, **kwargs):
     """Plot gradient."""
 
     if ax is None:
         ax = plt.gca()
 
-    points = get_points(adata, key=points_key)
+    # 
+    points = get_points(sdata, points_key=points_key, astype="pandas", sync=True)
     step = 1 / res
-    color_values = get_points_metadata(adata, metadata_key=color, points_key=points_key)
+    color_values = np.array(
+        get_points_metadata(sdata, metadata_keys=color, points_key=points_key)[
+            color
+        ].replace("", np.nan)
+    )
+
     # Infer value format and convert values to rgb
     # Handle color names and (r, g, b) tuples with matplotlib
     v1 = color_values[0]
     if isinstance(v1, str) or (
         isinstance(v1, tuple) and v1.min() >= 0 and v1.max() <= 1
     ):
-        rgb = np.array([mpl.colors.to_rgb(c) for c in color_values])
+        if alpha:
+            rgb = np.array([mpl.colors.to_rgba(c) for c in color_values])
+        else:
+            rgb = np.array([mpl.colors.to_rgb(c) for c in color_values])
     else:
         rgb = color_values.reshape(-1, 1)
 
@@ -142,7 +132,7 @@ def _raster(adata, res, color, points_key="cell_raster", cbar=False, ax=None, **
         )
     img = np.stack(values, axis=-1)
 
-    img_kws = dict(interpolation="none")
+    img_kws = dict(interpolation="none", zorder=1)
     img_kws.update(kwargs)
 
     im = ax.imshow(img, extent=(minx, maxx, miny, maxy), origin="lower", **img_kws)

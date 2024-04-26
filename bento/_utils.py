@@ -1,322 +1,429 @@
-import inspect
-import warnings
+# Geometric operations for SpatialData ShapeElements wrapping GeoPandas GeoDataFrames.
+from typing import List, Optional
+
 import geopandas as gpd
+import numpy as np
 import pandas as pd
-import seaborn as sns
-from anndata import AnnData
-from functools import wraps
-from typing import Iterable
-from shapely import wkt
+from dask import dataframe as dd
+from spatialdata import SpatialData
+from spatialdata.models import PointsModel, ShapesModel, TableModel
+from spatialdata.transformations import get_transformation, set_transformation
 
 
-def get_default_args(func):
-    signature = inspect.signature(func)
-    return {
-        k: v.default
-        for k, v in signature.parameters.items()
-        if v.default is not inspect.Parameter.empty
-    }
-
-
-def track(func):
+def filter_by_gene(
+    sdata: SpatialData,
+    min_count: int = 10,
+    points_key: str = "transcripts",
+    feature_key: str = "feature_name",
+):
     """
-    Track changes in AnnData object after applying function.
-
-    1. First remembers a shallow list of AnnData attributes by listing keys from obs, var, etc.
-    2. Perform arbitrary task
-    3. List attributes again, perform simple diff between list of old and new attributes
-    4. Print to user added and removed keys
+    Filters out genes with low expression from the spatial data object.
 
     Parameters
     ----------
-    func : function
-    """
-
-    @wraps(func)
-    def wrapper(*args, **kwds):
-        kwargs = get_default_args(func)
-        kwargs.update(kwds)
-
-        if type(args[0]) == AnnData:
-            adata = args[0]
-        else:
-            adata = args[1]
-
-        old_attr = list_attributes(adata)
-
-        if kwargs["copy"]:
-            out_adata = func(*args, **kwds)
-            new_attr = list_attributes(out_adata)
-        else:
-            func(*args, **kwds)
-            new_attr = list_attributes(adata)
-
-        # Print differences between new and old adata
-        out = ""
-        out += "AnnData object modified:"
-
-        if old_attr["n_obs"] != new_attr["n_obs"]:
-            out += f"\nn_obs: {old_attr['n_obs']} -> {new_attr['n_obs']}"
-
-        if old_attr["n_vars"] != new_attr["n_vars"]:
-            out += f"\nn_vars: {old_attr['n_vars']} -> {new_attr['n_vars']}"
-
-        modified = False
-        for attr in old_attr.keys():
-            if attr == "n_obs" or attr == "n_vars":
-                continue
-
-            removed = list(old_attr[attr] - new_attr[attr])
-            added = list(new_attr[attr] - old_attr[attr])
-
-            if len(removed) > 0 or len(added) > 0:
-                modified = True
-                out += f"\n    {attr}:"
-                if len(removed) > 0:
-                    out += f"\n        - {', '.join(removed)}"
-                if len(added) > 0:
-                    out += f"\n        + {', '.join(added)}"
-
-        if modified:
-            print(out)
-
-        return out_adata if kwargs["copy"] else None
-
-    return wrapper
-
-
-def list_attributes(adata):
-    """Traverse AnnData object attributes and list keys.
-
-    Parameters
-    ----------
-    adata : AnnData
-        AnnData object
+    sdata : SpatialData
+        Spatial formatted SpatialData object.
+    threshold : int
+        Minimum number of counts for a gene to be considered expressed.
+        Keep genes where at least {threshold} molecules are detected in at least one cell.
+    points_key : str
+        key for points element that holds transcript coordinates
+    feature_key : str
+        Key for gene instances
 
     Returns
     -------
-    dict
-        Dictionary of keys for each AnnData attribute.
+    sdata : SpatialData
+        .points[points_key] is updated to remove genes with low expression.
+        .table is updated to remove genes with low expression.
     """
-    found_attr = dict(n_obs=adata.n_obs, n_vars=adata.n_vars)
-    for attr in [
-        "obs",
-        "var",
-        "uns",
-        "obsm",
-        "varm",
-        "layers",
-        "obsp",
-        "varp",
-    ]:
-        keys = set(getattr(adata, attr).keys())
-        found_attr[attr] = keys
+    gene_filter = (sdata.table.X >= min_count).sum(axis=0) > 0
+    filtered_table = sdata.table[:, gene_filter]
 
-    return found_attr
+    filtered_genes = list(sdata.table.var_names.difference(filtered_table.var_names))
+    points = get_points(sdata, points_key=points_key, astype="pandas", sync=False)
+    points = points[~points[feature_key].isin(filtered_genes)]
+    points[feature_key] = points[feature_key].cat.remove_unused_categories()
+
+    transform = sdata[points_key].attrs
+    points = PointsModel.parse(
+        dd.from_pandas(points, npartitions=1), coordinates={"x": "x", "y": "y"}
+    )
+    points.attrs = transform
+    sdata.points[points_key] = points
+
+    try:
+        del sdata.table
+    except KeyError:
+        pass
+    sdata.table = TableModel.parse(filtered_table)
+
+    return sdata
 
 
-def pheno_to_color(pheno, palette):
-    """
-    Maps list of categorical labels to a color palette.
-    Input values are first sorted alphanumerically least to greatest before mapping to colors.
-    This ensures consistent colors regardless of input value order.
+def get_points(
+    sdata: SpatialData,
+    points_key: str = "transcripts",
+    astype: str = "pandas",
+    sync: bool = True,
+) -> pd.DataFrame | dd.DataFrame | gpd.GeoDataFrame:
+    """Get points DataFrame synced to AnnData object.
 
     Parameters
     ----------
-    pheno : pd.Series
-        Categorical labels to map
-    palette: None, string, or sequence, optional
-        Name of palette or None to return current palette.
-        If a sequence, input colors are used but possibly cycled and desaturated.
-        Taken from sns.color_palette() documentation.
+    data : SpatialData
+        Spatial formatted SpatialData object
+    key : str, optional
+        Key for `data.points` to use, by default "transcripts"
+    astype : str, optional
+        Whether to return a 'pandas' DataFrame, 'dask' DataFrame, or 'geopandas' GeoDataFrame, by default "pandas"
+    sync : bool, optional
+        Whether to set and retrieve points synced to instance_key shape. Default True.
 
     Returns
     -------
-    dict
-        Mapping of label to color in RGBA
-    tuples
-        List of converted colors for each sample, formatted as RGBA tuples.
-
+    DataFrame or GeoDataFrame
+        Returns `data.points[key]` as a `[Geo]DataFrame` or 'Dask DataFrame'
     """
-    if isinstance(palette, str):
-        palette = sns.color_palette(palette)
+    if points_key not in sdata.points.keys():
+        raise ValueError(f"Points key {points_key} not found in sdata.points")
 
-    values = list(set(pheno))
-    values.sort()
-    palette = sns.color_palette(palette, n_colors=len(values))
-    study2color = dict(zip(values, palette))
-    sample_colors = [study2color[v] for v in pheno]
-    return study2color, sample_colors
-
-
-def sync(data, copy=False):
-    """
-    Sync existing point sets and associated metadata with data.obs_names and data.var_names
-
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData object
-    copy : bool, optional
-    """
-    adata = data.copy() if copy else data
-
-    if "point_sets" not in adata.uns.keys():
-        adata.uns["point_sets"] = dict(points=[])
-
-    # Iterate over point sets
-    for point_key in adata.uns["point_sets"]:
-        points = adata.uns[point_key]
-
-        # Subset for cells
-        cells = adata.obs_names.tolist()
-        in_cells = points["cell"].isin(cells)
-
-        # Subset for genes
-        in_genes = [True] * points.shape[0]
-        if "gene" in points.columns:
-            genes = adata.var_names.tolist()
-            in_genes = points["gene"].isin(genes)
-
-        # Combine boolean masks
-        valid_mask = (in_cells & in_genes).values
-
-        # Sync points using mask
-        points = points.loc[valid_mask]
-
-        # Remove unused categories for categorical columns
-        for col in points.columns:
-            if points[col].dtype == "category":
-                points[col].cat.remove_unused_categories(inplace=True)
-
-        adata.uns[point_key] = points
-
-        # Sync point metadata using mask
-        for metadata_key in adata.uns["point_sets"][point_key]:
-            if metadata_key not in adata.uns:
-                warnings.warn(
-                    f"Skipping: metadata {metadata_key} not found in adata.uns"
-                )
-                continue
-
-            metadata = adata.uns[metadata_key]
-            # Slice DataFrame if not empty
-            if isinstance(metadata, pd.DataFrame) and not metadata.empty:
-                adata.uns[metadata_key] = metadata.loc[valid_mask, :]
-
-            # Slice Iterable if not empty
-            elif isinstance(metadata, list) and any(metadata):
-                adata.uns[metadata_key] = [
-                    m for i, m in enumerate(metadata) if valid_mask[i]
-                ]
-            elif isinstance(metadata, Iterable) and metadata.shape[0] > 0:
-                adata.uns[metadata_key] = adata.uns[metadata_key][valid_mask]
-            else:
-                warnings.warn(f"Metadata {metadata_key} is not a DataFrame or Iterable")
-
-    return adata if copy else None
-
-
-def _register_points(data, point_key, metadata_keys):
-    required_cols = ["x", "y", "cell"]
-
-    if point_key not in data.uns.keys():
-        raise ValueError(f"Key {point_key} not found in data.uns")
-
-    points = data.uns[point_key]
-
-    if not all([col in points.columns for col in required_cols]):
+    if astype not in ["pandas", "dask", "geopandas"]:
         raise ValueError(
-            f"Point DataFrame must have columns {', '.join(required_cols)}"
+            f"astype must be one of ['dask', 'pandas', 'geopandas'], not {astype}"
         )
 
-    # Check for valid cells
-    cells = data.obs_names.tolist()
-    if not points["cell"].isin(cells).all():
-        raise ValueError("Invalid cells in point DataFrame")
+    # Sync points to instance_key
+    if sync:
+        _sync_points(sdata, points_key)
 
-    # Initialize/add to point registry
-    if "point_sets" not in data.uns.keys():
-        data.uns["point_sets"] = dict()
+    points = sdata.points[points_key]
 
-    if point_key not in data.uns["point_sets"].keys():
-        data.uns["point_sets"][point_key] = []
+    if astype == "pandas":
+        return points.compute()
+    elif astype == "dask":
+        return points
+    elif astype == "geopandas":
+        points = points.compute()
+        return gpd.GeoDataFrame(
+            points, geometry=gpd.points_from_xy(points.x, points.y), copy=True
+        )
 
-    if len(metadata_keys) < 0:
-        return
 
-    # Register metadata
+def get_shape(sdata: SpatialData, shape_key: str, sync: bool = True) -> gpd.GeoSeries:
+    """Get a GeoSeries of Polygon objects from an SpatialData object.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial formatted SpatialData object
+    shape_key : str
+        Name of shape column in sdata.shapes
+    sync : bool
+        Whether to set and retrieve shapes synced to cell shape. Default True.
+
+    Returns
+    -------
+    GeoSeries
+        GeoSeries of Polygon objects
+    """
+    instance_key = sdata.table.uns["spatialdata_attrs"]["instance_key"]
+
+    # Make sure shape exists in sdata.shapes
+    if shape_key not in sdata.shapes.keys():
+        raise ValueError(f"Shape {shape_key} not found in sdata.shapes")
+
+    if sync and shape_key != instance_key:
+        _sync_shapes(sdata, shape_key, instance_key)
+        shape_index = sdata.shapes[shape_key][instance_key]
+        valid_shapes = shape_index != ""
+        return sdata.shapes[shape_key][valid_shapes].geometry
+
+    return sdata.shapes[shape_key].geometry
+
+
+def get_points_metadata(
+    sdata: SpatialData,
+    metadata_keys: List[str] | str,
+    points_key: str,
+    astype="pandas",
+):
+    """Get points metadata.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial formatted SpatialData object
+    metadata_keys : str or list of str
+        Key(s) for `sdata.points[points_key][key]` to use
+    points_key : str, optional
+        Key for `sdata.points` to use, by default "transcripts"
+    astype : str, optional
+        Whether to return a 'pandas' Series or 'dask' DataFrame, by default "pandas"
+
+    Returns
+    -------
+    pd.DataFrame or dd.DataFrame
+        Returns `sdata.points[points_key][metadata_keys]` as a `pd.DataFrame` or `dd.DataFrame`
+    """
+    if points_key not in sdata.points.keys():
+        raise ValueError(f"Points key {points_key} not found in sdata.points")
+    if astype not in ["pandas", "dask"]:
+        raise ValueError(f"astype must be one of ['dask', 'pandas'], not {astype}")
+    if isinstance(metadata_keys, str):
+        metadata_keys = [metadata_keys]
     for key in metadata_keys:
-        # Check for valid metadata
-        if key not in data.uns.keys():
-            raise ValueError(f"Key {key} not found in data.uns")
-
-        n_points = data.uns[point_key].shape[0]
-        metadata_len = data.uns[key].shape[0]
-        if metadata_len != n_points:
+        if key not in sdata.points[points_key].columns:
             raise ValueError(
-                f"Metadata {key} must have same length as points {point_key}"
+                f"Metadata key {key} not found in sdata.points[{points_key}]"
             )
 
-        # Add metadata key to registry
-        if key not in data.uns["point_sets"][point_key]:
-            data.uns["point_sets"][point_key].append(key)
+    metadata = sdata.points[points_key][metadata_keys]
+
+    if astype == "pandas":
+        return metadata.compute()
+    elif astype == "dask":
+        return metadata
 
 
-def register_points(point_key: str, metadata_keys: list):
-    """Decorator function to register points to the current `AnnData` object.
-    This keeps track of point sets and keeps them in sync with `AnnData` object.
+def get_shape_metadata(
+    sdata: SpatialData,
+    metadata_keys: List[str] | str,
+    shape_key: str,
+):
+    """Get shape metadata.
 
     Parameters
     ----------
-    point_key : str
-        Key where points are stored in `data.uns`
-    metadata_keys : list
-        Keys where point metadata are stored in `data.uns`
+    sdata : SpatialData
+        Spatial formatted SpatialData object
+    metadata_keys : str or list of str
+        Key(s) for `sdata.shapes[shape_key][key]` to use
+    shape_key : str
+        Key for `sdata.shapes` to use, by default "transcripts"
+
+    Returns
+    -------
+    pd.Dataframe
+        Returns `sdata.shapes[shape_key][metadata_keys]` as a `pd.DataFrame`
     """
+    if shape_key not in sdata.shapes.keys():
+        raise ValueError(f"Shape key {shape_key} not found in sdata.shapes")
+    if isinstance(metadata_keys, str):
+        metadata_keys = [metadata_keys]
+    for key in metadata_keys:
+        if key not in sdata.shapes[shape_key].columns:
+            raise ValueError(
+                f"Metadata key {key} not found in sdata.shapes[{shape_key}]"
+            )
 
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwds):
-            kwargs = get_default_args(func)
-            kwargs.update(kwds)
-
-            func(*args, **kwds)
-            data = args[0]
-            # Check for required columns
-            return _register_points(data, point_key, metadata_keys)
-
-        return wrapper
-
-    return decorator
+    return sdata.shapes[shape_key][metadata_keys]
 
 
-def sc_format(data, copy=False):
+def set_points_metadata(
+    sdata: SpatialData,
+    points_key: str,
+    metadata: List | pd.Series | pd.DataFrame | np.ndarray,
+    columns: List[str] | str,
+):
+    """Write metadata in SpatialData points element as column(s). Aligns metadata index to shape index if present.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial formatted SpatialData object
+    points_key : str
+        Name of element in sdata.points
+    metadata : pd.Series, pd.DataFrame, np.ndarray
+        Metadata to set for points. Assumes input is already aligned to points index.
+    column_names : str or list of str, optional
+        Name of column(s) to set. If None, use metadata column name(s), by default None
     """
-    Convert data.obs GeoPandas columns to string for compatibility with scanpy.
-    """
-    adata = data.copy() if copy else data
+    if points_key not in sdata.points.keys():
+        raise ValueError(f"{points_key} not found in sdata.points")
 
-    shape_names = data.obs.columns.str.endswith("_shape")
+    columns = [columns] if isinstance(columns, str) else columns
 
-    for col in data.obs.columns[shape_names]:
-        adata.obs[col] = adata.obs[col].astype(str)
+    # metadata = pd.DataFrame(np.array(metadata), columns=columns)
+    metadata = np.array(metadata)
 
-    return adata if copy else None
-
-
-def geo_format(data, copy=False):
-    """
-    Convert data.obs scanpy columns to GeoPandas compatible types.
-    """
-    adata = data.copy() if copy else data
-
-    shape_names = adata.obs.columns[adata.obs.columns.str.endswith("_shape")]
-
-    adata.obs[shape_names] = adata.obs[shape_names].apply(
-        lambda col: gpd.GeoSeries(
-            col.astype(str).apply(lambda val: wkt.loads(val) if val != "None" else None)
-        )
+    transform = sdata.points[points_key].attrs
+    points = sdata.points[points_key].compute()
+    points.loc[:, columns] = metadata
+    points = PointsModel.parse(
+        dd.from_pandas(points, npartitions=1), coordinates={"x": "x", "y": "y"}
     )
+    points.attrs = transform
+    sdata.points[points_key] = points
 
-    return adata if copy else None
+    # sdata.points[points_key] = sdata.points[points_key].reset_index(drop=True)
+    # for name, series in metadata.items():
+    #     series = series.fillna("") if series.dtype == object else series
+    #     series = dd.from_pandas(
+    #         series, npartitions=sdata.points[points_key].npartitions
+    #     ).reset_index(drop=True)
+    #     sdata.points[points_key] = sdata.points[points_key].assign(**{name: series})
+
+
+def set_shape_metadata(
+    sdata: SpatialData,
+    shape_key: str,
+    metadata: List | pd.Series | pd.DataFrame | np.ndarray,
+    column_names: Optional[str | List[str]] = None,
+):
+    """Write metadata in SpatialData shapes element as column(s). Aligns metadata index to shape index.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial formatted SpatialData object
+    shape_key : str
+        Name of element in sdata.shapes
+    metadata : pd.Series, pd.DataFrame
+        Metadata to set for shape. Index must be a (sub)set of shape index.
+    column_names : str or list of str, optional
+        Name of column(s) to set. If None, use metadata column name(s), by default None
+    """
+    if shape_key not in sdata.shapes.keys():
+        raise ValueError(f"Shape {shape_key} not found in sdata.shapes")
+
+    shape_index = sdata.shapes[shape_key].index
+
+    if isinstance(metadata, list):
+        metadata = pd.Series(metadata, index=shape_index)
+
+    if isinstance(metadata, pd.Series) or isinstance(metadata, np.ndarray):
+        metadata = pd.DataFrame(metadata)
+
+    if column_names is not None:
+        metadata.columns = (
+            [column_names] if isinstance(column_names, str) else column_names
+        )
+
+    # Fill missing values in string columns with empty string
+    str_columns = metadata.select_dtypes(include="object", exclude="number").columns
+    metadata[str_columns] = metadata[str_columns].fillna("")
+
+    # Fill missing values in categorical columns with empty string
+    cat_columns = metadata.select_dtypes(include="category").columns
+    for col in cat_columns:
+        if "" not in metadata[col].cat.categories:
+            metadata[col] = metadata[col].cat.add_categories([""]).fillna("")
+
+    sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(shape_index)
+
+
+def _sync_points(sdata, points_key):
+    """
+    Check if points are synced to instance_key shape in a SpatialData object.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The SpatialData object to check.
+    points_key : str
+        The name of the points to check.
+
+    Raises
+    ------
+    ValueError
+        If the points are not synced to instance_key shape.
+    """
+    points = sdata.points[points_key].compute()
+    instance_key = get_instance_key(sdata)
+    if instance_key not in points.columns:
+        raise ValueError(
+            f"Points {points_key} not synced to instance_key shape element. Run bento.io.prep() to setup SpatialData object for bento-tools."
+        )
+    else:
+        # Only keep points within instance_key shape
+        cells = set(sdata.shapes[instance_key].index)
+        transform = sdata.points[points_key].attrs
+        points_valid = points[
+            points[instance_key].isin(cells)
+        ]  # TODO why doesnt this grab the right cells
+        # Set points back to SpatialData object
+        points_valid = PointsModel.parse(
+            dd.from_pandas(points_valid, npartitions=1),
+            coordinates={"x": "x", "y": "y"},
+        )
+        points_valid.attrs = transform
+        sdata.points[points_key] = points_valid
+
+
+def _sync_shapes(sdata, shape_key, instance_key):
+    """
+    Check if a shape is synced to instance_key shape in a SpatialData object.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The SpatialData object to check.
+    shape_key : str
+        The name of the shape to check.
+    instance_key : str
+        The instance key of the shape to check.
+
+    Raises
+    ------
+    ValueError
+        If the shape is not synced to instance_key shape.
+    """
+    shapes = sdata.shapes[shape_key]
+    instance_shapes = sdata.shapes[instance_key]
+    if instance_key not in shapes.columns or shape_key not in instance_shapes.columns:
+        raise ValueError(
+            f"Shape {shape_key} not synced to instance_key shape element. Run bento.io.prep() to setup SpatialData object for bento-tools."
+        )
+    elif shape_key == instance_key:
+        return
+    else:
+        # Only keep shapes within instance_key shape
+        cells = set(instance_shapes.index)
+        shapes = shapes[shapes[instance_key].isin(cells)]
+
+        # Set shapes back to SpatialData object
+        transform = sdata.shapes[shape_key].attrs
+        shapes_valid = ShapesModel.parse(shapes)
+        shapes_valid.attrs = transform
+        sdata.shapes[shape_key] = shapes_valid
+
+
+def get_instance_key(sdata: SpatialData):
+    """
+    Returns the instance key for the spatial data object.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial formatted SpatialData object.
+
+    Returns
+    -------
+    instance_key : str
+        Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
+    """
+    try:
+        return sdata.points["transcripts"].attrs["spatialdata_attrs"]["instance_key"]
+    except KeyError:
+        raise KeyError("Instance key attribute not found in spatialdata object.")
+
+
+def get_feature_key(sdata: SpatialData):
+    """
+    Returns the feature key for the spatial data object.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial formatted SpatialData object.
+
+    Returns
+    -------
+    feature_key : str
+        Key for the feature name in the points DataFrame
+    """
+    try:
+        return sdata.points["transcripts"].attrs["spatialdata_attrs"]["feature_key"]
+    except KeyError:
+        raise KeyError("Feature key attribute not found in spatialdata object.")

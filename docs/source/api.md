@@ -1,253 +1,290 @@
+```{toctree}
+:hidden: true
+:maxdepth: 2
+```
+
 ```{eval-rst}
 .. module:: bento
-
-.. automodule:: bento
-   :noindex:
 ```
+
 
 # {octicon}`code-square` API
 
 Import Bento with:
 
-```python
-import bento as bt
+```{eval-rst}
+.. code-block:: python
+
+    import bento as bt
 ```
+
 
 Bento's API structure takes inspiration from other libraries in the Scverse ecosystem. It is organized under a set of modules including:
 
-- `bt.tl`: subcellular spatial analyses
+- `bt.io`: provides out of the box compatibility with `SpatialData` objects
+- `bt.tl`: subcellular analysis tools
 - `bt.pl`: conveniently plot spatial data and embeddings
-- `bt.io`: reading and writing spatial data to `AnnData` as `h5ad` files
-- `bt.geo`: manipulating spatial data
-- `bt.datasets`: included spatial transcriptomics datasets
-- `bt.ut`: utility functions
+- `bt.geo`: manipulating data structures
+- `bt.datasets`: included spatial transcriptomics datasets `WIP`
 
-# Tools
+## Read and Write
 
-## Point features
-
-Compute spatial summary statistics describing groups of molecules e.g. distance to the cell membrane, relative symmetry, dispersion, etc.
-
-A list of available cell features and their names is stored in the dict :func:`bt.tl.point_features`.
+Bento is designed to work with [`SpatialData`](https://spatialdata.scverse.org/en/latest/) objects out of the box! Check out [SpatialData documentation](https://spatialdata.scverse.org/en/latest/tutorials/notebooks/notebooks.html) to learn how to bring your own data, whether it is from commercial platforms or a custom data format. 
 
 ```{eval-rst}
-.. module:: bento.tl
-.. currentmodule:: bento
+.. currentmodule:: bento.io
 
 .. autosummary::
-    :toctree: api/
+    :toctree: api
+    :nosignatures:
 
-    tl.analyze_points
-    tl.register_point_feature
+    prep
 ```
 
-## Shape features
+## Tools
 
-Compute spatial properties of shape features e.g. area, aspect ratio, etc. of the cell, nucleus, or other region of interest.
+Bento provides a set of tools to analyze the spatial composition of cells and molecules. These tools are designed to work with `SpatialData` objects and can be used to compute spatial summary statistics, shape features, and RNA localization patterns.
 
-A list of available cell features and their names is stored in the dict :func:`bt.tl.shape_features`.
+### Composition
+
 
 ```{eval-rst}
-.. module:: bento.tl
-.. currentmodule:: bento
+.. currentmodule:: bento.tl
 
 .. autosummary::
-    :toctree: api/
+    :toctree: api
+    :nosignatures:
 
-    tl.analyze_shapes
-    tl.register_shape_feature
-    tl.obs_stats
+    comp
+    comp_diff
 ```
 
-## RNAflux: Subcellular RNA embeddings and domains
+### Point Features
+
+Compute spatial summary statistics describing groups of molecules e.g. distance to the cell membrane, relative symmetry, dispersion, etc. The set of available point features is described in the Point Feature Catalog. Use the function `bt.tl.analyze_points()` to compute features and add your own custom calculation. See the [tutorial](https://bento-tools.github.io/bento/tutorials/TBD.html) for more information.
+
+```{eval-rst}
+.. currentmodule:: bento.tl
+
+.. autosummary::
+    :toctree: api
+    :nosignatures:
+
+    analyze_points
+    list_point_features
+    register_point_feature
+```
+
+#### Point Feature Catalog
+
+The set of implemented point features is described below. Each feature is computed using the `bt.tl.analyze_points()` function.
+
+TODO
+
+### Shape Features
+
+Compute spatial properties of shape features e.g. area, aspect ratio, etc. of the cell, nucleus, or other region of interest. The set of available shape features is described in the Shape Feature Catalog. Use the function `bt.analyze_points()` to compute features and add your own custom calculation. See the [tutorial](https://bento-tools.github.io/bento/tutorials/TBD.html) for more information.
+
+```{eval-rst}
+.. currentmodule:: bento.tl
+
+.. autosummary::
+    :toctree: api
+    :nosignatures:
+
+    shape_stats
+    analyze_shapes
+    list_shape_features
+    register_shape_feature
+```
+
+#### Shape Feature Catalog
+
+The set of implemented shape features is described below. Each feature is computed using the `bt.analyze_shapes()` function.
+
+```{eval-rst}
+.. currentmodule:: bento.tl
+
+.. autosummary::
+    :toctree: api
+    :nosignatures:
+
+    area
+    aspect_ratio
+    bounds
+    density
+    opening
+    perimeter
+    radius
+    raster
+    second_moment
+    span
+
+```
+
+### RNAflux: Subcellular RNA embeddings and domains
 
 Methods for computing RNAflux embeddings and semantic segmentation of subcellular domains.
 
 ```{eval-rst}
-.. module: bento.tl
-.. currentmodule:: bento
+.. currentmodule:: bento.tl
 
 .. autosummary::
-    :toctree: api/
+    :toctree: api
+    :nosignatures:
 
-    tl.flux
-    tl.fluxmap
-    tl.fe
-    tl.fe_fazal2019
-    tl.load_gene_sets
+    flux
+    fluxmap
+    fe
+    fe_fazal2019
+    fe_xia2019
+    load_gene_sets
 ```
 
-## RNAforest: Predict RNA localization patterns
+### RNAforest: Predict RNA localization patterns
 
 Perform multilabel classification of RNA localization patterns using spatial summary statistics as features.
 
 ```{eval-rst}
-.. module:: bento.tl
-.. currentmodule:: bento
+.. currentmodule:: bento.tl
 
 .. autosummary::
-    :toctree: api/
+    :toctree: api
+    :nosignatures:
 
-    tl.lp
-    tl.lp_stats
-    tl.lp_diff
+    lp
+    lp_stats
+    lp_diff_discrete
+    lp_diff_continuous
 ```
 
-## Colocalization analysis
+### RNAcoloc: Colocalization analysis
 
-Methods for colocalization analyses of gene pairs.
+Methods for compartments-ecific gene-gene colocalization analyses.
 
 ```{eval-rst}
-.. module:: bento.tl
-.. currentmodule:: bento
+.. currentmodule:: bento.tl
 
 .. autosummary::
-    :toctree: api/
+    :toctree: api
+    :nosignatures:
 
-    tl.colocation
-    tl.coloc_quotient
+    colocation
+    coloc_quotient
 ```
 
-# Plotting
+## Plotting
 
-## Spatial plots
+These are convenient functions for static 2D plots of cells, molecules, and embeddings. We generate `matplotlib` style figures for accessible publication quality plots. There are a couple additional functions summarizing results from `bt.tl` analysis.
 
-These are convenient functions for quick 2D visualizations of cells, molecules, and embeddings. We generate `matplotlib` style figures for accessible publication quality plots.
+### Spatial plots
 
 ```{eval-rst}
-.. module:: bento.pl
-.. currentmodule:: bento
+.. currentmodule:: bento.pl
 
 .. autosummary::
-    :toctree: api/
+    :toctree: api
+    :nosignatures:
 
-    pl.points
-    pl.density
-    pl.shapes
-    pl.flux
-    pl.fluxmap
-
+    points
+    density
+    shapes
 ```
 
-## Shape features
+### Composition
 
 ```{eval-rst}
-.. module:: bento.pl
-.. currentmodule:: bento
+.. currentmodule:: bento.pl
 
 .. autosummary::
-    :toctree: api/
+    :toctree: api
+    :nosignatures:
 
-    pl.obs_stats
+    comp
 ```
 
-## RNAflux
+
+### Shape features
 
 ```{eval-rst}
-.. module:: bento.pl
-.. currentmodule:: bento
+.. currentmodule:: bento.pl
 
 .. autosummary::
-    :toctree: api/
+    :toctree: api
+    :nosignatures:
 
-    pl.flux_summary
-    pl.fe
+    shape_stats
 ```
 
-## RNAforest
+### RNAflux
 
 ```{eval-rst}
-.. module:: bento.pl
-.. currentmodule:: bento
+.. currentmodule:: bento.pl
 
 .. autosummary::
-    :toctree: api/
+    :toctree: api
+    :nosignatures:
 
-    pl.lp_genes
-    pl.lp_gene_dist
-    pl.lp_dist
-    pl.lp_diff
-
+    flux
+    fluxmap
+    fe
 ```
 
-## Colocalization analysis
+### RNAforest
 
 ```{eval-rst}
-.. module:: bento.pl
-.. currentmodule:: bento
+.. currentmodule:: bento.pl
 
 .. autosummary::
-    :toctree: api/
+    :toctree: api
+    :nosignatures:
 
-    pl.signatures
-    pl.signatures_error
-    pl.factor
-    pl.colocation
-
+    lp_dist
+    lp_genes
+    lp_diff_discrete
 ```
 
-# Manipulating spatial data
-
-Convenient methods for setting, getting, and reformatting data.
+### Colocalization analysis
 
 ```{eval-rst}
-.. module:: bento.geo
-.. currentmodule:: bento
+.. currentmodule:: bento.pl
 
 .. autosummary::
-    :toctree: api/
+    :toctree: api
+    :nosignatures:
 
-    geo.count_points
-    geo.crop
-    geo.get_points
-    geo.get_points_metadata
-    geo.get_shape
-    geo.rename_shapes
-    geo.sindex_points
+    factor
+    colocation
 ```
 
-# Read/Write
+## Utilities for data manipulation
+
+Convenient methods for setting, getting, and reformatting data. These functions are used internally by other functions in Bento.
 
 ```{eval-rst}
-.. module:: bento.io
-.. currentmodule:: bento
+.. currentmodule:: bento.ut
 
 .. autosummary::
-    :toctree: api/
+    :toctree: api
+    :nosignatures:
 
-    io.read_h5ad
-    io.write_h5ad
-    io.concatenate
-    io.prepare
+    get_points
+    get_points_metadata
+    set_points_metadata
+    
+    get_shape
+    get_shape_metadata
+    set_shape_metadata
+
 ```
 
-# Datasets
+## Geometric operations
 
 ```{eval-rst}
-.. module:: bento.ds
-.. currentmodule:: bento
+.. currentmodule:: bento.geo
 
 .. autosummary::
-    :toctree: api/
-
-    ds.sample_data
-    ds.load_dataset
-    ds.get_dataset_info
-    ds.load_gene_sets
-
-```
-
-# Utility functions
-
-```{eval-rst}
-.. module:: bento.ut
-.. currentmodule:: bento
-
-.. autosummary::
-    :toctree: api/
-
-    ut.sync
-    ut.geo_format
-    ut.sc_format
-    ut.pheno_to_color
-```
+    :toctree: api
+    :nosignatures:
+    
+    overlay

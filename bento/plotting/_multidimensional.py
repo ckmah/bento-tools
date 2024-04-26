@@ -1,8 +1,12 @@
 import warnings
+from typing import List, Optional, Tuple
 
 warnings.filterwarnings("ignore")
 
+from typing import Optional, Tuple, Union
+
 import matplotlib as mpl
+import matplotlib.axes
 import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import numpy as np
@@ -56,17 +60,20 @@ def _quantiles(data: pd.DataFrame, x: str, **kwargs):
 
 
 @savefig
-def obs_stats(
-    data,
-    obs_cols=[
-        "cell_area",
-        "cell_aspect_ratio",
-        "cell_density",
-        "nucleus_area",
-        "nucleus_aspect_ratio",
-        "nucleus_density",
+def shape_stats(
+    sdata,
+    instance_key="cell_boundaries",
+    nucleus_key="nucleus_boundaries",
+    cols=[
+        "cell_boundaries_area",
+        "cell_boundaries_aspect_ratio",
+        "cell_boundaries_density",
+        "nucleus_boundaries_area",
+        "nucleus_boundaries_aspect_ratio",
+        "nucleus_boundaries_density",
     ],
     s=3,
+    color="lightseagreen",
     alpha=0.3,
     rug=False,
     fname=None,
@@ -75,49 +82,61 @@ def obs_stats(
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    sdata : SpatialData
+        Spatial formatted SpatialData
     cols : list
-        List of obs columns to plot
+        List of columns to plot
     groupby : str, optional
         Column in obs to groupby, by default None
     """
-    stats_long = data.obs.melt(value_vars=obs_cols)
+    cell_gdf = sdata[instance_key].melt(value_vars=[c for c in cols if instance_key in c])
+    nucleus_gdf = sdata[nucleus_key].melt(value_vars=[c for c in cols if nucleus_key in c])
+    stats_long = pd.concat([cell_gdf, nucleus_gdf])
     stats_long["quantile"] = stats_long.groupby("variable")["value"].transform(
         lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=100).flatten()
     )
 
     stats_long["shape"] = stats_long["variable"].apply(lambda x: x.split("_")[0])
     stats_long["var"] = stats_long["variable"].apply(
-        lambda x: "_".join(x.split("_")[1:])
+        lambda x: "_".join(x.split("_")[2:])
     )
-
-    linecolor = sns.axes_style()["axes.edgecolor"]
+    # linecolor = sns.axes_style()["axes.edgecolor"]
 
     g = sns.FacetGrid(
         data=stats_long,
         row="var",
         col="shape",
-        height=1.2,
-        aspect=2,
+        height=1.5,
+        aspect=1.7,
         sharex=False,
         sharey=False,
-        margin_titles=True,
+        margin_titles=False,
     )
     g.map_dataframe(
-        sns.stripplot,
+        sns.kdeplot,
         x="value",
-        color=linecolor,
-        s=s,
+        color=color,
+        linewidth=0,
+        fill=True,
         alpha=alpha,
         rasterized=True,
     )
-    g.map_dataframe(_quantiles, x="value")
+    if rug:
+        g.map_dataframe(
+            sns.rugplot,
+            x="value",
+            color=color,
+            height=0.1,
+            alpha=0.5,
+            rasterized=True,
+        )
+    # g.map_dataframe(_quantiles, x="value")
     g.add_legend()
     sns.move_legend(g, "upper left", bbox_to_anchor=(1, 1))
 
     for ax, var in zip(g.axes.flat, stats_long["variable"].unique()):
         ax.set_xlabel("")
+        ax.set_ylabel("")
         ax.set_yticks([])
         ax.ticklabel_format(axis="x", style="sci", scilimits=(-2, 4))
         sns.despine(ax=ax, left=True)
@@ -126,32 +145,61 @@ def obs_stats(
     def plot_median(data, **kwargs):
         plt.axvline(data.median(), **kwargs)
 
-    g.map(plot_median, "value", c=linecolor, lw=1.5, zorder=3)
+    g.map(plot_median, "value", c=color, lw=1.5, zorder=3)
 
 
 @savefig
-def flux_summary(
-    data,
-    groupby=None,
-    group_order=None,
-    annotate=None,
-    adjust=True,
-    palette=red_light,
-    annot_color=None,
-    sizes=(5, 30),
-    size_norm=(10, 100),
-    dim_order=None,
-    legend=True,
-    height=5,
-    fname=None,
+def comp(
+    sdata,
+    groupby: Optional[str] = None,
+    group_order: Optional[List[str]] = None,
+    annotate: Optional[Union[bool, list[str]]] = None,
+    adjust: bool = True,
+    palette: str = red_light,
+    annot_color: Optional[str] = None,
+    sizes: Tuple[int, int] = (5, 30),
+    size_norm: Tuple[int, int] = (10, 100),
+    dim_order: Optional[str] = None,
+    legend: bool = True,
+    height: int = 5,
+    fname: Optional[str] = None,
 ):
     """
-    Plot RNAflux summary with a radviz plot describing gene embedding across flux clusters.
+    Plot gene composition across set of shapes. Ideally, these shapes are non-overlapping.
+
+    Parameters
+    ----------
+    sdata : SpatialData
+        The spatial data to be plotted.
+    groupby : str
+        The column name in the data to group by.
+    group_order : list
+        The order of the groups for plotting.
+    annotate : bool or list of str
+        Whether to annotate the plot with gene names or a list of gene names to annotate.
+    adjust : bool
+        Whether to adjust the text positions, by default True.
+    palette : str
+        The color palette to use for the plot. Default is 'red_light'.
+    annot_color : str
+        The color to use for annotations. Default is None.
+    sizes : tuple
+        The minimum and maximum size of the points. Default is (5, 30).
+    size_norm : tuple
+        The normalization range for the point sizes. Default is (10, 100).
+    dim_order : str
+        The order of the dimensions for the plot. Default is None.
+    legend : bool
+        Whether to include a legend in the plot. Default is True.
+    height : int
+        The height of the plot. Default is 5.
+    fname : str
+        The filename to save the plot as. If None (default), the plot is not saved to file.
     """
 
     comp_key = f"{groupby}_comp_stats"
-    if groupby and comp_key in data.uns.keys():
-        comp_stats = data.uns[comp_key]
+    if groupby and comp_key in sdata.table.uns.keys():
+        comp_stats = sdata.table.uns[comp_key]
         if group_order is None:
             groups = list(comp_stats.keys())
         else:
@@ -183,6 +231,8 @@ def flux_summary(
             )
             ax.set_title(group, fontsize=12)
     else:
+        comp_key = "comp_stats"
+        comp_stats = sdata.table.uns[comp_key]
         return _radviz(
             comp_stats,
             annotate=annotate,
@@ -197,37 +247,44 @@ def flux_summary(
 
 
 def _radviz(
-    comp_stats,
-    annotate=None,
-    adjust=True,
-    palette=red_light,
-    annot_color=None,
-    sizes=None,
-    size_norm=None,
-    dim_order="auto",
-    legend=True,
-    ax=None,
+    comp_stats: pd.DataFrame,
+    annotate: Union[int, List[str]] = None,
+    adjust: bool = True,
+    palette: str = red_light,
+    annot_color: Optional[str] = None,
+    sizes: Optional[Tuple[int, int]] = None,
+    size_norm: Optional[Tuple[int, int]] = None,
+    dim_order: Union[str, list, None] = "auto",
+    legend: bool = True,
+    ax: Optional[matplotlib.axes.Axes] = None,
 ):
-    """Plot a radviz plot of gene values across fields.
+    """
+    Plot a radviz plot of gene values across fields.
 
     Parameters
     ----------
     comp_stats : DataFrame
-        Gene composition stats
+        Gene composition stats.
+    annotate : int or list of str, optional
+        Number of top genes to annotate or list of genes to annotate, by default None.
+    adjust : bool, optional
+        Whether to adjust the text positions, by default True.
     palette : str, optional
-        Color palette, by default None
+        Color palette, by default red_light.
+    annot_color : str, optional
+        The color to use for annotations, by default None.
     sizes : tuple, optional
-        Size range for scatter plot, by default None
+        Size range for scatter plot, by default None.
     size_norm : tuple, optional
-        Size range for scatter plot, by default None
+        Normalization range for the point sizes, by default None.
     dim_order : "auto", None, or list, optional
         Sort dimensions for more intuitive visualization, by default "auto".
         If "auto", sort dimensions by maximizing cosine similarity of adjacent
         dimensions. If None, do not sort dimensions. If list, use provided order.
-    gridsize : int, optional
-        Gridsize for hexbin plot, by default 20
+    legend : bool, optional
+        Whether to include a legend in the plot, by default True.
     ax : matplotlib.Axes, optional
-        Axes to plot on, by default None
+        Axes to plot on, by default None.
     """
     with plt.rc_context({"font.size": 14}):
         # RADVIZ plot
@@ -237,6 +294,8 @@ def _radviz(
             ax = plt.gca()
 
         edgecolor = sns.axes_style()["axes.edgecolor"]
+
+        kde_cmap = "binary" if edgecolor == "black" else "binary_r"
 
         # Infer annot_color from theme
         if annot_color is None:
@@ -308,23 +367,23 @@ def _radviz(
         # Point size ~ percent of cells in group
         cell_fraction = comp_stats["cell_fraction"]
         cell_fraction = cell_fraction.apply(lambda x: round(x, 1))
-        size_key = "Fraction of cells\n in group (%)"
+        size_key = "Fraction of cells (%)"
         xy[size_key] = cell_fraction
 
         # Hue ~ mean log2(count + 1)
         log_count = comp_stats["logcounts"]
-        hue_key = "Mean log2(cnt + 1)\n in group"
+        hue_key = "Mean log2(cnt + 1)"
         xy[hue_key] = log_count
 
-        # Remove phantom points
-        # ax.collections = ax.collections[1:]
+        # Remove data points with invalid values (nan or inf)
+        xy = xy.replace([np.inf, -np.inf], np.nan).dropna()
 
         sns.kdeplot(
             data=xy,
             x=0,
             y=1,
             shade=True,
-            cmap="binary",
+            cmap=kde_cmap,
             zorder=0.9,
             ax=ax,
         )
@@ -364,6 +423,7 @@ def _radviz(
                 )
                 top_xy = xy.loc[top_genes]
             else:
+                # Parse list of genes
                 top_xy = xy.loc[[g for g in annotate if g in xy.index]]
 
             # Plot top points
@@ -407,10 +467,12 @@ def _radviz(
                 print("Adjusting text positions...")
                 adjust_text(
                     texts,
-                    expand_points=(2, 2),
-                    add_objects=[scatter],
-                    arrowprops=dict(arrowstyle="-", color=edgecolor, lw=1),
+                    # expand=(2, 2),
+                    objects=[scatter],
                     ax=ax,
+                    # arrowstyle="-",
+                    # color=edgecolor,
+                    # lw=1,
                 )
 
 

@@ -6,31 +6,33 @@ warnings.filterwarnings("ignore")
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-from anndata import AnnData
+from spatialdata._core.spatialdata import SpatialData
 from upsetplot import UpSet, from_indicators
 
 from .._constants import PATTERN_COLORS, PATTERN_NAMES
 from ..tools import lp_stats
+from .._utils import get_points
 from ._utils import savefig
 from ._multidimensional import _radviz
 
-
 @savefig
-def lp_dist(data, percentage=False, scale=1, fname=None):
+def lp_dist(sdata, show_counts="", show_percentages='{:.1%}', scale=1, fname=None):
     """Plot pattern combination frequencies as an UpSet plot.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
-    percentage : bool, optional
-        If True, label each bar as a percentage else label as a count, by default False
+    sdata : SpatialData
+        Spatial formatted SpatialData
+    show_counts : str, optional
+        Format count labels with this string, do not show counts if empty, by default ""
+    show_percentages : str, optional
+        Format count labels with this string, do not show counts if empty, by default ""
     scale : int, optional
         scale > 1 scales the plot larger, scale < 1 scales. the plot smaller, by default 1
     fname : str, optional
         Save the figure to specified filename, by default None
     """
-    sample_labels = data.uns["lp"]
+    sample_labels = sdata.table.uns["lp"]
     sample_labels = sample_labels == 1
 
     # Sort by degree, then pattern name
@@ -47,8 +49,8 @@ def lp_dist(data, percentage=False, scale=1, fname=None):
         min_subset_size=sample_labels.shape[0] * 0.001,
         facecolor="lightgray",
         sort_by=None,
-        show_counts=(not percentage),
-        show_percentages=percentage,
+        show_counts=show_counts,
+        show_percentages=show_percentages,
     )
 
     for p, color in zip(PATTERN_NAMES, PATTERN_COLORS):
@@ -58,39 +60,12 @@ def lp_dist(data, percentage=False, scale=1, fname=None):
     upset.plot()
     plt.suptitle(f"Localization Patterns\n{sample_labels.shape[0]} samples")
 
-
-@savefig
-def lp_gene_dist(data, fname=None):
-    """Plot the cell fraction distribution of each pattern as a density plot.
-
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData
-    fname : str, optional
-        Save the figure to specified filename, by default None
-    """
-    lp_stats(data)
-
-    col_names = [f"{p}_fraction" for p in PATTERN_NAMES]
-    gene_frac = data.var[col_names]
-    gene_frac.columns = PATTERN_NAMES
-    # Plot frequency distributions
-    sns.displot(
-        data=gene_frac,
-        kind="kde",
-        multiple="layer",
-        height=3,
-        palette=PATTERN_COLORS,
-    )
-    plt.xlim(0, 1)
-    sns.despine()
-
-
 @savefig
 def lp_genes(
-    data: AnnData,
-    groupby: str = "gene",
+    sdata: SpatialData,
+    groupby: str = "feature_name",
+    points_key = "transcripts",
+    instance_key = "cell_boundaries",
     annotate: Union[int, List[str], None] = None,
     sizes: Tuple[int] = (2, 100),
     size_norm: Tuple[int] = (0, 100),
@@ -105,8 +80,8 @@ def lp_genes(
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    sdata : SpatialData
+        Spatial formatted SpatialData
     groupby : str
         Grouping variable, default "gene"
     annotate : int, list of str, optional
@@ -122,20 +97,21 @@ def lp_genes(
     **kwargs
         Options to pass to matplotlib plotting method.
     """
-    lp_stats(data, groupby)
+    lp_stats(sdata, instance_key=instance_key)
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
 
-    n_cells = data.n_obs
-    gene_frac = data.uns["lp_stats"][PATTERN_NAMES] / n_cells
-
-    gene_logcount = data.X.mean(axis=0, where=data.X > 0)
+    n_cells = sdata.table.n_obs
+    gene_frac = sdata.table.uns["lp_stats"][PATTERN_NAMES] / n_cells
+    genes = gene_frac.index
+    gene_expression_array = sdata.table[:,genes].X.toarray()
+    gene_logcount = gene_expression_array.mean(axis=0, where=gene_expression_array > 0)
     gene_logcount = np.log2(gene_logcount + 1)
     gene_frac["logcounts"] = gene_logcount
-
+    
     cell_fraction = (
         100
-        * data.uns["points"].groupby("gene", observed=True)["cell"].nunique()
+        * get_points(sdata, points_key, astype="pandas", sync=True).groupby(groupby, observed=True)[instance_key].nunique()
         / n_cells
     )
     gene_frac["cell_fraction"] = cell_fraction
@@ -144,22 +120,21 @@ def lp_genes(
     scatter_kws.update(kwargs)
     _radviz(gene_frac, annotate=annotate, ax=ax, **scatter_kws)
 
-
 @savefig
-def lp_diff(data: AnnData, phenotype: str, fname: str = None):
-    """Visualize gene pattern frequencies between groups of cells by plotting
-    log2 fold change and -log10p, similar to volcano plot. Run after :func:`bento.tl.lp_diff()`
+def lp_diff_discrete(sdata: SpatialData, phenotype: str, fname: str = None):
+    """Visualize gene pattern frequencies between groups of cells. Plots the
+    log2 fold change and -log10 p-value of each gene, similar to volcano plot. Run after :func:`bento.tl.lp_diff_discrete()`
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData
+    sdata : SpatialData
+        Spatial formatted SpatialData
     phenotype : str
         Variable used to group cells when calling :func:`bento.tl.lp_diff()`.
     fname : str, optional
         Save the figure to specified filename, by default None
     """
-    diff_stats = data.uns[f"diff_{phenotype}"]
+    diff_stats = sdata.table.uns[f"diff_{phenotype}"]
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
     g = sns.relplot(

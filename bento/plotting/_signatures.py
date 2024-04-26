@@ -4,89 +4,11 @@ import pandas as pd
 import seaborn as sns
 from scipy.stats import zscore
 
-from .._constants import PATTERN_COLORS, PATTERN_PROBS
 from ._colors import red2blue, red_light
 from ._utils import savefig
 
-
-@savefig
-def signatures(adata, rank, fname=None):
-    """Plot signatures for specified rank across each dimension.
-
-    bento.tl.signatures() must be run first.
-
-    Parameters
-    ----------
-    adata : anndata.AnnData
-        Spatial formatted AnnData
-    rank : int
-        Rank of signatures to plot
-    fname : str, optional
-        Path to save figure, by default None
-    """
-    sig_key = f"r{rank}_signatures"
-    layer_g = sns.clustermap(
-        np.log2(adata.uns[sig_key] + 1).T,
-        col_cluster=False,
-        row_cluster=False,
-        col_colors=pd.Series(PATTERN_COLORS, index=PATTERN_PROBS),
-        standard_scale=0,
-        cmap=red_light,
-        linewidth=1,
-        linecolor="black",
-        figsize=(adata.uns[sig_key].shape[0], adata.uns[sig_key].shape[1] + 1),
-    )
-    sns.despine(ax=layer_g.ax_heatmap, top=False, right=False)
-    plt.suptitle("Layers")
-
-    gs_shape = adata.varm[sig_key].shape
-    gene_g = sns.clustermap(
-        np.log2(adata.varm[sig_key] + 1).T,
-        row_cluster=False,
-        cmap=red_light,
-        standard_scale=0,
-        figsize=(gs_shape[0], gs_shape[1] + 1),
-    )
-    sns.despine(ax=gene_g.ax_heatmap, top=False, right=False)
-    plt.suptitle("Genes")
-
-    os_shape = adata.obsm[sig_key].shape
-    cell_g = sns.clustermap(
-        np.log2(adata.obsm[sig_key] + 1).T,
-        row_cluster=False,
-        col_cluster=True,
-        standard_scale=0,
-        xticklabels=False,
-        # col_colors=pheno_to_color(adata.obs["leiden"], palette="tab20")[1],
-        cmap=red_light,
-        figsize=(os_shape[0], os_shape[1] + 1),
-    )
-    sns.despine(ax=cell_g.ax_heatmap, top=False, right=False)
-    plt.suptitle("Cells")
-
-
-@savefig
-def signatures_error(adata, fname=None):
-    """Plot error for each rank.
-
-    bento.tl.signatures() must be run first.
-
-    Parameters
-    ----------
-    adata : anndata.AnnData
-        Spatial formatted AnnData
-    fname : str, optional
-        Path to save figure, by default None
-    """
-    errors = adata.uns["signatures_error"]
-    sns.lineplot(data=errors, x="rank", y="rmse", ci=95, marker="o")
-    sns.despine()
-
-    return errors
-
-
 def colocation(
-    adata,
+    sdata,
     rank,
     n_top=[None, None, 5],
     z_score=[False, True, True],
@@ -101,8 +23,8 @@ def colocation(
 
     Parameters
     ----------
-    adata : anndata.AnnData
-        Spatial formatted AnnData
+    sdata : spatialdata.SpatialData
+        Spatial formatted SpatialData
     rank : int
         Rank of signatures to plot
     n_top : int, optional
@@ -120,9 +42,9 @@ def colocation(
     fname : str, optional
         Path to save figure, by default None
     """
-    factors = adata.uns["factors"][rank].copy()
-    labels = adata.uns["tensor_labels"].copy()
-    names = adata.uns["tensor_names"].copy()
+    factors = sdata.table.uns["factors"][rank].copy()
+    labels = sdata.table.uns["tensor_labels"].copy()
+    names = sdata.table.uns["tensor_names"].copy()
 
     # Perform z-scaling upfront
     for i in range(len(factors)):
@@ -154,7 +76,7 @@ def colocation(
     if self_pairs == "only":
         labels["pair"] = [p.split("_")[0] for p in labels["pair"]]
 
-    factor(
+    return factor(
         factors,
         labels,
         names,
@@ -253,6 +175,8 @@ def factor(
             ax=axes[i],
             square=square,
         )
+
+    return fig
 
 
 def _plot_loading(df, name, n_top, cut, show_labels, cluster, ax, **kwargs):

@@ -3,12 +3,12 @@ from typing import List, Literal
 import numpy as np
 import pandas as pd
 import tensorly as tl
-from anndata import AnnData
+from spatialdata._core.spatialdata import SpatialData
 from scipy.stats import zscore
 from tensorly.decomposition import non_negative_parafac
 from tqdm.auto import tqdm
 
-from .._utils import track
+#from .._utils import track
 
 
 def decompose(
@@ -111,47 +111,3 @@ def decompose(
 
 def rmse(tensor, tensor_mu):
     return np.sqrt((tensor[tensor != 0] - tensor_mu[tensor != 0]) ** 2).mean()
-
-
-@track
-def to_tensor(
-    data: AnnData, layers: List[str], scale: bool = False, copy: bool = False
-):
-    """
-    Generate tensor from data where dimensions are (layers, cells, genes).
-
-    Parameters
-    ----------
-    data : AnnData
-        Spatial formatted AnnData
-    layers : list of str
-        Keys in data.layers to build tensor.
-    scale : bool
-        Z scale across cells for each layer, by default False.
-    copy : bool
-        Return a copy of `data` instead of writing to data, by default False.
-
-    Returns
-    -------
-    adata : anndata.AnnData
-        `uns['tensor']` : np.ndarray
-            3D numpy array of shape (len(layers), adata.n_obs, adata.n_vars)
-    """
-    adata = data.copy() if copy else data
-
-    # Build tensor from specified layers
-    tensor = []
-    for l in layers:
-        tensor.append(adata.to_df(l).values)
-
-    # Save tensor values
-    tensor = np.array(tensor)
-
-    # Z scale across cells for each layer
-    if scale:
-        for i, layer in enumerate(tensor):
-            tensor[i] = zscore(layer, axis=1, nan_policy="omit")
-
-    adata.uns["tensor"] = np.array(tensor)
-
-    return adata

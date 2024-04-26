@@ -1,16 +1,15 @@
+import numpy as np
+import pandas as pd
 from scipy.stats import wasserstein_distance
 from sklearn.metrics.pairwise import paired_distances
+from spatialdata._core.spatialdata import SpatialData
 
-import pandas as pd
-import numpy as np
-
-from ..geometry import get_points
-from .._utils import track
-
-from anndata import AnnData
+from .._utils import get_feature_key, get_instance_key, get_points
 
 
-def _get_compositions(points: pd.DataFrame, shape_names: list) -> pd.DataFrame:
+def _get_compositions(
+    points: pd.DataFrame, shape_names: list, instance_key: str, feature_key: str
+) -> pd.DataFrame:
     """Compute the mean composition of each gene across shapes.
 
     Parameters
@@ -19,6 +18,8 @@ def _get_compositions(points: pd.DataFrame, shape_names: list) -> pd.DataFrame:
         Points indexed to shape_names denoted by boolean columns.
     shape_names : list of str
         Names of shapes to calculate compositions for.
+    instance_key : str
+        Key for
 
     Returns
     -------
@@ -27,25 +28,25 @@ def _get_compositions(points: pd.DataFrame, shape_names: list) -> pd.DataFrame:
 
     """
 
-    dims = ["_".join(s.split("_")[:-1]) for s in shape_names]
-
-    n_cells = points["cell"].nunique()
-    points_grouped = points.groupby(["cell", "gene"], observed=True)
-    counts = points_grouped[dims].sum()
+    n_cells = points[instance_key].nunique()
+    points_grouped = points.groupby([instance_key, feature_key], observed=True)
+    counts = points_grouped.apply(lambda x: (x[shape_names] != "").sum())
     total_counts = points_grouped.size()
     comps = counts.divide(total_counts, axis=0).fillna(0)  # Normalize rows
 
-    genes = points["gene"].unique()
+    genes = points[feature_key].unique()
     gene_comps = (
-        comps.groupby("gene", observed=True).mean().reindex(genes, fill_value=0)
+        comps.groupby(feature_key, observed=True).mean().reindex(genes, fill_value=0)
     )
 
     gene_logcount = (
-        points.groupby("gene", observed=True).size().reindex(genes, fill_value=0)
+        points.groupby(feature_key, observed=True).size().reindex(genes, fill_value=0)
     )
     gene_logcount = np.log2(gene_logcount + 1)
     cell_fraction = (
-        100 * points.groupby("gene", observed=True)["cell"].nunique() / n_cells
+        100
+        * points.groupby(feature_key, observed=True)[instance_key].nunique()
+        / n_cells
     )
 
     stats = pd.DataFrame(
@@ -57,35 +58,50 @@ def _get_compositions(points: pd.DataFrame, shape_names: list) -> pd.DataFrame:
     return comp_stats
 
 
-@track
-def comp_diff(
-    data: AnnData, shape_names: list, groupby: str, ref_group: str, copy: bool = False
-):
+def comp(sdata: SpatialData, points_key: str, shape_names: list):
+    """Calculate the average gene composition for shapes across all cells.
+
+    Parameters
+    ----------
+    sdata : spatialdata.SpatialData
+        Spatial formatted SpatialData object.
+    shape_names : list of str
+        Names of shapes to calculate compositions for.
+
+    Returns
+    -------
+    sdata : spatialdata.SpatialData
+        Updates `sdata.table.uns` with average gene compositions for each shape.
+    """
+    points = get_points(sdata,points_key=points_key, astype="pandas")
+
+    instance_key = get_instance_key(sdata)
+    feature_key = get_feature_key(sdata)
+
+    # Get average gene compositions for each batch
+    comp_stats = _get_compositions(
+        points, shape_names, instance_key=instance_key, feature_key=feature_key
+    )
+
+    sdata.table.uns["comp_stats"] = comp_stats
+
+
+def comp_diff(sdata: SpatialData, points_key: str, shape_names: list, groupby: str, ref_group: str):
     """Calculate the average difference in gene composition for shapes across batches of cells. Uses the Wasserstein distance.
 
     Parameters
     ----------
-    data : anndata.AnnData
-        Spatial formatted AnnData object.
+    sdata : spatialdata.SpatialData
+        Spatial formatted SpatialData object.
     shape_names : list of str
         Names of shapes to calculate compositions for.
     groupby : str
-        Key in `adata.obs` to group cells by.
+        Key in `sdata.points['transcripts]` to group cells by.
     ref_group : str
         Reference group to compare other groups to.
-    copy : bool
-        Return a copy of `data` instead of writing to data, by default False.
-
-    Returns
-    -------
-    adata : anndata.AnnData
-        Returns `adata` if `copy=True`, otherwise adds fields to `data`:
 
     """
-
-    adata = data.copy() if copy else data
-
-    points = get_points(data)
+    points = get_points(sdata, points_key=points_key, astype="pandas")
 
     # Get average gene compositions for each batch
     comp_stats = dict()
@@ -94,7 +110,7 @@ def comp_diff(
 
     ref_comp = comp_stats[ref_group]
 
-    dims = [s.replace("_shape", "") for s in shape_names]
+    dims = [s.replace("_boundaries", "") for s in shape_names]
     for group in comp_stats.keys():
         if group == ref_group:
             continue
@@ -109,4 +125,4 @@ def comp_diff(
             index=ref_comp.index,
         )
 
-    adata.uns[f"{groupby}_comp_stats"] = comp_stats
+    sdata.table.uns[f"{groupby}_comp_stats"] = comp_stats

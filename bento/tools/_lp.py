@@ -1,66 +1,93 @@
+from typing import List, Optional, Union
 import pickle
+import warnings
+
+warnings.filterwarnings("ignore")
 
 import bento
 import numpy as np
 import pandas as pd
 import statsmodels.formula.api as sfm
+from pandas.api.types import is_numeric_dtype
 from patsy import PatsyError
 from statsmodels.tools.sm_exceptions import PerfectSeparationError
 from tqdm.auto import tqdm
-from anndata import AnnData
-from .._utils import track
-from .._constants import PATTERN_NAMES, PATTERN_FEATURES
+from spatialdata._core.spatialdata import SpatialData
+
+from .._constants import PATTERN_NAMES
 
 tqdm.pandas()
 
-
-@track
-def lp(data: AnnData, groupby: str = "gene", copy: bool = False):
+def lp(
+    sdata: SpatialData, 
+    instance_key: str = "cell_boundaries",
+    nucleus_key: str = "nucleus_boundaries",
+    groupby: Optional[Union[str, List[str]]] = "feature_name"
+):
     """Predict transcript subcellular localization patterns.
     Patterns include: cell edge, cytoplasmic, nuclear edge, nuclear, none
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData object
+    sdata : SpatialData
+        Spatial formatted SpatialData object
+
     groupby : str or list of str, optional (default: None)
-        Key in `data.uns['points'] to groupby, by default None. Always treats each cell separately
-    copy : bool
-        Return a copy of `data` instead of writing to data, by default False.
+        Key in `sdata.points[points_key] to groupby, by default None. Always treats each cell separately
 
     Returns
     -------
-    adata : AnnData
-        .uns['lp']: DataFrame
+    sdata : SpatialData
+        .table.uns['lp']
             Localization pattern indicator matrix.
-        .uns['lpp']: DataFrame
+        .table.uns['lpp']
             Localization pattern probabilities.
     """
-    adata = data.copy() if copy else data
 
     if isinstance(groupby, str):
         groupby = [groupby]
 
+    pattern_features = [ # Do not change order of features!
+        f"{instance_key}_inner_proximity",
+        f"{nucleus_key}_inner_proximity",
+        f"{nucleus_key}_outer_proximity",
+        f"{instance_key}_inner_asymmetry",
+        f"{nucleus_key}_inner_asymmetry",
+        f"{nucleus_key}_outer_asymmetry",
+        "l_max",
+        "l_max_gradient",
+        "l_min_gradient",
+        "l_monotony",
+        "l_half_radius",
+        "point_dispersion_norm",
+        f"{nucleus_key}_dispersion_norm",
+    ]
+
+
     # Compute features
-    feature_key = f"cell_{'_'.join(groupby)}_features"
-    if feature_key not in adata.uns.keys() or not all(
-        f in adata.uns[feature_key].columns for f in PATTERN_FEATURES
+    feature_key = f"{instance_key}_{'_'.join(groupby)}_features"
+    if feature_key not in sdata.table.uns.keys() or not all(
+        f in sdata.table.uns[feature_key].columns for f in pattern_features
     ):
         bento.tl.analyze_points(
-            adata,
-            "cell_shape",
+            sdata,
+            instance_key,
             ["proximity", "asymmetry", "ripley", "point_dispersion_norm"],
             groupby=groupby,
-            recompute=True,
+            recompute=False,
         )
         bento.tl.analyze_points(
-            adata,
-            "nucleus_shape",
+            sdata,
+            nucleus_key,
             ["proximity", "asymmetry", "shape_dispersion_norm"],
             groupby=groupby,
-            recompute=True,
+            recompute=False,
         )
-    X_df = adata.uns[feature_key][PATTERN_FEATURES]
+
+    X_df = sdata.table.uns[feature_key][pattern_features]
+
+    # Save which samples have nan feature values
+    invalid_samples = X_df.isna().any(axis=1)
 
     # Load trained model
     model_dir = "/".join(bento.__file__.split("/")[:-1]) + "/models"
@@ -77,79 +104,74 @@ def lp(data: AnnData, groupby: str = "gene", copy: bool = False):
     )
 
     # Add cell and groupby identifiers
-    pattern_prob.index = adata.uns[feature_key].set_index(["cell", *groupby]).index
+    pattern_prob.index = sdata.table.uns[feature_key].set_index([instance_key, *groupby]).index
+
+    # Set to no class if sample had nan feature values
+    pattern_prob.loc[:, invalid_samples] = 0
 
     # Threshold probabilities to get indicator matrix
     thresholds = [0.45300, 0.43400, 0.37900, 0.43700, 0.50500]
     indicator_df = (pattern_prob >= thresholds).replace({True: 1, False: 0})
 
-    adata.uns["lp"] = indicator_df.reset_index()
-    adata.uns["lpp"] = pattern_prob.reset_index()
-    return adata if copy else None
+    sdata.table.uns["lp"] = indicator_df.reset_index()
+    sdata.table.uns["lpp"] = pattern_prob.reset_index()
 
-
-@track
-def lp_stats(data: AnnData, copy: bool = False):
+def lp_stats(sdata: SpatialData, instance_key: str = "cell_boundaries"):
     """Computes frequencies of localization patterns across cells and genes.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData object.
-    copy : bool
-        Whether to return a copy of the AnnData object. Default False.
+    sdata : SpatialData
+        Spatial formatted SpatialData object.
+    instance_key : str
+        cell boundaries instance key
+
     Returns
     -------
-    adata : AnnData
-        .uns['lp_stats']: DataFrame of localization pattern frequencies.
+    sdata : SpatialData
+        .table.uns['lp_stats']: DataFrame of localization pattern frequencies.
     """
-    adata = data.copy() if copy else data
-
-    lp = adata.uns["lp"]
+    lp = sdata.table.uns["lp"]
 
     cols = lp.columns
     groupby = list(cols[~cols.isin(PATTERN_NAMES)])
-    groupby.remove("cell")
+    groupby.remove(instance_key)
 
-    g_pattern_counts = lp.groupby(groupby).apply(lambda df: df[PATTERN_NAMES].sum())
-    adata.uns["lp_stats"] = g_pattern_counts
+    g_pattern_counts = lp.groupby(groupby).apply(lambda df: df[PATTERN_NAMES].sum().astype(int))
+    sdata.table.uns["lp_stats"] = g_pattern_counts
 
-    return adata if copy else None
-
-
-def _lp_logfc(data, phenotype=None):
+def _lp_logfc(sdata, instance_key, phenotype=None):
     """Compute pairwise log2 fold change of patterns between groups in phenotype.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData object.
+    data : SpatialData
+        Spatial formatted SpatialData object.
+    instance_key: str
+        cell boundaries instance key
     phenotype : str
-        Variable grouping cells for differential analysis. Must be in data.obs.columns.
+        Variable grouping cells for differential analysis. Must be in sdata.shapes["cell_boundaries"].columns.
 
     Returns
     -------
     gene_fc_stats : DataFrame
         log2 fold change of patterns between groups in phenotype.
     """
-    stats = data.uns["lp_stats"]
+    stats = sdata.table.uns["lp_stats"]
 
-    if phenotype not in data.obs.columns:
+    if phenotype not in sdata.shapes[instance_key].columns:
         raise ValueError("Phenotype is invalid.")
 
-    phenotype_vector = data.obs[phenotype]
+    phenotype_vector = sdata.shapes[instance_key][phenotype]
 
-    pattern_df = data.uns["lp"].copy()
+    pattern_df = sdata.table.uns["lp"].copy()
     groups_name = stats.index.name
-    pattern_df[["cell", groups_name]] = data.uns[f"cell_{groups_name}_features"][
-        ["cell", groups_name]
-    ]
 
     gene_fc_stats = []
     for c in PATTERN_NAMES:
         # save pattern frequency to new column, one for each group
         group_freq = (
-            pattern_df.pivot(index="cell", columns=groups_name, values=c)
+            pattern_df.pivot(index=instance_key, columns=groups_name, values=c)
             .replace("none", np.nan)
             .astype(float)
             .groupby(phenotype_vector)
@@ -192,16 +214,17 @@ def _lp_logfc(data, phenotype=None):
 
     return gene_fc_stats
 
-
-def _lp_diff_gene(cell_by_pattern, phenotype_vector):
+def _lp_diff_gene(cell_by_pattern, phenotype_series, instance_key):
     """Perform pairwise comparison between groupby and every class.
 
     Parameters
     ----------
     cell_by_pattern : DataFrame
         Cell by pattern matrix.
-    phenotype_vector : Series
+    phenotype_series : Series
         Series of cell groupings.
+    instance_key : str
+        cell boundaries instance key
 
     Returns
     -------
@@ -211,10 +234,9 @@ def _lp_diff_gene(cell_by_pattern, phenotype_vector):
     cell_by_pattern = cell_by_pattern.dropna().reset_index(drop=True)
 
     # One hot encode categories
-    group_dummies = pd.get_dummies(pd.Series(phenotype_vector))
-    # group_dummies.columns = [f"{phenotype}_{g}" for g in group_dummies.columns]
+    group_dummies = pd.get_dummies(phenotype_series)
     group_names = group_dummies.columns.tolist()
-    group_data = pd.concat([cell_by_pattern, group_dummies], axis=1)
+    group_data = cell_by_pattern.set_index(instance_key).join(group_dummies, how='inner')
     group_data.columns = group_data.columns.astype(str)
 
     # Perform one group vs rest logistic regression
@@ -254,66 +276,45 @@ def _lp_diff_gene(cell_by_pattern, phenotype_vector):
 
     return results if len(results) > 0 else None
 
-
-@track
-def lp_diff(
-    data: AnnData, phenotype: str = None, continuous: bool = False, copy: bool = False
+def lp_diff_discrete(
+    sdata: SpatialData,
+    instance_key: str = "cell_boundaries", 
+    phenotype: str = None
 ):
     """Gene-wise test for differential localization across phenotype of interest.
 
     Parameters
     ----------
-    data : AnnData
-        Spatial formatted AnnData object.
+    sdata : SpatialData
+        Spatial formatted SpatialData object.
+    instance_key : str
+        cell boundaries instance key.
     phenotype : str
-        Variable grouping cells for differential analysis. Must be in data.obs.columns.
-    continuous : bool
-        Whether the phenotype is continuous or categorical. By default False.
-    copy : bool
-        Return a copy of `data` instead of writing to data, by default False.
+        Variable grouping cells for differential analysis. Must be in sdata.shape["cell_boundaries].columns.
 
     Returns
     -------
-    adata : AnnData
-        Spatial formatted AnnData object.
-        .uns['diff_{phenotype}'] : DataFrame
+    sdata : SpatialData
+        .table.uns['diff_{phenotype}']
             Long DataFrame with differential localization test results across phenotype groups.
     """
-    adata = data.copy() if copy else data
-
-    stats = adata.uns["lp_stats"]
+    lp_stats(sdata, instance_key=instance_key)
+    stats = sdata.table.uns["lp_stats"]
 
     # Retrieve cell phenotype
-    phenotype_vector = adata.obs[phenotype].tolist()
+    phenotype_series = sdata.shapes[instance_key][phenotype]
+    if is_numeric_dtype(phenotype_series):
+        raise KeyError(f"Phenotype dtype must not be numeric | dtype: {phenotype_series.dtype}")
 
-    # TODO untested/incomplete
-    if continuous:
-        pattern_dfs = {}
+    # [Sample by patterns] where sample id = [cell, group] pair
+    pattern_df = sdata.table.uns["lp"].copy()
+    groups_name = stats.index.name
 
-        # Compute correlation for each point group along cells
-        for p in PATTERN_NAMES:
-            p_labels = adata.uns["lp"][p]
-            groups_name = stats.index.name
-            p_labels[["cell", groups_name]] = adata.uns[f"cell_{groups_name}_features"][
-                ["cell", groups_name]
-            ]
-            p_labels = p_labels.pivot(index="cell", columns="gene", values=p)
-            p_corr = p_labels.corrwith(phenotype_vector, drop=True)
-            pattern_dfs[p] = p_labels
-
-    else:
-        # [Sample by patterns] where sample id = [cell, group] pair
-        pattern_df = adata.uns["lp"].copy()
-        groups_name = stats.index.name
-        pattern_df[["cell", groups_name]] = adata.uns[f"cell_{groups_name}_features"][
-            ["cell", groups_name]
-        ]
-
-        diff_output = (
-            pattern_df.groupby(groups_name)
-            .progress_apply(lambda gp: _lp_diff_gene(gp, phenotype_vector))
-            .reset_index()
-        )
+    diff_output = (
+        pattern_df.groupby(groups_name)
+        .progress_apply(lambda gp: _lp_diff_gene(gp, phenotype_series, instance_key))
+        .reset_index()
+    )
 
     # FDR correction
     diff_output["padj"] = diff_output["pvalue"] * diff_output[groups_name].nunique()
@@ -325,11 +326,11 @@ def lp_diff(
     results["-log10padj"] = -np.log10(results["padj"].astype(np.float32))
 
     # Cap significance values
-    results.loc[results["-log10p"] > 20, "-log10p"] = 20
-    results.loc[results["-log10padj"] > 12, "-log10padj"] = 12
+    results.loc[results["-log10p"] == np.inf, "-log10p"] = results.loc[results["-log10p"] != np.inf]["-log10p"].max()
+    results.loc[results["-log10padj"] == np.inf, "-log10padj"] = results.loc[results["-log10padj"] != np.inf]["-log10padj"].max()
 
     # Group-wise log2 fold change values
-    log2fc_stats = _lp_logfc(adata, phenotype)
+    log2fc_stats = _lp_logfc(sdata, instance_key, phenotype)
 
     # Join log2fc results to p value df
     results = (
@@ -339,9 +340,57 @@ def lp_diff(
     )
 
     # Sort results
-    results = results.sort_values("pvalue")
+    results = results.sort_values("pvalue").reset_index(drop=True)
+    del results["level_1"]
+    # Save back to SpatialData
+    sdata.table.uns[f"diff_{phenotype}"] = results
 
-    # Save back to AnnData
-    adata.uns[f"diff_{phenotype}"] = results
+def lp_diff_continuous(
+    sdata: SpatialData,
+    instance_key: str = "cell_boundaries",
+    phenotype: str = None
+):
+    """Gene-wise test for differential localization across phenotype of interest.
 
-    return adata if copy else None
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatial formatted SpatialData object.
+    instance_key : str
+        cell boundaries instance key.
+    phenotype : str
+        Variable grouping cells for differential analysis. Must be in sdata.shape["cell_boundaries].columns.
+
+    Returns
+    -------
+    sdata : SpatialData
+        .table.uns['diff_{phenotype}']
+            Long DataFrame with differential localization test results across phenotype groups.
+    """
+    stats = sdata.table.uns["lp_stats"]
+    lpp = sdata.table.uns["lpp"]
+    # Retrieve cell phenotype
+    phenotype_series = sdata.shapes[instance_key][phenotype]
+
+
+    pattern_dfs = {}
+    # Compute correlation for each point group along cells
+    for p in PATTERN_NAMES:
+        groups_name = stats.index.name
+        p_labels = lpp.pivot(index=instance_key, columns=groups_name, values=p)
+        p_corr = p_labels.corrwith(phenotype_series, axis=0, drop=True)
+
+        pattern_df = pd.DataFrame(p_corr).reset_index(drop = False)
+        pattern_df.insert(loc = 1, column = 'pattern', value = p)
+        pattern_df = pattern_df.rename(columns = {0:'pearson_correlation'})
+        pattern_dfs[p] = pattern_df
+    
+    # Concatenate all pattern_dfs into one
+    pattern_dfs = (
+        pd.concat(pattern_dfs.values(), ignore_index=True)
+        .sort_values(by=['pearson_correlation'], ascending=False)
+        .reset_index(drop=True)
+        )
+        
+    pattern_dfs = pattern_dfs.loc[~pattern_dfs['pearson_correlation'].isna()]
+    sdata.table.uns[f"diff_{phenotype}"] = pattern_dfs
