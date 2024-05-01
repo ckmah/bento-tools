@@ -7,13 +7,15 @@ warnings.filterwarnings("ignore")
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from .._utils import get_points
+from .._utils import get_points, get_shape
 from ._layers import _raster, _scatter, _hist, _kde, _polygons
 from ._utils import savefig, setup_ax
 from ._colors import red2blue, red2blue_dark 
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Polygon
+import matplotlib.patches as mplp
+from matplotlib.collections import PatchCollection
 
 def _prepare_points_df(sdata, points_key, instance_key, sync, semantic_vars=None, hue=None, hue_order=None):
     """
@@ -337,15 +339,14 @@ def _shapes(
         ymax = ymax + buffer_size
 
         # Create shapely polygon from axes limits
-        axes_poly = gpd.GeoDataFrame(
-            geometry=gpd.GeoSeries(
-                [Polygon([(xmin, ymin), (xmin, ymax), (xmax, ymax), (xmax, ymin)])]
-            )
-            # .buffer(0)
-        )
-        axes_poly.overlay(sdata[instance_key], how="difference").plot(
-            ax=ax, linewidth=0, facecolor=sns.axes_style()["axes.facecolor"], zorder=2.0001
-        )
+        axes_poly = Polygon([(xmin, ymin), (xmin, ymax), (xmax, ymax), (xmax, ymin)])
+        mask_poly = axes_poly - get_shape(sdata, shape_key=instance_key).unary_union
+        if isinstance(mask_poly, Polygon):
+            mask_polys = [mplp.Polygon(mask_poly.exterior.coords, closed=True)]
+        else:
+            mask_polys = [mplp.Polygon(p.exterior.coords, closed=True) for p in mask_poly.geom]
+        patches = PatchCollection(mask_polys, linewidth=0, facecolor=sns.axes_style()["axes.facecolor"], zorder=2.0001)
+        ax.add_collection(patches)
 
 @savefig
 @setup_ax

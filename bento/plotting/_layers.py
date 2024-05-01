@@ -5,11 +5,13 @@ warnings.filterwarnings("ignore")
 import geopandas as gpd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.patches as mplp
 import numpy as np
 import seaborn as sns
 from scipy.interpolate import griddata
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, MultiPolygon
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from matplotlib.collections import PatchCollection
 
 from .._utils import get_points, get_shape, get_points_metadata
 
@@ -37,7 +39,6 @@ def _scatter(points, ax, hue=None, size=None, style=None, **kwargs):
 
 
 def _hist(points, ax, hue=None, **kwargs):
-
     hist_kws = dict(zorder=1)
     hist_kws.update(kwargs)
 
@@ -45,7 +46,6 @@ def _hist(points, ax, hue=None, **kwargs):
 
 
 def _kde(points, ax, hue=None, **kwargs):
-
     kde_kws = dict(zorder=1, fill=True)
     kde_kws.update(kwargs)
 
@@ -74,11 +74,21 @@ def _polygons(sdata, shape, ax, hue=None, sync=True, **kwargs):
         edge_color = sns.axes_style()["axes.edgecolor"]
         face_color = "none"  # let GeoDataFrame plot function handle facecolor
 
-    style_kwds = dict(
-        linewidth=0.5, edgecolor=edge_color, facecolor=face_color
-    )
+    style_kwds = dict(linewidth=0.5, edgecolor=edge_color, facecolor=face_color)
     style_kwds.update(kwargs)
-    shapes.plot(ax=ax, column=hue, **style_kwds)
+
+    patches = []
+    # Manually create patches for each polygon; GeoPandas plot function is slow
+    for s in shapes["geometry"].values:
+        if isinstance(s, Polygon):
+            patches.append(mplp.Polygon(s.exterior.coords, closed=True))
+        elif isinstance(s, MultiPolygon):
+            for p in s.geoms:
+                patches.append(mplp.Polygon(p.exterior.coords, closed=True))
+
+    # Add patches to axes
+    patches = PatchCollection(patches, **style_kwds)
+    ax.add_collection(patches)
 
 
 def _raster(sdata, res, color, points_key, alpha, cbar=False, ax=None, **kwargs):
@@ -87,13 +97,13 @@ def _raster(sdata, res, color, points_key, alpha, cbar=False, ax=None, **kwargs)
     if ax is None:
         ax = plt.gca()
 
-    # 
+    #
     points = get_points(sdata, points_key=points_key, astype="pandas", sync=True)
     step = 1 / res
-    color_values = np.array(
-        get_points_metadata(sdata, metadata_keys=color, points_key=points_key)[
-            color
-        ].replace("", np.nan)
+    color_values = (
+        get_points_metadata(sdata, metadata_keys=color, points_key=points_key)[color]
+        .replace("", np.nan)
+        .values
     )
 
     # Infer value format and convert values to rgb
