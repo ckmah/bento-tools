@@ -86,9 +86,9 @@ def _count_neighbors(
         # Get gene-level neighbor counts for each point
         gene_codes = points["feature_name"].cat.codes.values
         neighborhood_sizes = np.array([len(n) for n in neighbor_index])
-        flat_nindex = np.concatenate(neighbor_index)
+        
         # Get gene name for each neighbor
-        flat_ncodes = gene_codes[flat_nindex]
+        flat_ncodes = gene_codes[np.hstack(neighbor_index)]
 
         point_ncounts = []
         cur_pos = 0
