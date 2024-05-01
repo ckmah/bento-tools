@@ -23,7 +23,12 @@ from spatialdata.models import ShapesModel
 from tqdm.auto import tqdm
 from tqdm.dask import TqdmCallback
 
-from .._utils import get_points, get_shape_metadata, set_points_metadata, get_points_metadata
+from .._utils import (
+    get_points,
+    get_shape_metadata,
+    set_points_metadata,
+    get_points_metadata,
+)
 from ..io._index import _sjoin_points, _sjoin_shapes
 from ..tools._neighborhoods import _count_neighbors
 from ..tools._shape_features import analyze_shapes
@@ -242,15 +247,19 @@ def flux(
     flux_color = vec2color(flux_embed, alpha_vec=rpoints_counts)
 
     # Save flux embeddings and colors after reindexing to raster points
-    metadata =  pd.DataFrame.sparse.from_spmatrix(cell_fluxs, index=rpoint_index, columns=gene_names)
+    metadata = pd.DataFrame.sparse.from_spmatrix(
+        cell_fluxs, index=rpoint_index, columns=gene_names
+    )
     metadata[embed_names] = flux_embed
     metadata["flux_color"] = flux_color
     metadata["flux_counts"] = rpoints_counts
 
-
     # Compute index order once and apply to all
-    _, indexer = metadata.index.reindex(raster_points.index)
-    metadata = metadata.iloc[indexer]
+    if not metadata.index.equals(raster_points.index):
+        _, indexer = metadata.index.reindex(
+            raster_points.index.astype(metadata.index.dtype)
+        )
+        metadata = metadata.iloc[indexer]
 
     set_points_metadata(
         sdata,
