@@ -55,9 +55,8 @@ def _kde(points, ax, hue=None, **kwargs):
 def _polygons(sdata, shape, ax, hue=None, sync=True, **kwargs):
     """Plot shapes with GeoSeries plot function."""
     shapes = gpd.GeoDataFrame(geometry=get_shape(sdata, shape, sync=sync))
-    edge_color = "none"
-    face_color = "none"
 
+    style_kwds = dict(lw=0.5)
     # If hue is specified, use it to color faces
     if hue:
         df = (
@@ -71,11 +70,11 @@ def _polygons(sdata, shape, ax, hue=None, sync=True, **kwargs):
             shapes[hue] = df.index
         else:
             shapes[hue] = df.reset_index()[hue].values
-        edge_color = sns.axes_style()["axes.edgecolor"]
-        face_color = "none"  # let GeoDataFrame plot function handle facecolor
+        style_kwds["facecolor"] = sns.axes_style()["axes.edgecolor"]
+        style_kwds["edgecolor"] = "none"  # let GeoDataFrame plot function handle facecolor
 
-    style_kwds = dict(linewidth=0.5, edgecolor=edge_color, facecolor=face_color)
     style_kwds.update(kwargs)
+
 
     patches = []
     # Manually create patches for each polygon; GeoPandas plot function is slow
