@@ -4,18 +4,21 @@ from spatialdata import SpatialData
 
 warnings.filterwarnings("ignore")
 
+import geopandas as gpd
+import matplotlib.patches as mplp
+from matplotlib.path import Path
+from matplotlib.patches import PathPatch
 import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
+from matplotlib.collections import PatchCollection, PathCollection, PolyCollection
+from shapely.geometry import Polygon
+import numpy as np
 
 from .._utils import get_points, get_shape
-from ._layers import _raster, _scatter, _hist, _kde, _polygons
-from ._utils import savefig, setup_ax
 from ._colors import red2blue, red2blue_dark
-import pandas as pd
-import geopandas as gpd
-from shapely.geometry import Polygon
-import matplotlib.patches as mplp
-from matplotlib.collections import PatchCollection
+from ._layers import _hist, _kde, _polygons, _raster, _scatter
+from ._utils import savefig, setup_ax
 
 
 def _prepare_points_df(
@@ -308,7 +311,6 @@ def _shapes(
     if shapes and not isinstance(shapes, list):
         shapes = [shapes]
 
-    # Save list of names to remove if not in data.obs
     shape_names = [name for name in shapes if name in sdata.shapes.keys()]
     missing_names = [name for name in shapes if name not in sdata.shapes.keys()]
 
@@ -338,11 +340,9 @@ def _shapes(
         )
 
     if hide_outside and instance_key in shape_names:
-        # get axes limits
         xmin, xmax = ax.get_xlim()
         ymin, ymax = ax.get_ylim()
 
-        # get min range
         min_range = min(xmax - xmin, ymax - ymin)
         buffer_size = 0.01 * (min_range)
 
@@ -351,28 +351,39 @@ def _shapes(
         ymin = ymin - buffer_size
         ymax = ymax + buffer_size
 
-        # Create shapely polygon from axes limits
         axes_poly = gpd.GeoDataFrame(
             geometry=[Polygon([(xmin, ymin), (xmin, ymax), (xmax, ymax), (xmax, ymin)])]
         )
         instance_poly = gpd.GeoDataFrame(get_shape(sdata, shape_key=instance_key))
-        axes_poly.overlay(instance_poly, how="difference").plot(ax=ax, color="white", lw=0)
-        # mask_poly = axes_poly.overlay(instance_poly, how="difference").geometry.values
-        # for poly in mask_poly:
-        #     if isinstance(poly, Polygon):
-        #         mask_polys = [mplp.Polygon(poly.exterior.coords)]
-        #     else:
-        #         mask_polys = [
-        #             mplp.Polygon(p.exterior.coords) for p in poly.geoms
-        #         ]
-        #     patches = PatchCollection(
-        #         mask_polys,
-        #         edgecolor="red",
-        #         lw=5,
-        #         facecolor="blue",
-        #         zorder=2.0001,
-        #     )
-        #     ax.add_collection(patches)
+        mask_poly = axes_poly.overlay(instance_poly, how="difference")
+
+        # option 1 slow
+        # mask_poly.plot(
+        #     ax=ax, color="white", lw=5, edgecolor="red"
+        # )
+
+        def polytopatch(poly):
+            exterior = Path(np.asarray(poly.exterior.coords)[:, :2])
+            interiors = [
+                Path(np.asarray(ring.coords)[:, :2]) for ring in poly.interiors
+            ]
+            path = Path.make_compound_path(exterior, *interiors)
+            return PathPatch(path)
+
+        # option 2
+        for poly in mask_poly.geometry.values:
+            if isinstance(poly, Polygon):
+                mask_polys = [polytopatch(poly)]
+            else:
+                mask_polys = [polytopatch(p) for p in poly.geoms]
+            patches = PatchCollection(
+                mask_polys,
+                facecolor="white",
+                zorder=2.0001,
+            )
+            ax.add_collection(patches )
+            # [ax.add_patch(patch) for patch in mask_polys]
+            print(len)
 
 
 @savefig
