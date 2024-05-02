@@ -14,6 +14,7 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from matplotlib.collections import PatchCollection
 
 from .._utils import get_points, get_shape, get_points_metadata
+from ._utils import polytopatch
 
 
 def _scatter(points, ax, hue=None, size=None, style=None, **kwargs):
@@ -78,12 +79,12 @@ def _polygons(sdata, shape, ax, hue=None, sync=True, **kwargs):
 
     patches = []
     # Manually create patches for each polygon; GeoPandas plot function is slow
-    for s in shapes["geometry"].values:
-        if isinstance(s, Polygon):
-            patches.append(mplp.Polygon(s.exterior.coords, closed=True))
-        elif isinstance(s, MultiPolygon):
-            for p in s.geoms:
-                patches.append(mplp.Polygon(p.exterior.coords, closed=True))
+    for poly in shapes["geometry"].values:
+        if isinstance(poly, Polygon):
+            patches.append(polytopatch(poly))
+        elif isinstance(poly, MultiPolygon):
+            for p in poly.geoms:
+                patches.append(polytopatch(p))
 
     # Add patches to axes
     patches = PatchCollection(patches, **style_kwds)
