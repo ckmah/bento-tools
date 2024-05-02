@@ -6,19 +6,19 @@ warnings.filterwarnings("ignore")
 
 import geopandas as gpd
 import matplotlib.patches as mplp
-from matplotlib.path import Path
-from matplotlib.patches import PathPatch
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib.collections import PatchCollection, PathCollection, PolyCollection
+from matplotlib.patches import PathPatch, Patch
+from matplotlib.path import Path
 from shapely.geometry import Polygon
-import numpy as np
 
 from .._utils import get_points, get_shape
 from ._colors import red2blue, red2blue_dark
 from ._layers import _hist, _kde, _polygons, _raster, _scatter
-from ._utils import savefig, setup_ax
+from ._utils import savefig, setup_ax, polytopatch
 
 
 def _prepare_points_df(
@@ -339,38 +339,27 @@ def _shapes(
             **geo_kws,
         )
 
+    # Hide extracellular area
     if hide_outside and instance_key in shape_names:
-        xmin, xmax = ax.get_xlim()
-        ymin, ymax = ax.get_ylim()
-
-        min_range = min(xmax - xmin, ymax - ymin)
-        buffer_size = 0.01 * (min_range)
-
-        xmin = xmin - buffer_size
-        xmax = xmax + buffer_size
-        ymin = ymin - buffer_size
-        ymax = ymax + buffer_size
-
-        axes_poly = gpd.GeoDataFrame(
-            geometry=[Polygon([(xmin, ymin), (xmin, ymax), (xmax, ymax), (xmax, ymin)])]
-        )
         instance_poly = gpd.GeoDataFrame(get_shape(sdata, shape_key=instance_key))
+        bounds = instance_poly.total_bounds
+
+        axes_poly = Polygon(
+            (
+                [bounds[0], bounds[1]],
+                [bounds[0], bounds[3]],
+                [bounds[2], bounds[3]],
+                [bounds[2], bounds[1]],
+            )
+        )
+        buffer = 0.01 * (bounds[2] - bounds[0])
+        axes_poly = gpd.GeoDataFrame(
+            geometry=[axes_poly.buffer(buffer, cap_style="square")]
+        )
+
+        # Take difference between instance_key shapes and buffered bounding box
         mask_poly = axes_poly.overlay(instance_poly, how="difference")
 
-        # option 1 slow
-        # mask_poly.plot(
-        #     ax=ax, color="white", lw=5, edgecolor="red"
-        # )
-
-        def polytopatch(poly):
-            exterior = Path(np.asarray(poly.exterior.coords)[:, :2])
-            interiors = [
-                Path(np.asarray(ring.coords)[:, :2]) for ring in poly.interiors
-            ]
-            path = Path.make_compound_path(exterior, *interiors)
-            return PathPatch(path)
-
-        # option 2
         for poly in mask_poly.geometry.values:
             if isinstance(poly, Polygon):
                 mask_polys = [polytopatch(poly)]
@@ -381,9 +370,7 @@ def _shapes(
                 facecolor="white",
                 zorder=2.0001,
             )
-            ax.add_collection(patches )
-            # [ax.add_patch(patch) for patch in mask_polys]
-            print(len)
+            ax.add_collection(patches)
 
 
 @savefig
@@ -586,6 +573,11 @@ def fluxmap(
     fname : str, optional
         Filename to save figure to, by default None. If None, will not save figure.
     """
+
+    if not np.any([s.startswith("fluxmap") for s in sdata.shapes.keys()]):
+        print("Please run bento.tl.fluxmap() first.")
+        return
+
     if ax is None:
         ax = plt.gca()
 
@@ -612,6 +604,20 @@ def fluxmap(
             ax=ax,
             **shape_kws,
         )
+
+    # Create legend denoting each fluxmap as different color
+    patches = [Patch(color=c, label=label) for label, c in colormap.items()]
+    # for patch in patches:
+    #     patch.set_marker('s')
+    #     patch.set_markersize(20)
+
+    ax.legend(
+        patches,
+        colormap.keys(),
+        loc="upper left",
+        bbox_to_anchor=[1, 1],
+        frameon=False,
+    )
 
     # Plot base cell and nucleus shapes
     _shapes(sdata, instance_key=instance_key, ax=ax)
