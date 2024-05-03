@@ -367,7 +367,7 @@ def _shapes(
                 mask_polys = [polytopatch(p) for p in poly.geoms]
             patches = PatchCollection(
                 mask_polys,
-                facecolor="white",
+                facecolor=sns.axes_style()["axes.facecolor"],
                 zorder=2.0001,
             )
             ax.add_collection(patches)
