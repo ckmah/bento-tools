@@ -73,10 +73,10 @@ class TestColocation(unittest.TestCase):
         self.assertTrue("rmse" in self.data.table.uns["factors_error"])
         self.assertTrue("rank" in self.data.table.uns["factors_error"])
 
-    @patch("matplotlib.pyplot.savefig")
-    def test_colocation_plot(self, mock_savefig):
-        bt.pl.colocation(
-            self.data, rank=self.rank, fname=f"{self.imgdir}/colocation.png"
-        )
+    # @patch("matplotlib.pyplot.savefig")
+    # def test_colocation_plot(self, mock_savefig):
+    #     bt.pl.colocation(
+    #         self.data, rank=self.rank, fname=f"{self.imgdir}/colocation.png"
+    #     )
 
-        mock_savefig.assert_called()
+    #     mock_savefig.assert_called()

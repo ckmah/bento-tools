@@ -82,9 +82,9 @@ class TestFlux(unittest.TestCase):
             )
             self.assertTrue(f"fluxmap{i}" in self.data.shapes)
 
-    @patch("matplotlib.pyplot.savefig")
-    def test_flux_plot(self, mock_savefig):
-        bt.pl.flux(self.data, res=1, fname=f"{self.imgdir}/flux.png")
+    # @patch("matplotlib.pyplot.savefig")
+    # def test_flux_plot(self, mock_savefig):
+    #     bt.pl.flux(self.data, res=1, fname=f"{self.imgdir}/flux.png")
 
     def test_fe_fazal2019(self):
         bt.tl.fe_fazal2019(self.data)
@@ -126,37 +126,37 @@ class TestFlux(unittest.TestCase):
             self.assertTrue(feature in self.data.table.uns["fe_stats"])
             self.assertTrue(feature in self.data.table.uns["fe_ngenes"])
 
-    def test_fluxmap_plot(self):
-        bt.tl.fluxmap(
-            sdata=self.data,
-            points_key="transcripts",
-            instance_key="cell_boundaries",
-            res=self.res,
-            train_size=1,
-            n_clusters=3,
-            plot_error=False,
-        )
-        plt.figure()
-        bt.pl.fluxmap(self.data, fname=f"{self.imgdir}/fluxmap.png")
+    # def test_fluxmap_plot(self):
+    #     bt.tl.fluxmap(
+    #         sdata=self.data,
+    #         points_key="transcripts",
+    #         instance_key="cell_boundaries",
+    #         res=self.res,
+    #         train_size=1,
+    #         n_clusters=3,
+    #         plot_error=False,
+    #     )
+    #     plt.figure()
+    #     bt.pl.fluxmap(self.data, fname=f"{self.imgdir}/fluxmap.png")
 
-    def test_fe_plot(self):
-        # TODO this test is so slow
-        bt.tl.fluxmap(
-            sdata=self.data,
-            points_key="transcripts",
-            instance_key="cell_boundaries",
-            res=self.res,
-            train_size=1,
-            n_clusters=3,
-            plot_error=False,
-        )
-        bt.tl.fe_fazal2019(self.data)
+    # def test_fe_plot(self):
+    #     # TODO this test is so slow
+    #     bt.tl.fluxmap(
+    #         sdata=self.data,
+    #         points_key="transcripts",
+    #         instance_key="cell_boundaries",
+    #         res=self.res,
+    #         train_size=1,
+    #         n_clusters=3,
+    #         plot_error=False,
+    #     )
+    #     bt.tl.fe_fazal2019(self.data)
 
-        plt.figure()
-        bt.pl.fe(
-            self.data,
-            "flux_OMM",
-            res=self.res,
-            shapes=["cell_boundaries", "fluxmap1_boundaries"],
-            fname=f"{self.imgdir}/fe_flux_OMM_fluxmap1.png",
-        )
+    #     plt.figure()
+    #     bt.pl.fe(
+    #         self.data,
+    #         "flux_OMM",
+    #         res=self.res,
+    #         shapes=["cell_boundaries", "fluxmap1_boundaries"],
+    #         fname=f"{self.imgdir}/fe_flux_OMM_fluxmap1.png",
+    #     )

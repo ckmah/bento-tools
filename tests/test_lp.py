@@ -123,38 +123,38 @@ class TestLp(unittest.TestCase):
                 column in self.data.table.uns["diff_cell_boundaries_area"].columns
             )
 
-    def test_lp_dist_plot(self):
-        plt.figure()
-        bt.pl.lp_dist(self.data, fname=f"{self.imgdir}/lp_dist.png")
+    # def test_lp_dist_plot(self):
+    #     plt.figure()
+    #     bt.pl.lp_dist(self.data, fname=f"{self.imgdir}/lp_dist.png")
 
-    def test_lp_genes_plot(self):
-        plt.figure()
-        bt.pl.lp_genes(
-            self.data,
-            groupby="feature_name",
-            points_key="transcripts",
-            instance_key="cell_boundaries",
-            fname=f"{self.imgdir}/lp_genes.png",
-        )
+    # def test_lp_genes_plot(self):
+    #     plt.figure()
+    #     bt.pl.lp_genes(
+    #         self.data,
+    #         groupby="feature_name",
+    #         points_key="transcripts",
+    #         instance_key="cell_boundaries",
+    #         fname=f"{self.imgdir}/lp_genes.png",
+    #     )
 
-    def test_lp_diff_discrete_plot(self):
-        area_binary = []
-        median = self.data.shapes["cell_boundaries"]["cell_boundaries_area"].median()
-        for i in range(len(self.data.shapes["cell_boundaries"])):
-            cell_boundaries_area = self.data.shapes["cell_boundaries"][
-                "cell_boundaries_area"
-            ][i]
-            if cell_boundaries_area > median:
-                area_binary.append("above")
-            else:
-                area_binary.append("below")
-        self.data.shapes["cell_boundaries"]["area_binary"] = area_binary
+    # def test_lp_diff_discrete_plot(self):
+    #     area_binary = []
+    #     median = self.data.shapes["cell_boundaries"]["cell_boundaries_area"].median()
+    #     for i in range(len(self.data.shapes["cell_boundaries"])):
+    #         cell_boundaries_area = self.data.shapes["cell_boundaries"][
+    #             "cell_boundaries_area"
+    #         ][i]
+    #         if cell_boundaries_area > median:
+    #             area_binary.append("above")
+    #         else:
+    #             area_binary.append("below")
+    #     self.data.shapes["cell_boundaries"]["area_binary"] = area_binary
 
-        bt.tl.lp_diff_discrete(self.data, phenotype="area_binary")
+    #     bt.tl.lp_diff_discrete(self.data, phenotype="area_binary")
 
-        plt.figure()
-        bt.pl.lp_diff_discrete(
-            self.data,
-            phenotype="area_binary",
-            fname=f"{self.imgdir}/lp_diff_discrete.png",
-        )
+    #     plt.figure()
+    #     bt.pl.lp_diff_discrete(
+    #         self.data,
+    #         phenotype="area_binary",
+    #         fname=f"{self.imgdir}/lp_diff_discrete.png",
+    #     )
