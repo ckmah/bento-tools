@@ -5,3 +5,4 @@ from . import tools as tl
 from . import datasets as ds
 from . import io
 from .plotting import _colors as colors
+from ._constants import CosMx, Merscope, Xenium
