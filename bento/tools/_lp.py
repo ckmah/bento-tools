@@ -23,7 +23,7 @@ def lp(
     sdata: SpatialData,
     instance_key: str = "cell_boundaries",
     nucleus_key: str = "nucleus_boundaries",
-    groupby: str | List[str] = "feature_name",
+    groupby: Union[str, List[str]] = "feature_name",
     num_workers=1,
     recompute=False,
 ):

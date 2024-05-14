@@ -1,5 +1,5 @@
 # Geometric operations for SpatialData ShapeElements wrapping GeoPandas GeoDataFrames.
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import geopandas as gpd
 import numpy as np
@@ -7,7 +7,6 @@ import pandas as pd
 from dask import dataframe as dd
 from spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel, TableModel
-from spatialdata.transformations import get_transformation, set_transformation
 
 
 def filter_by_gene(
@@ -66,7 +65,7 @@ def get_points(
     points_key: str = "transcripts",
     astype: str = "pandas",
     sync: bool = True,
-) -> pd.DataFrame | dd.DataFrame | gpd.GeoDataFrame:
+) -> Union[pd.DataFrame, dd.DataFrame, gpd.GeoDataFrame]:
     """Get points DataFrame synced to AnnData object.
 
     Parameters
@@ -144,10 +143,10 @@ def get_shape(sdata: SpatialData, shape_key: str, sync: bool = True) -> gpd.GeoS
 
 def get_points_metadata(
     sdata: SpatialData,
-    metadata_keys: List[str] | str,
+    metadata_keys: Union[List[str], str],
     points_key: str,
-    astype="pandas",
-):
+    astype: str = "pandas",
+) -> Union[pd.DataFrame, dd.DataFrame]:
     """Get points metadata.
 
     Parameters
@@ -188,9 +187,9 @@ def get_points_metadata(
 
 def get_shape_metadata(
     sdata: SpatialData,
-    metadata_keys: List[str] | str,
+    metadata_keys: Union[List[str], str],
     shape_key: str,
-):
+) -> pd.DataFrame:
     """Get shape metadata.
 
     Parameters
@@ -204,7 +203,7 @@ def get_shape_metadata(
 
     Returns
     -------
-    pd.Dataframe
+    pd.DataFrame
         Returns `sdata.shapes[shape_key][metadata_keys]` as a `pd.DataFrame`
     """
     if shape_key not in sdata.shapes.keys():
@@ -223,9 +222,9 @@ def get_shape_metadata(
 def set_points_metadata(
     sdata: SpatialData,
     points_key: str,
-    metadata: List | pd.Series | pd.DataFrame | np.ndarray,
-    columns: List[str] | str,
-):
+    metadata: Union[List, pd.Series, pd.DataFrame, np.ndarray],
+    columns: Union[List[str], str],
+) -> None:
     """Write metadata in SpatialData points element as column(s). Aligns metadata index to shape index if present.
 
     Parameters
@@ -268,9 +267,9 @@ def set_points_metadata(
 def set_shape_metadata(
     sdata: SpatialData,
     shape_key: str,
-    metadata: List | pd.Series | pd.DataFrame | np.ndarray,
-    column_names: Optional[str | List[str]] = None,
-):
+    metadata: Union[List, pd.Series, pd.DataFrame, np.ndarray],
+    column_names: Union[List[str], str] = None,
+) -> None:
     """Write metadata in SpatialData shapes element as column(s). Aligns metadata index to shape index.
 
     Parameters
