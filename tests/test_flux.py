@@ -1,15 +1,12 @@
 import os
 import unittest
 
-import matplotlib.pyplot as plt
 import spatialdata as sd
 
 import bento as bt
-from unittest.mock import patch
 
 
 class TestFlux(unittest.TestCase):
-
     @classmethod
     def setUpClass(self):
         datadir = "/".join(bt.__file__.split("/")[:-1]) + "/datasets"
@@ -23,7 +20,7 @@ class TestFlux(unittest.TestCase):
             instance_key="cell_boundaries",
             shape_keys=["cell_boundaries", "nucleus_boundaries"],
         )
-        self.res=0.1
+        self.res = 0.1
         bt.tl.flux(
             sdata=self.data,
             points_key="transcripts",
@@ -77,9 +74,7 @@ class TestFlux(unittest.TestCase):
         )
         self.assertTrue("fluxmap" in self.data.points["cell_boundaries_raster"].columns)
         for i in range(1, 4):
-            self.assertTrue(
-                f"fluxmap{i}" in self.data.points["transcripts"].columns
-            )
+            self.assertTrue(f"fluxmap{i}" in self.data.points["transcripts"].columns)
             self.assertTrue(f"fluxmap{i}" in self.data.shapes)
 
     # @patch("matplotlib.pyplot.savefig")
