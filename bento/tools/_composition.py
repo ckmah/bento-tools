@@ -103,10 +103,13 @@ def comp_diff(sdata: SpatialData, points_key: str, shape_names: list, groupby: s
     """
     points = get_points(sdata, points_key=points_key, astype="pandas")
 
+    instance_key = get_instance_key(sdata)
+    feature_key = get_feature_key(sdata)
+
     # Get average gene compositions for each batch
     comp_stats = dict()
     for group, pt_group in points.groupby(groupby):
-        comp_stats[group] = _get_compositions(pt_group, shape_names)
+        comp_stats[group] = _get_compositions(pt_group, shape_names, instance_key=instance_key, feature_key=feature_key)
 
     ref_comp = comp_stats[ref_group]
 

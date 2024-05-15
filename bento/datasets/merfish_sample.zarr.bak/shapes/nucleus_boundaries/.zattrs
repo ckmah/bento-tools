@@ -1,0 +1,46 @@
+{
+    "axes": null,
+    "coordinateTransformations": [
+        {
+            "input": {
+                "axes": [
+                    {
+                        "name": "x",
+                        "type": "space",
+                        "unit": "unit"
+                    },
+                    {
+                        "name": "y",
+                        "type": "space",
+                        "unit": "unit"
+                    }
+                ],
+                "name": "xy"
+            },
+            "output": {
+                "axes": [
+                    {
+                        "name": "x",
+                        "type": "space",
+                        "unit": "unit"
+                    },
+                    {
+                        "name": "y",
+                        "type": "space",
+                        "unit": "unit"
+                    }
+                ],
+                "name": "global"
+            },
+            "type": "identity"
+        }
+    ],
+    "encoding-type": "ngff:shapes",
+    "spatialdata_attrs": {
+        "geos": {
+            "name": "POLYGON",
+            "type": 3
+        },
+        "version": "0.1"
+    }
+}
