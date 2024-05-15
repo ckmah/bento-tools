@@ -135,9 +135,8 @@ def analyze_points(
     ):
         points_df = (
             points_df.join(
-                sdata.shapes[shape], on=instance_key, lsuffix="", rsuffix=f"_{shape}"
+                sdata.shapes[shape].set_index(instance_key), on=instance_key, lsuffix="", rsuffix=f"_{shape}"
             )
-            .drop("cell_boundaries", axis=1)
             .rename(columns={shape: f"{shape}_index", f"geometry_{shape}": shape})
         )
 
