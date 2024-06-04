@@ -225,7 +225,7 @@ def flux(
 
     # todo: Slow step, try algorithm="randomized" may be faster
     pbar.set_description(emoji.emojize("Reducing"))
-    n_components = min(n_genes - 1, 10)
+    n_components = min(n_genes, 10)
 
     train_n = int(train_size * len(cells))
     train_x = resample(
@@ -393,7 +393,7 @@ def fluxmap(
 
     # Subsample flux embeddings for faster training
     if train_size > 1:
-        raise ValueError("train_size must be less than 1.")
+        raise ValueError("train_size must be equal to or less than 1.")
     if train_size == 1:
         flux_train = flux_embed
     if train_size < 1:
@@ -467,6 +467,12 @@ def fluxmap(
     for cell in tqdm(cells, leave=False):
         rpoints = rpoints_grouped.get_group(cell)
 
+        # Translate so all points are positive and save offsets
+        x_offset = rpoints["x"].min()
+        y_offset = rpoints["y"].min()
+        rpoints["x"] = rpoints["x"] - x_offset
+        rpoints["y"] = rpoints["y"] - y_offset
+
         # Fill in image at each point xy with fluxmap value by casting to dense matrix
         image = (
             csr_matrix(
@@ -490,6 +496,9 @@ def fluxmap(
             geometry=gpd.GeoSeries(polygons[:, 0]).T,
             columns=["fluxmap"],
         )
+
+        # Add back offsets
+        shapes["geometry"] = shapes["geometry"].translate(x_offset, y_offset)
 
         # Remove background shape
         shapes["fluxmap"] = shapes["fluxmap"].astype(int)
