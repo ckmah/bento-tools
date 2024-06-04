@@ -27,6 +27,7 @@ dependencies = [
     "xgboost>=2.0.3",
     "statsmodels>=0.14.1",
     "scikit-learn>=1.4.2",
+    "pytest>=8.2.1",
 ]
 license = "BSD-2-Clause"
 readme = "README.md"
