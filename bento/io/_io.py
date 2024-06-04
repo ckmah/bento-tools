@@ -2,6 +2,7 @@ import warnings
 from typing import List
 
 import emoji
+from anndata.utils import make_index_unique
 from spatialdata import SpatialData
 from spatialdata.models import TableModel
 from tqdm.auto import tqdm
@@ -48,7 +49,7 @@ def prep(
     for shape_key, shape_gdf in sdata.shapes.items():
         if shape_key == instance_key:
             shape_gdf[shape_key] = shape_gdf["geometry"]
-        shape_gdf.index = shape_gdf.index.astype(str, copy=False)
+        shape_gdf.index = make_index_unique(shape_gdf.index)
 
     # sindex points and sjoin shapes if they have not been indexed or joined
     point_sjoin = []
