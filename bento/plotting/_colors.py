@@ -10,8 +10,8 @@ red2blue_dark = LinearSegmentedColormap.from_list(
     "red2blue_dark", [blue_rgb, "black", red_rgb]
 )
 
-mpl.cm.register_cmap("red2blue", red2blue)
-mpl.cm.register_cmap("red2blue_dark", red2blue_dark)
+mpl.cm.register("red2blue", red2blue)
+mpl.cm.register("red2blue_dark", red2blue_dark)
 
 red_light = sns.light_palette(red_rgb, as_cmap=True)
 blue_light = sns.light_palette(blue_rgb, as_cmap=True)
