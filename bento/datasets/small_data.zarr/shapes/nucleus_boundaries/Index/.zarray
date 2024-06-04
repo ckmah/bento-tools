@@ -1,6 +1,6 @@
 {
     "chunks": [
-        35
+        3
     ],
     "compressor": {
         "blocksize": 0,
@@ -10,12 +10,16 @@
         "shuffle": 1
     },
     "dimension_separator": "/",
-    "dtype": "<i8",
+    "dtype": "|O",
     "fill_value": 0,
-    "filters": null,
+    "filters": [
+        {
+            "id": "vlen-utf8"
+        }
+    ],
     "order": "C",
     "shape": [
-        35
+        3
     ],
     "zarr_format": 2
 }

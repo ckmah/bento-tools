@@ -32,17 +32,13 @@
                 ],
                 "name": "global"
             },
-            "scale": [
-                4.705882352941177,
-                4.705882352941177
-            ],
-            "type": "scale"
+            "type": "identity"
         }
     ],
     "encoding-type": "ngff:points",
     "spatialdata_attrs": {
         "feature_key": "feature_name",
-        "instance_key": "cell_id",
+        "instance_key": "cell_boundaries",
         "version": "0.1"
     }
 }
