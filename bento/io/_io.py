@@ -65,6 +65,9 @@ def prep(
         ):
             shape_sjoin.append(shape_key)
 
+    # Set instance key for points
+    sdata.points[points_key].attrs["spatialdata_attrs"]["instance_key"] = instance_key
+
     pbar = tqdm(total=3)
     if len(point_sjoin) > 0:
         pbar.set_description("Mapping points")
@@ -73,9 +76,9 @@ def prep(
             points_key=points_key,
             shape_keys=point_sjoin,
         )
-    
+
     pbar.update()
-    
+
     if len(shape_sjoin) > 0:
         pbar.set_description("Mapping shapes")
         sdata = _sjoin_shapes(
