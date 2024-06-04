@@ -50,12 +50,12 @@ def analyze_points(
     feature_names : str or list of str
         Names of the features to analyze.
     groupby : str or list of str, optional
-        Key(s) in `data.points['points'] to groupby, by default None. Always treats each cell separately
+        Key(s) in `data.points['points'] to groupby, by default None. Always treats each cell separately.
 
     Returns
     -------
     sdata : spatialdata.SpatialData
-        table.uns["point_feature"]
+        table.uns["{instance_key}_{groupby}_features"]
             See the output of each :class:`PointFeature` in `features` for keys added.
 
     """
