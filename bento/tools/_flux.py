@@ -497,26 +497,23 @@ def fluxmap(
             columns=["fluxmap"],
         )
 
-        # Add back offsets
-        shapes["geometry"] = shapes["geometry"].translate(x_offset, y_offset)
-
         # Remove background shape
         shapes["fluxmap"] = shapes["fluxmap"].astype(int)
         shapes = shapes[shapes["fluxmap"] != 0]
 
         # Group same fields as MultiPolygons
         shapes = shapes.dissolve("fluxmap")["geometry"]
+
+        # Upscale to match original resolution, shift back to original coordinates
+        shapes = shapes.scale(xfact=1 / res, yfact=1 / res, origin=(0, 0)).translate(
+            x_offset, y_offset
+        )
+
         fluxmap_df[cell] = shapes
 
     fluxmap_df = pd.DataFrame.from_dict(fluxmap_df).T
     fluxmap_df.columns = "fluxmap" + fluxmap_df.columns.astype(str)
 
-    # Upscale to match original resolution
-    fluxmap_df = fluxmap_df.apply(
-        lambda col: gpd.GeoSeries(col).scale(
-            xfact=1 / res, yfact=1 / res, origin=(0, 0)
-        )
-    )
     pbar.update()
 
     pbar.set_description("Saving")
