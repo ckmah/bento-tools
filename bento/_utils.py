@@ -1,5 +1,5 @@
 # Geometric operations for SpatialData ShapeElements wrapping GeoPandas GeoDataFrames.
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import geopandas as gpd
 import numpy as np
@@ -7,7 +7,6 @@ import pandas as pd
 from dask import dataframe as dd
 from spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel, TableModel
-from spatialdata.transformations import get_transformation, set_transformation
 
 
 def filter_by_gene(
@@ -66,7 +65,7 @@ def get_points(
     points_key: str = "transcripts",
     astype: str = "pandas",
     sync: bool = True,
-) -> pd.DataFrame | dd.DataFrame | gpd.GeoDataFrame:
+) -> Union[pd.DataFrame, dd.DataFrame, gpd.GeoDataFrame]:
     """Get points DataFrame synced to AnnData object.
 
     Parameters
@@ -144,10 +143,10 @@ def get_shape(sdata: SpatialData, shape_key: str, sync: bool = True) -> gpd.GeoS
 
 def get_points_metadata(
     sdata: SpatialData,
-    metadata_keys: List[str] | str,
+    metadata_keys: Union[List[str], str],
     points_key: str,
-    astype="pandas",
-):
+    astype: str = "pandas",
+) -> Union[pd.DataFrame, dd.DataFrame]:
     """Get points metadata.
 
     Parameters
@@ -188,9 +187,9 @@ def get_points_metadata(
 
 def get_shape_metadata(
     sdata: SpatialData,
-    metadata_keys: List[str] | str,
+    metadata_keys: Union[List[str], str],
     shape_key: str,
-):
+) -> pd.DataFrame:
     """Get shape metadata.
 
     Parameters
@@ -204,7 +203,7 @@ def get_shape_metadata(
 
     Returns
     -------
-    pd.Dataframe
+    pd.DataFrame
         Returns `sdata.shapes[shape_key][metadata_keys]` as a `pd.DataFrame`
     """
     if shape_key not in sdata.shapes.keys():
@@ -223,9 +222,9 @@ def get_shape_metadata(
 def set_points_metadata(
     sdata: SpatialData,
     points_key: str,
-    metadata: List | pd.Series | pd.DataFrame | np.ndarray,
-    columns: List[str] | str,
-):
+    metadata: Union[List, pd.Series, pd.DataFrame, np.ndarray],
+    columns: Union[List[str], str],
+) -> None:
     """Write metadata in SpatialData points element as column(s). Aligns metadata index to shape index if present.
 
     Parameters
@@ -268,9 +267,9 @@ def set_points_metadata(
 def set_shape_metadata(
     sdata: SpatialData,
     shape_key: str,
-    metadata: List | pd.Series | pd.DataFrame | np.ndarray,
-    column_names: Optional[str | List[str]] = None,
-):
+    metadata: Union[List, pd.Series, pd.DataFrame, np.ndarray],
+    column_names: Union[List[str], str] = None,
+) -> None:
     """Write metadata in SpatialData shapes element as column(s). Aligns metadata index to shape index.
 
     Parameters
@@ -310,7 +309,9 @@ def set_shape_metadata(
         if "" not in metadata[col].cat.categories:
             metadata[col] = metadata[col].cat.add_categories([""]).fillna("")
 
-    sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(shape_index)
+    sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(
+        shape_index
+    ).fillna("")
 
 
 def _sync_points(sdata, points_key):
@@ -331,24 +332,20 @@ def _sync_points(sdata, points_key):
     """
     points = sdata.points[points_key].compute()
     instance_key = get_instance_key(sdata)
-    if instance_key not in points.columns:
-        raise ValueError(
-            f"Points {points_key} not synced to instance_key shape element. Run bento.io.prep() to setup SpatialData object for bento-tools."
-        )
-    else:
-        # Only keep points within instance_key shape
-        cells = set(sdata.shapes[instance_key].index)
-        transform = sdata.points[points_key].attrs
-        points_valid = points[
-            points[instance_key].isin(cells)
-        ]  # TODO why doesnt this grab the right cells
-        # Set points back to SpatialData object
-        points_valid = PointsModel.parse(
-            dd.from_pandas(points_valid, npartitions=1),
-            coordinates={"x": "x", "y": "y"},
-        )
-        points_valid.attrs = transform
-        sdata.points[points_key] = points_valid
+
+    # Only keep points within instance_key shape
+    cells = set(sdata.shapes[instance_key].index)
+    transform = sdata.points[points_key].attrs
+    points_valid = points[
+        points[instance_key].isin(cells)
+    ]  # TODO why doesnt this grab the right cells
+    # Set points back to SpatialData object
+    points_valid = PointsModel.parse(
+        dd.from_pandas(points_valid, npartitions=1),
+        coordinates={"x": "x", "y": "y"},
+    )
+    points_valid.attrs = transform
+    sdata.points[points_key] = points_valid
 
 
 def _sync_shapes(sdata, shape_key, instance_key):
@@ -371,22 +368,18 @@ def _sync_shapes(sdata, shape_key, instance_key):
     """
     shapes = sdata.shapes[shape_key]
     instance_shapes = sdata.shapes[instance_key]
-    if instance_key not in shapes.columns or shape_key not in instance_shapes.columns:
-        raise ValueError(
-            f"Shape {shape_key} not synced to instance_key shape element. Run bento.io.prep() to setup SpatialData object for bento-tools."
-        )
-    elif shape_key == instance_key:
+    if shape_key == instance_key:
         return
-    else:
-        # Only keep shapes within instance_key shape
-        cells = set(instance_shapes.index)
-        shapes = shapes[shapes[instance_key].isin(cells)]
 
-        # Set shapes back to SpatialData object
-        transform = sdata.shapes[shape_key].attrs
-        shapes_valid = ShapesModel.parse(shapes)
-        shapes_valid.attrs = transform
-        sdata.shapes[shape_key] = shapes_valid
+    # Only keep shapes within instance_key shape
+    cells = set(instance_shapes.index)
+    shapes = shapes[shapes[instance_key].isin(cells)]
+
+    # Set shapes back to SpatialData object
+    transform = sdata.shapes[shape_key].attrs
+    shapes_valid = ShapesModel.parse(shapes)
+    shapes_valid.attrs = transform
+    sdata.shapes[shape_key] = shapes_valid
 
 
 def get_instance_key(sdata: SpatialData):
@@ -406,7 +399,9 @@ def get_instance_key(sdata: SpatialData):
     try:
         return sdata.points["transcripts"].attrs["spatialdata_attrs"]["instance_key"]
     except KeyError:
-        raise KeyError("Instance key attribute not found in spatialdata object.")
+        raise KeyError(
+            "Instance key attribute not found in spatialdata object. Run bento.io.prep() to setup SpatialData object for bento-tools."
+        )
 
 
 def get_feature_key(sdata: SpatialData):

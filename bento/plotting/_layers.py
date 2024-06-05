@@ -5,13 +5,16 @@ warnings.filterwarnings("ignore")
 import geopandas as gpd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.patches as mplp
 import numpy as np
 import seaborn as sns
 from scipy.interpolate import griddata
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, MultiPolygon
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from matplotlib.collections import PatchCollection
 
 from .._utils import get_points, get_shape, get_points_metadata
+from ._utils import polytopatch
 
 
 def _scatter(points, ax, hue=None, size=None, style=None, **kwargs):
@@ -37,7 +40,6 @@ def _scatter(points, ax, hue=None, size=None, style=None, **kwargs):
 
 
 def _hist(points, ax, hue=None, **kwargs):
-
     hist_kws = dict(zorder=1)
     hist_kws.update(kwargs)
 
@@ -45,7 +47,6 @@ def _hist(points, ax, hue=None, **kwargs):
 
 
 def _kde(points, ax, hue=None, **kwargs):
-
     kde_kws = dict(zorder=1, fill=True)
     kde_kws.update(kwargs)
 
@@ -55,9 +56,8 @@ def _kde(points, ax, hue=None, **kwargs):
 def _polygons(sdata, shape, ax, hue=None, sync=True, **kwargs):
     """Plot shapes with GeoSeries plot function."""
     shapes = gpd.GeoDataFrame(geometry=get_shape(sdata, shape, sync=sync))
-    edge_color = "none"
-    face_color = "none"
 
+    style_kwds = dict(lw=0.5)
     # If hue is specified, use it to color faces
     if hue:
         df = (
@@ -71,14 +71,24 @@ def _polygons(sdata, shape, ax, hue=None, sync=True, **kwargs):
             shapes[hue] = df.index
         else:
             shapes[hue] = df.reset_index()[hue].values
-        edge_color = sns.axes_style()["axes.edgecolor"]
-        face_color = "none"  # let GeoDataFrame plot function handle facecolor
+        style_kwds["facecolor"] = sns.axes_style()["axes.edgecolor"]
+        style_kwds["edgecolor"] = "none"  # let GeoDataFrame plot function handle facecolor
 
-    style_kwds = dict(
-        linewidth=0.5, edgecolor=edge_color, facecolor=face_color
-    )
     style_kwds.update(kwargs)
-    shapes.plot(ax=ax, column=hue, **style_kwds)
+
+
+    patches = []
+    # Manually create patches for each polygon; GeoPandas plot function is slow
+    for poly in shapes["geometry"].values:
+        if isinstance(poly, Polygon):
+            patches.append(polytopatch(poly))
+        elif isinstance(poly, MultiPolygon):
+            for p in poly.geoms:
+                patches.append(polytopatch(p))
+
+    # Add patches to axes
+    patches = PatchCollection(patches, **style_kwds)
+    ax.add_collection(patches)
 
 
 def _raster(sdata, res, color, points_key, alpha, cbar=False, ax=None, **kwargs):
@@ -87,13 +97,13 @@ def _raster(sdata, res, color, points_key, alpha, cbar=False, ax=None, **kwargs)
     if ax is None:
         ax = plt.gca()
 
-    # 
+    #
     points = get_points(sdata, points_key=points_key, astype="pandas", sync=True)
     step = 1 / res
-    color_values = np.array(
-        get_points_metadata(sdata, metadata_keys=color, points_key=points_key)[
-            color
-        ].replace("", np.nan)
+    color_values = (
+        get_points_metadata(sdata, metadata_keys=color, points_key=points_key)[color]
+        .replace("", np.nan)
+        .values
     )
 
     # Infer value format and convert values to rgb

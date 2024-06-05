@@ -60,7 +60,7 @@ def _sjoin_points(
 
 
 def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
-    """Adds polygon indexes to sdata.shapes[instance_key][shape_key] for point feature analysis
+    """Adds polygon indexes to sdata.shapes[instance_key][shape_key] for point feature analysis.
 
     Parameters
     ----------
@@ -93,16 +93,11 @@ def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
 
     # sjoin shapes to instance_key shape
     for shape_key in shape_keys:
-        child_shape = sdata.shapes[shape_key]["geometry"]
+        child_shape = sdata.shapes[shape_key]
+        # Hack for polygons that are 99% contained in parent shape or have shared boundaries
+        child_shape = gpd.GeoDataFrame(geometry=child_shape.buffer(-10e-6))
 
-        # Hack for polygons that are 99% contained in parent shape
-        child_shape = gpd.GeoDataFrame(
-            geometry=child_shape.buffer(
-                child_shape.minimum_bounding_radius().mean() * -0.05
-            )
-        )
-
-        parent_shape = parent_shape.sjoin(child_shape, how="left", predicate="contains")
+        parent_shape = parent_shape.sjoin(child_shape, how="left", predicate="covers")
         parent_shape = parent_shape[~parent_shape.index.duplicated(keep="last")]
         parent_shape.loc[parent_shape["index_right"].isna(), "index_right"] = ""
         parent_shape = parent_shape.astype({"index_right": "category"})

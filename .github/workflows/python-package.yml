@@ -15,8 +15,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os : [ubuntu-22.04, macos-11, macos-12, windows-2019]
-        python-version: ['3.9', '3.10']
+        os : [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11']
     steps:
     - uses: actions/checkout@v3.5.0
     - name: Set up Python ${{ matrix.python-version }}
@@ -28,7 +28,7 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install .[docs]
     - name: Lint & test coverage
-      if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.8' }}
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10' }}
       run: |
         pip install flake8
         # stop the build if there are Python syntax errors or undefined names
@@ -38,7 +38,7 @@ jobs:
         pip install coverage
         coverage run -m unittest
     - name: Upload Coverage to Codecov
-      if: ${{ matrix.os == 'ubuntu-22.04' && matrix.python-version == '3.8' }}
+      if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10' }}
       uses: codecov/codecov-action@v1
       with:
         fail_ci_if_error: true 

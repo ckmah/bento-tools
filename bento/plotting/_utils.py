@@ -2,7 +2,13 @@ import inspect
 from functools import wraps
 
 import matplotlib.pyplot as plt
+import numpy as np
 import seaborn as sns
+from matplotlib.collections import (
+    Collection,
+)
+from matplotlib.patches import PathPatch
+from matplotlib.path import Path
 from matplotlib_scalebar.scalebar import ScaleBar
 
 
@@ -102,3 +108,10 @@ def setup_ax(plot_func):
         return ax
 
     return wrapper
+
+
+def polytopatch(poly):
+    exterior = Path(np.asarray(poly.exterior.coords)[:, :2])
+    interiors = [Path(np.asarray(ring.coords)[:, :2]) for ring in poly.interiors]
+    path = Path.make_compound_path(exterior, *interiors)
+    return PathPatch(path)

@@ -1,23 +1,27 @@
 import warnings
+
+import dask
+import emoji
 from shapely.errors import ShapelyDeprecationWarning
 
 warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
 
+import re
 from abc import ABCMeta, abstractmethod
+from math import isnan
 from typing import List, Optional, Union
 
 import numpy as np
 import pandas as pd
-from spatialdata._core.spatialdata import SpatialData
 from astropy.stats.spatial import RipleysKEstimator
 from scipy.spatial import distance
 from scipy.stats import spearmanr
-from tqdm.auto import tqdm
-from math import isnan
-import re
+from spatialdata._core.spatialdata import SpatialData
+from tqdm.dask import TqdmCallback
 
 from .. import tools as tl
 from .._utils import get_points
+
 
 def analyze_points(
     sdata: SpatialData,
@@ -27,38 +31,39 @@ def analyze_points(
     instance_key: str = "cell_boundaries",
     groupby: Optional[Union[str, List[str]]] = None,
     recompute=False,
-    progress: bool = False,
+    progress=False,
+    num_workers: int = 1,
 ):
     """Calculate features for each point group. Groups are always within each cell.
-        
-        When creating the points_df, it first grabs sdata.points[points_key] and joins shape polygons from sdata.shapes[shape_keys].
-        The second join is to sdata.shapes[instance_key] to pull in cell polygons and cell features.
-        The shape indices in the points object are renamed to have _index as a suffix to avoid conflicts.
-        The joined polygons are named with it's respective shape_key.
 
-        Parameters
-        ----------
-        sdata : SpatialData
-            Spatially formatted SpatialData
-        shape_keys : str or list of str
-            Names of the shapes to analyze.
-        feature_names : str or list of str
-            Names of the features to analyze.
-        groupby : str or list of str, optional
-            Key(s) in `data.points['points'] to groupby, by default None. Always treats each cell separately
+    When creating the points_df, it first grabs sdata.points[points_key] and joins shape polygons from sdata.shapes[shape_keys].
+    The second join is to sdata.shapes[instance_key] to pull in cell polygons and cell features.
+    The shape indices in the points object are renamed to have _index as a suffix to avoid conflicts.
+    The joined polygons are named with it's respective shape_key.
 
-        Returns
-        -------
-        sdata : spatialdata.SpatialData
-            table.uns["point_feature"]
-                See the output of each :class:`PointFeature` in `features` for keys added.
+    Parameters
+    ----------
+    sdata : SpatialData
+        Spatially formatted SpatialData
+    shape_keys : str or list of str
+        Names of the shapes to analyze.
+    feature_names : str or list of str
+        Names of the features to analyze.
+    groupby : str or list of str, optional
+        Key(s) in `data.points['points'] to groupby, by default None. Always treats each cell separately.
+
+    Returns
+    -------
+    sdata : spatialdata.SpatialData
+        table.uns["{instance_key}_{groupby}_features"]
+            See the output of each :class:`PointFeature` in `features` for keys added.
 
     """
 
     # Cast to list if not already
     if isinstance(shape_keys, str):
         shape_keys = [shape_keys]
-    
+
     # Cast to list if not already
     if isinstance(feature_names, str):
         feature_names = [feature_names]
@@ -74,15 +79,25 @@ def analyze_points(
     # Make sure points are sjoined to all shapes in shape_keys
     shapes_found = set(shape_keys).intersection(set(sdata.points[points_key].columns))
     if len(shapes_found) != len(shape_keys):
-        raise KeyError(f"sdata.points[{points_key}] does not have all columns: {shape_keys}. Please run sjoin_points first.")
+        raise KeyError(
+            f"sdata.points[{points_key}] does not have all columns: {shape_keys}. Please run sjoin_points first."
+        )
 
     # Make sure all groupby keys are in point columns
     for g in groupby:
-        if g != f"{instance_key}_index" and g not in get_points(sdata, points_key=points_key, astype="dask", sync=True).columns:
+        if (
+            g != f"{instance_key}_index"
+            and g
+            not in get_points(
+                sdata, points_key=points_key, astype="dask", sync=True
+            ).columns
+        ):
             raise ValueError(f"Groupby key {g} not found in point columns.")
-    
+
     # Generate feature x shape combinations
-    feature_combos = [point_features[f](instance_key, s) for f in feature_names for s in shape_keys]
+    feature_combos = [
+        point_features[f](instance_key, s) for f in feature_names for s in shape_keys
+    ]
 
     # Compile dependency set of features and attributes
     cell_features = set()
@@ -90,32 +105,38 @@ def analyze_points(
     for f in feature_combos:
         cell_features.update(f.cell_features)
         obs_attrs.update(f.attributes)
-    
+
     cell_features = list(cell_features)
     obs_attrs = list(obs_attrs)
-    
-    print("Crunching shape features...")
+
     tl.analyze_shapes(
-        sdata=sdata, 
-        shape_keys=instance_key, 
-        feature_names=cell_features, 
-        progress=progress, 
-        recompute=recompute
+        sdata=sdata,
+        shape_keys=instance_key,
+        feature_names=cell_features,
+        progress=progress,
+        recompute=recompute,
     )
 
     # Make sure points are sjoined to all shapes in shape_keys
     attributes = [attr for attr in obs_attrs if attr not in shape_keys]
     attributes.append(instance_key)
-    attrs_found = set(attributes).intersection(set(sdata.shapes[instance_key].columns.tolist()))
+    attrs_found = set(attributes).intersection(
+        set(sdata.shapes[instance_key].columns.tolist())
+    )
     if len(attrs_found) != len(attributes):
         raise KeyError(f"df does not have all columns: {obs_attrs}.")
 
-    points_df = get_points(sdata, points_key=points_key, astype="geopandas", sync=True).set_index(instance_key)
+    points_df = get_points(
+        sdata, points_key=points_key, astype="geopandas", sync=True
+    ).set_index(instance_key)
     # Pull all shape polygons into the points dataframe
-    for shape in list(set(obs_attrs).intersection(set([x for x in shape_keys if x != instance_key]))):
+    for shape in list(
+        set(obs_attrs).intersection(set([x for x in shape_keys if x != instance_key]))
+    ):
         points_df = (
-            points_df.join(sdata.shapes[shape], on=instance_key, lsuffix="", rsuffix=f"_{shape}")
-            .drop("cell_boundaries", axis=1)
+            points_df.join(
+                sdata.shapes[shape].set_index(instance_key), on=instance_key, lsuffix="", rsuffix=f"_{shape}"
+            )
             .rename(columns={shape: f"{shape}_index", f"geometry_{shape}": shape})
         )
 
@@ -137,40 +158,40 @@ def analyze_points(
         return sample_output
 
     # Process all samples in a partition
-    def process_partition(partition_df):
+    def process_partition(bag):
+        df, groupby, process_sample = bag
         # Groupby by cell and groupby keys and process each sample
-        out = partition_df.groupby(groupby, observed=True).apply(process_sample)
+        out = df.groupby(groupby, observed=True).apply(process_sample)
         return pd.DataFrame.from_records(out.values, index=out.index)
 
-    # Process points of each cell separately
-    cells, group_loc = np.unique(
-        points_df[f"{instance_key}_index"],
-        return_index=True,
-    )
-    
-    end_loc = np.append(group_loc[1:], points_df.shape[0])
+    import dask.bag as db
 
-    output = []
-    print("Crunching point features...")
-    if progress:
-        group_locs = tqdm(zip(group_loc, end_loc), total=len(cells))
-    else:
-        group_locs = zip(group_loc, end_loc)
-    for start, end in group_locs:
-        cell_points = points_df.iloc[start:end]
-        output.append(process_partition(cell_points))
+    points_grouped = points_df.groupby(f"{instance_key}_index")
+    cells = list(points_grouped.groups.keys())
+
+    args = [(points_grouped.get_group(cell), groupby, process_sample) for cell in cells]
+    bags = db.from_sequence(args)
+
+    output = bags.map(process_partition)
+
+    with TqdmCallback(desc="Batches"), dask.config.set(num_workers=num_workers):
+        output = output.compute()
 
     output = pd.concat(output)
-    # Save and overwrite existing
-    print("Saving results...")
+
     groupby[groupby.index(f"{instance_key}_index")] = instance_key
     output_key = "_".join([*groupby, "features"])
     if output_key in sdata.table.uns:
-        sdata.table.uns[output_key][output.columns] = output.reset_index(drop=True).rename(columns={f"{instance_key}_index": instance_key})
+        sdata.table.uns[output_key][output.columns] = output.reset_index(
+            drop=True
+        ).rename(columns={f"{instance_key}_index": instance_key})
     else:
-        sdata.table.uns[output_key] = output.reset_index().rename(columns={f"{instance_key}_index": instance_key})
+        sdata.table.uns[output_key] = output.reset_index().rename(
+            columns={f"{instance_key}_index": instance_key}
+        )
 
-    print("Done.")
+    print(emoji.emojize("Done :bento_box:"))
+
 
 class PointFeature(metaclass=ABCMeta):
     """Abstract class for calculating sample features. A sample is defined as the set of
@@ -188,7 +209,7 @@ class PointFeature(metaclass=ABCMeta):
         self.cell_features = set()
         self.attributes = set()
         self.instance_key = instance_key
-        
+
         if shape_key:
             self.attributes.add(shape_key)
             self.shape_key = shape_key
@@ -236,14 +257,14 @@ class ShapeProximity(PointFeature):
 
         # Get shape polygon
         shape = df[self.shape_key].values[0]
-        
+
         # Skip if no shape or if shape is nan
         try:
             if isnan(shape):
                 return {
-                f"{self.shape_key}_inner_proximity": np.nan,
-                f"{self.shape_key}_outer_proximity": np.nan,
-            }
+                    f"{self.shape_key}_inner_proximity": np.nan,
+                    f"{self.shape_key}_outer_proximity": np.nan,
+                }
         except:
             pass
 
@@ -322,7 +343,7 @@ class ShapeAsymmetry(PointFeature):
 
         # Get shape polygon
         shape = df[self.shape_key].values[0]
-        
+
         # Skip if no shape or shape is nan
         try:
             if isnan(shape):
@@ -582,7 +603,7 @@ class ShapeOffset(PointFeature):
                 }
         except:
             pass
-        
+
         if not shape:
             return {
                 f"{self.shape_key}_inner_offset": np.nan,

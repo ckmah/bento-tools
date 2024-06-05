@@ -4,18 +4,26 @@ from spatialdata import SpatialData
 
 warnings.filterwarnings("ignore")
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-from .._utils import get_points
-from ._layers import _raster, _scatter, _hist, _kde, _polygons
-from ._utils import savefig, setup_ax
-from ._colors import red2blue, red2blue_dark 
-import pandas as pd
 import geopandas as gpd
+import matplotlib.patches as mplp
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from matplotlib.collections import PatchCollection, PathCollection, PolyCollection
+from matplotlib.patches import PathPatch, Patch
+from matplotlib.path import Path
 from shapely.geometry import Polygon
 
-def _prepare_points_df(sdata, points_key, instance_key, sync, semantic_vars=None, hue=None, hue_order=None):
+from .._utils import get_points, get_shape
+from ._colors import red2blue, red2blue_dark
+from ._layers import _hist, _kde, _polygons, _raster, _scatter
+from ._utils import savefig, setup_ax, polytopatch
+
+
+def _prepare_points_df(
+    sdata, points_key, instance_key, sync, semantic_vars=None, hue=None, hue_order=None
+):
     """
     Prepare points DataFrame for plotting. This function will concatenate the appropriate semantic variables as columns to points data.
     """
@@ -39,10 +47,12 @@ def _prepare_points_df(sdata, points_key, instance_key, sync, semantic_vars=None
         if var in points.columns:
             continue
         elif var in sdata.shapes:
-            points[var] = sdata.shapes[var].reindex(points[instance_key].values)[var].values
+            points[var] = (
+                sdata.shapes[var].reindex(points[instance_key].values)[var].values
+            )
         else:
             raise ValueError(f"Variable {var} not found in points or obs")
-    
+
     return points[cols]
 
 
@@ -84,13 +94,13 @@ def points(
         Variable name to size points by, by default None
     style : str, optional
         Variable name to style points by, by default None
-    shapes : list, optional 
+    shapes : list, optional
         List of shape names to plot, by default None. If None, will plot cell and nucleus shapes by default.
     hide_outside : bool, optional
         Whether to hide molecules outside of cells, by default True
     title : str, optional
         Title of plot, by default None
-    dx : float, optional    
+    dx : float, optional
         Size of scalebar in units, by default 0.1
     units : str, optional
         Units of scalebar, by default "um"
@@ -109,15 +119,15 @@ def points(
     fname : str, optional
         Filename to save figure to, by default None. If None, will not save figure.
     """
-    
+
     points = _prepare_points_df(
-        sdata, 
-        points_key=points_key, 
-        instance_key=instance_key, 
+        sdata,
+        points_key=points_key,
+        instance_key=instance_key,
         sync=hide_outside,
-        semantic_vars=[hue, size, style], 
-        hue=hue, 
-        hue_order=hue_order
+        semantic_vars=[hue, size, style],
+        hue=hue,
+        hue_order=hue_order,
     )
 
     if ax is None:
@@ -127,6 +137,7 @@ def points(
     _shapes(sdata, shapes=shapes, hide_outside=hide_outside, ax=ax, **shapes_kws)
 
     return ax
+
 
 @savefig
 @setup_ax
@@ -163,13 +174,13 @@ def density(
         Variable name to color points by, by default None
     hue_order : list, optional
         Order of hue levels, by default None
-    shapes : list, optional 
+    shapes : list, optional
         List of shape names to plot, by default None. If None, will plot cell and nucleus shapes by default.
     hide_outside : bool, optional
         Whether to hide molecules outside of cells, by default True
     title : str, optional
         Title of plot, by default None
-    dx : float, optional    
+    dx : float, optional
         Size of scalebar in units, by default 0.1
     units : str, optional
         Units of scalebar, by default "um"
@@ -194,9 +205,9 @@ def density(
         points_key=points_key,
         instance_key=instance_key,
         sync=hide_outside,
-        semantic_vars=[hue], 
-        hue=hue, 
-        hue_order=hue_order
+        semantic_vars=[hue],
+        hue=hue,
+        hue_order=hue_order,
     )
 
     if ax is None:
@@ -207,7 +218,15 @@ def density(
     elif kind == "kde":
         _kde(points, hue=hue, ax=ax, **kwargs)
 
-    _shapes(sdata, shapes=shapes, instance_key=instance_key, hide_outside=hide_outside, ax=ax, **shape_kws)
+    _shapes(
+        sdata,
+        shapes=shapes,
+        instance_key=instance_key,
+        hide_outside=hide_outside,
+        ax=ax,
+        **shape_kws,
+    )
+
 
 @savefig
 @setup_ax
@@ -286,27 +305,25 @@ def _shapes(
     ax=None,
     **kwargs,
 ):
-    
     if shapes is None:
         shapes = [instance_key, nucleus_key]
 
     if shapes and not isinstance(shapes, list):
         shapes = [shapes]
 
-    # Save list of names to remove if not in data.obs
     shape_names = [name for name in shapes if name in sdata.shapes.keys()]
     missing_names = [name for name in shapes if name not in sdata.shapes.keys()]
 
     if len(missing_names) > 0:
         warnings.warn("Shapes not found in data: " + ", ".join(missing_names))
 
-    geo_kws = dict(edgecolor="none", facecolor="none")
+    geo_kws = dict(lw=0.5)
     if color_style == "outline":
-        geo_kws["edgecolor"] = color
-        geo_kws["facecolor"] = "none"
+        geo_kws["edgecolor"] = color if color else sns.axes_style()["axes.edgecolor"]
+        geo_kws["facecolor"] = (0, 0, 0, 0)
     elif color_style == "fill":
         geo_kws["facecolor"] = color
-        geo_kws["edgecolor"] = "black"
+        geo_kws["edgecolor"] = sns.axes_style()["axes.edgecolor"]
     geo_kws.update(**kwargs)
 
     for name in shape_names:
@@ -322,30 +339,39 @@ def _shapes(
             **geo_kws,
         )
 
+    # Hide extracellular area
     if hide_outside and instance_key in shape_names:
-        # get axes limits
-        xmin, xmax = ax.get_xlim()
-        ymin, ymax = ax.get_ylim()
+        instance_poly = gpd.GeoDataFrame(get_shape(sdata, shape_key=instance_key))
+        bounds = instance_poly.total_bounds
 
-        # get min range
-        min_range = min(xmax - xmin, ymax - ymin)
-        buffer_size = 0.01 * (min_range)
-
-        xmin = xmin - buffer_size
-        xmax = xmax + buffer_size
-        ymin = ymin - buffer_size
-        ymax = ymax + buffer_size
-
-        # Create shapely polygon from axes limits
-        axes_poly = gpd.GeoDataFrame(
-            geometry=gpd.GeoSeries(
-                [Polygon([(xmin, ymin), (xmin, ymax), (xmax, ymax), (xmax, ymin)])]
+        axes_poly = Polygon(
+            (
+                [bounds[0], bounds[1]],
+                [bounds[0], bounds[3]],
+                [bounds[2], bounds[3]],
+                [bounds[2], bounds[1]],
             )
-            # .buffer(0)
         )
-        axes_poly.overlay(sdata[instance_key], how="difference").plot(
-            ax=ax, linewidth=0, facecolor=sns.axes_style()["axes.facecolor"], zorder=2.0001
+        buffer = 0.01 * (bounds[2] - bounds[0])
+        axes_poly = gpd.GeoDataFrame(
+            geometry=[axes_poly.buffer(buffer, cap_style="square")]
         )
+
+        # Take difference between instance_key shapes and buffered bounding box
+        mask_poly = axes_poly.overlay(instance_poly, how="difference")
+
+        for poly in mask_poly.geometry.values:
+            if isinstance(poly, Polygon):
+                mask_polys = [polytopatch(poly)]
+            else:
+                mask_polys = [polytopatch(p) for p in poly.geoms]
+            patches = PatchCollection(
+                mask_polys,
+                facecolor=sns.axes_style()["axes.facecolor"],
+                zorder=2.0001,
+            )
+            ax.add_collection(patches)
+
 
 @savefig
 @setup_ax
@@ -403,9 +429,25 @@ def flux(
 
     if ax is None:
         ax = plt.gca()
-    
-    _raster(sdata, alpha=alpha, points_key=f"{instance_key}_raster", res=res, color="flux_color", ax=ax, **kwargs)
-    _shapes(sdata, shapes=shapes, instance_key=instance_key, hide_outside=hide_outside, ax=ax, **shape_kws)
+
+    _raster(
+        sdata,
+        alpha=alpha,
+        points_key=f"{instance_key}_raster",
+        res=res,
+        color="flux_color",
+        ax=ax,
+        **kwargs,
+    )
+    _shapes(
+        sdata,
+        shapes=shapes,
+        instance_key=instance_key,
+        hide_outside=hide_outside,
+        ax=ax,
+        **shape_kws,
+    )
+
 
 @savefig
 @setup_ax
@@ -431,7 +473,7 @@ def fe(
     **kwargs,
 ):
     """Plot spatial heatmap of flux enrichment scores.
-    
+
     Parameters
     ----------
     data : SpatialData
@@ -440,7 +482,7 @@ def fe(
         Gene set name
     res : float, optional
         Resolution of flux, by default 1
-    shapes : list, optional    
+    shapes : list, optional
         List of shape names to plot, by default None. If None, will plot cell and nucleus shapes by default.
     cmap : str, optional
         Colormap, by default None. If None, will use red2blue colormap.
@@ -479,9 +521,27 @@ def fe(
         elif sns.axes_style()["axes.facecolor"] == "black":
             cmap = red2blue_dark
 
-    _raster(sdata, alpha=alpha, points_key=f"{instance_key}_raster", res=res, color=gs, cmap=cmap, cbar=cbar, ax=ax, **kwargs)
-    _shapes(sdata, shapes=shapes, instance_key=instance_key, hide_outside=hide_outside, ax=ax, **shape_kws)
+    _raster(
+        sdata,
+        alpha=alpha,
+        points_key=f"{instance_key}_raster",
+        res=res,
+        color=gs,
+        cmap=cmap,
+        cbar=cbar,
+        ax=ax,
+        **kwargs,
+    )
+    _shapes(
+        sdata,
+        shapes=shapes,
+        instance_key=instance_key,
+        hide_outside=hide_outside,
+        ax=ax,
+        **shape_kws,
+    )
     # _shapes(sdata, instance_key=instance_key, hide_outside=hide_outside, ax=ax, **shape_kws)
+
 
 @savefig
 @setup_ax
@@ -513,6 +573,11 @@ def fluxmap(
     fname : str, optional
         Filename to save figure to, by default None. If None, will not save figure.
     """
+
+    if not np.any([s.startswith("fluxmap") for s in sdata.shapes.keys()]):
+        print("Please run bento.tl.fluxmap() first.")
+        return
+
     if ax is None:
         ax = plt.gca()
 
@@ -539,6 +604,20 @@ def fluxmap(
             ax=ax,
             **shape_kws,
         )
-        
+
+    # Create legend denoting each fluxmap as different color
+    patches = [Patch(color=c, label=label) for label, c in colormap.items()]
+    # for patch in patches:
+    #     patch.set_marker('s')
+    #     patch.set_markersize(20)
+
+    ax.legend(
+        patches,
+        colormap.keys(),
+        loc="upper left",
+        bbox_to_anchor=[1, 1],
+        frameon=False,
+    )
+
     # Plot base cell and nucleus shapes
     _shapes(sdata, instance_key=instance_key, ax=ax)

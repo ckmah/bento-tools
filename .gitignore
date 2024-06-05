@@ -144,3 +144,5 @@ tests/data/processed/pre_transform.pt
 
 requirements.lock
 requirements-dev.lock
+profile.html
+profile.json

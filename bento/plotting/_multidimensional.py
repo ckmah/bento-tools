@@ -89,9 +89,15 @@ def shape_stats(
     groupby : str, optional
         Column in obs to groupby, by default None
     """
-    cell_gdf = sdata[instance_key].melt(value_vars=[c for c in cols if instance_key in c])
-    nucleus_gdf = sdata[nucleus_key].melt(value_vars=[c for c in cols if nucleus_key in c])
-    stats_long = pd.concat([cell_gdf, nucleus_gdf])
+    cell_gdf = pd.DataFrame(
+        sdata[instance_key].melt(
+            value_vars=[c for c in cols if f"{instance_key}_" in c]
+        )
+    )
+    nucleus_gdf = pd.DataFrame(
+        sdata[nucleus_key].melt(value_vars=[c for c in cols if f"{nucleus_key}_" in c])
+    )
+    stats_long = cell_gdf.append(nucleus_gdf, ignore_index=True)
     stats_long["quantile"] = stats_long.groupby("variable")["value"].transform(
         lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=100).flatten()
     )
@@ -154,6 +160,7 @@ def comp(
     groupby: Optional[str] = None,
     group_order: Optional[List[str]] = None,
     annotate: Optional[Union[bool, list[str]]] = None,
+    min_count: int = 0,
     adjust: bool = True,
     palette: str = red_light,
     annot_color: Optional[str] = None,
@@ -220,6 +227,7 @@ def comp(
             _radviz(
                 group_comp,
                 annotate=annotate,
+                min_count=min_count,
                 adjust=adjust,
                 palette=palette,
                 annot_color=annot_color,
@@ -236,6 +244,7 @@ def comp(
         return _radviz(
             comp_stats,
             annotate=annotate,
+            min_count=min_count,
             adjust=adjust,
             palette=palette,
             annot_color=annot_color,
@@ -249,6 +258,7 @@ def comp(
 def _radviz(
     comp_stats: pd.DataFrame,
     annotate: Union[int, List[str]] = None,
+    min_count: int = 0,
     adjust: bool = True,
     palette: str = red_light,
     annot_color: Optional[str] = None,
@@ -388,9 +398,12 @@ def _radviz(
             ax=ax,
         )
 
+        # Filter genes by min threshold
+        xy_filt = xy[xy[hue_key] >= min_count]
+
         # Plot points
         sns.scatterplot(
-            data=xy,
+            data=xy_filt,
             x=0,
             y=1,
             hue=hue_key,

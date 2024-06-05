@@ -1,5 +1,7 @@
 from typing import Iterable, Literal, Optional, Union
 
+import dask
+import dask.delayed
 import emoji
 import geopandas as gpd
 import matplotlib as mpl
@@ -19,8 +21,14 @@ from sklearn.utils import resample
 from spatialdata._core.spatialdata import SpatialData
 from spatialdata.models import ShapesModel
 from tqdm.auto import tqdm
+from tqdm.dask import TqdmCallback
 
-from .._utils import get_points, get_shape_metadata, set_points_metadata
+from .._utils import (
+    get_points,
+    get_shape_metadata,
+    set_points_metadata,
+    get_points_metadata,
+)
 from ..io._index import _sjoin_points, _sjoin_shapes
 from ..tools._neighborhoods import _count_neighbors
 from ..tools._shape_features import analyze_shapes
@@ -38,6 +46,7 @@ def flux(
     train_size: Optional[float] = 1,
     random_state: int = 11,
     recompute: bool = False,
+    num_workers=1,
 ):
     """
     Compute RNAflux embeddings of each pixel as local composition normalized by cell composition.
@@ -133,23 +142,22 @@ def flux(
     cells = list(points_grouped.groups.keys())
     cells.sort()
 
+    # points_grouped = dask.delayed(points_grouped)
+    # rpoints_grouped = dask.delayed(rpoints_grouped)
+
     cell_composition = sdata.table[cells, gene_names].X.toarray()
 
     # Compute cell composition
     cell_composition = cell_composition / (cell_composition.sum(axis=1).reshape(-1, 1))
-    cell_composition = np.nan_to_num(cell_composition)
+    cell_composition[np.isnan(cell_composition)] = 0
 
-    # Embed each cell neighborhood independently
-    cell_fluxs = []
-    rpoint_counts = []
-    rpoint_index = []
-    for i, cell in enumerate(tqdm(cells, leave=False)):
-        cell_points = points_grouped.get_group(cell)
-        rpoints = rpoints_grouped.get_group(cell)
-        rpoint_index.extend(rpoints.index.tolist())
+    # Define a function that contains the operations to be performed in the for loop
+    def process_cell(bag):
+        cpoints, rpoints, n_genes, method, n_neighbors, radius, cell_composition = bag
+        rpoint_index = rpoints.index.tolist()
         if method == "knn":
             gene_count = _count_neighbors(
-                cell_points,
+                cpoints,
                 n_genes,
                 rpoints,
                 n_neighbors=n_neighbors,
@@ -157,7 +165,7 @@ def flux(
             )
         elif method == "radius":
             gene_count = _count_neighbors(
-                cell_points,
+                cpoints,
                 n_genes,
                 rpoints,
                 radius=radius,
@@ -171,24 +179,53 @@ def flux(
         # embedding: distance neighborhood composition and cell composition
         # Compute composition of neighborhood
         flux_composition = gene_count / (gene_count.sum(axis=1).reshape(-1, 1))
-        cflux = flux_composition - cell_composition[i]
+        cflux = flux_composition - cell_composition
         cflux = StandardScaler(with_mean=False).fit_transform(cflux)
 
         # Convert back to sparse matrix
         cflux = csr_matrix(cflux)
 
-        cell_fluxs.append(cflux)
-        rpoint_counts.append(total_count)
+        return cflux, total_count, rpoint_index
+
+    # Use dask.delayed in the for loop
+    import dask.bag as db
+
+    # Create a sequence of tuples containing the arguments for the process_cell function
+    args = [
+        (
+            points_grouped.get_group(cell),
+            rpoints_grouped.get_group(cell),
+            n_genes,
+            method,
+            n_neighbors,
+            radius,
+            cell_composition[i],
+        )
+        for i, cell in enumerate(cells)
+    ]
+
+    # Create a Dask Bag from the sequence
+    bags = db.from_sequence(args)
+
+    # Use the map method of the Dask Bag to apply the process_cell function to each tuple in the sequence
+    results = bags.map(process_cell)
+
+    # Use dask.compute to execute the operations in parallel
+    with TqdmCallback(desc="Batches"), dask.config.set(num_workers=num_workers):
+        results = results.compute()
 
     # Stack all cells
-    cell_fluxs = vstack(cell_fluxs) if len(cell_fluxs) > 1 else cell_fluxs[0]
-    cell_fluxs.data = np.nan_to_num(cell_fluxs.data)
-    rpoints_counts = np.concatenate(rpoint_counts)
+    # cell_fluxs = vstack(cell_fluxs) if len(cell_fluxs) > 1 else cell_fluxs[0]
+    cell_fluxs = vstack([cflux for cflux, _, _ in results])
+    cell_fluxs.data = np.nan_to_num(cell_fluxs.data, copy=False)
+    rpoints_counts = np.hstack([counts for _, counts, _ in results])
+    rpoint_index = np.hstack([index for _, _, index in results])
+    # rpoints_counts = np.concatenate(rpoint_counts)
     pbar.update()
 
     # todo: Slow step, try algorithm="randomized" may be faster
     pbar.set_description(emoji.emojize("Reducing"))
-    n_components = min(n_genes - 1, 10)
+    n_components = min(n_genes, 10)
 
     train_n = int(train_size * len(cells))
     train_x = resample(
@@ -210,39 +247,27 @@ def flux(
     flux_color = vec2color(flux_embed, alpha_vec=rpoints_counts)
 
     # Save flux embeddings and colors after reindexing to raster points
-    cell_fluxs = pd.DataFrame(cell_fluxs.todense().A, index=rpoint_index).reindex(
-        raster_points.index
+    metadata = pd.DataFrame.sparse.from_spmatrix(
+        cell_fluxs, index=rpoint_index, columns=gene_names
     )
+    metadata[embed_names] = flux_embed
+    metadata["flux_color"] = flux_color
+    metadata["flux_counts"] = rpoints_counts
+
+    # Compute index order once and apply to all
+    if not metadata.index.equals(raster_points.index):
+        _, indexer = metadata.index.reindex(
+            raster_points.index.astype(metadata.index.dtype)
+        )
+        metadata = metadata.iloc[indexer]
+
     set_points_metadata(
         sdata,
         points_key=f"{instance_key}_raster",
-        metadata=cell_fluxs,
-        columns=gene_names,
-    )
-    flux_embed = pd.DataFrame(flux_embed, index=rpoint_index).reindex(
-        raster_points.index
-    )
-    set_points_metadata(
-        sdata,
-        points_key=f"{instance_key}_raster",
-        metadata=flux_embed,
-        columns=embed_names,
+        metadata=metadata,
+        columns=metadata.columns,
     )
 
-    flux_color = pd.DataFrame(flux_color, index=rpoint_index).reindex(
-        raster_points.index
-    )
-    set_points_metadata(
-        sdata,
-        points_key=f"{instance_key}_raster",
-        metadata=flux_color,
-        columns="flux_color",
-    )
-
-    rpoints_counts = pd.Series(rpoints_counts, index=rpoint_index).reindex(
-        raster_points.index
-    )
-    sdata.table.uns["flux_counts"] = rpoints_counts
     sdata.table.uns["flux_variance_ratio"] = variance_ratio
     sdata.table.uns["flux_genes"] = gene_names  # gene names
 
@@ -272,17 +297,24 @@ def vec2color(
     if color.shape[1] < 3:
         color = np.pad(color, ((0, 0), (0, 3 - color.shape[1])), constant_values=0)
 
+    # Replace NaNs with 0
+    color[np.isnan(color)] = 0
+
     # Add alpha channel
     if alpha_vec is not None:
         alpha = alpha_vec.reshape(-1, 1)
         # alpha = quantile_transform(alpha)
         alpha = alpha / alpha.max()
+        alpha[np.isnan(alpha)] = 0
         color = np.c_[color, alpha]
 
     if fmt == "rgb":
         pass
     elif fmt == "hex":
         color = np.apply_along_axis(mpl.colors.to_hex, 1, color, keep_alpha=True)
+
+    ["#00000000" if c is np.nan else c for c in color]
+
     return color
 
 
@@ -345,7 +377,7 @@ def fluxmap(
     flux_embed = raster_points.filter(like="flux_embed_")
 
     # Keep only points with minimum neighborhood count
-    flux_counts = sdata.table.uns["flux_counts"]
+    flux_counts = raster_points["flux_counts"]
     valid_points = flux_counts >= min_count
     flux_embed = flux_embed[valid_points]
     embed_index = flux_embed.index
@@ -361,7 +393,7 @@ def fluxmap(
 
     # Subsample flux embeddings for faster training
     if train_size > 1:
-        raise ValueError("train_size must be less than 1.")
+        raise ValueError("train_size must be equal to or less than 1.")
     if train_size == 1:
         flux_train = flux_embed
     if train_size < 1:
@@ -435,6 +467,12 @@ def fluxmap(
     for cell in tqdm(cells, leave=False):
         rpoints = rpoints_grouped.get_group(cell)
 
+        # Translate so all points are positive and save offsets
+        x_offset = rpoints["x"].min()
+        y_offset = rpoints["y"].min()
+        rpoints["x"] = rpoints["x"] - x_offset
+        rpoints["y"] = rpoints["y"] - y_offset
+
         # Fill in image at each point xy with fluxmap value by casting to dense matrix
         image = (
             csr_matrix(
@@ -458,6 +496,9 @@ def fluxmap(
             geometry=gpd.GeoSeries(polygons[:, 0]).T,
             columns=["fluxmap"],
         )
+
+        # Add back offsets
+        shapes["geometry"] = shapes["geometry"].translate(x_offset, y_offset)
 
         # Remove background shape
         shapes["fluxmap"] = shapes["fluxmap"].astype(int)
