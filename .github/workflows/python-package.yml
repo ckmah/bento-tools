@@ -36,7 +36,7 @@ jobs:
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
         pip install coverage
-        coverage run -m unittest
+        coverage run -m pytest tests
     - name: Upload Coverage to Codecov
       if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10' }}
       uses: codecov/codecov-action@v1
