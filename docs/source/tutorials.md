@@ -22,6 +22,7 @@ This tutorial will walk you through how to load, visualize data, and perform sub
 :link: tutorial_gallery/Data_Prep_Guide.html
 
 This guide will explain and demonstrate how to prepare SpatialData objects for Bento.
+:::
 
 :::{grid-item-card}  Spatial Plotting
 :link: tutorial_gallery/Spatial_Plotting.html

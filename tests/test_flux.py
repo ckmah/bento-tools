@@ -1,4 +1,3 @@
-import os
 import pytest
 
 
@@ -32,7 +31,9 @@ def test_flux(flux_data):
     assert "flux_variance_ratio" in flux_data.table.uns
 
     # Check columns are added in cell_boundaries_raster
-    assert all(gene in flux_data.points["cell_boundaries_raster"].columns for gene in genes)
+    assert all(
+        gene in flux_data.points["cell_boundaries_raster"].columns for gene in genes
+    )
 
     for i in range(len(genes)):
         assert f"flux_embed_{i}" in flux_data.points["cell_boundaries_raster"].columns
@@ -45,7 +46,7 @@ def test_fluxmap(flux_data):
         points_key="transcripts",
         instance_key="cell_boundaries",
         res=conftest.FLUX_RES,
-        min_count = conftest.FLUXMAP_MIN_COUNT,
+        min_count=conftest.FLUXMAP_MIN_COUNT,
         train_size=conftest.FLUXMAP_TRAIN_SIZE,
         n_clusters=conftest.FLUXMAP_N_CLUSTERS,
         plot_error=False,
