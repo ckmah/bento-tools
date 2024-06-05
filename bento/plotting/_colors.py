@@ -13,6 +13,7 @@ red2blue_dark = LinearSegmentedColormap.from_list(
 mpl.colormaps.register(red2blue, name="red2blue")
 mpl.colormaps.register(red2blue_dark, name="red2blue_dark")
 
+
 red_light = sns.light_palette(red_rgb, as_cmap=True)
 blue_light = sns.light_palette(blue_rgb, as_cmap=True)
 
