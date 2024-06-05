@@ -7,11 +7,12 @@
 :hidden: true
 
 tutorial_gallery/Main_Guide
+tutorial_gallery/Data_Prep_Guide
 tutorial_gallery/Spatial_Plotting
 tutorial_gallery/Spatial_Features
 :::
 
-::::{grid} 3
+::::{grid} 2
 :::{grid-item-card}  Main Guide
 :link: tutorial_gallery/Main_Guide.html
 

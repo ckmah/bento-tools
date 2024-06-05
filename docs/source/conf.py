@@ -79,16 +79,17 @@ html_theme = "sphinxawesome_theme"
 
 
 theme_options = ThemeOptions(
-    logo_light= "_static/no_image.png",
-    logo_dark= "_static/no_image.png",
+    logo_light="_static/no_image.png",
+    logo_dark="_static/no_image.png",
     show_scrolltop=True,
     show_breadcrumbs=True,
     awesome_external_links=True,
     main_nav_links={
         "Installation": "installation",
         "Tutorials": "tutorials",
-        "How it Works": "howitworks",
         "API": "api",
+        "How it Works": "howitworks",
+        "Contributors": "contributors",
     },
     extra_header_link_icons={
         "GitHub": LinkIcon(
@@ -100,9 +101,7 @@ theme_options = ThemeOptions(
 
 html_theme_options = asdict(theme_options)
 
-html_sidebars = {
-    "**": ["sidebar_main_nav_links.html", "sidebar_toc.html"]
-}
+html_sidebars = {"**": ["sidebar_main_nav_links.html", "sidebar_toc.html"]}
 
 html_context = {"default_mode": "auto"}
 
