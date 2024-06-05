@@ -1,6 +1,6 @@
 [project]
 name = "bento-tools"
-version = "2.1"
+version = "2.1.1"
 description = "A toolkit for subcellular analysis of spatial transcriptomics data"
 authors = [
     { name = "ckmah", email = "clarence.k.mah@gmail.com" }
