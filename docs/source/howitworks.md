@@ -47,6 +47,8 @@ The `SpatialData` object is a container for the following elements:
 - `Shapes`: boundaries, circles, polygons
 - `Tables`: annotations, count matrices
 
+See the [Data Prep Guide](tutorial_gallery/Data_Prep_Guide.html) for more information on how to prepare `SpatialData` objects for Bento and official [SpatialData documentation](https://spatialdata.scverse.org) for more info.
+
 
 ## RNAflux
 

@@ -3,8 +3,9 @@
    
 installation
 tutorials
-howitworks
 api
+howitworks
+contributors
 ```
 
 ```{image} https://badge.fury.io/py/bento-tools.svg
@@ -49,9 +50,7 @@ Bento is a Python toolkit for performing subcellular analysis of spatial transcr
 :::{grid-item-card} {octicon}`workflow` Tutorials
 :link: tutorials.html
 :::
-::::
 
-::::{grid} 2
 :::{grid-item-card} {octicon}`gear` How It Works
 :link: howitworks.html
 :::

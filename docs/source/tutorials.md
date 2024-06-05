@@ -7,11 +7,12 @@
 :hidden: true
 
 tutorial_gallery/Main_Guide
+tutorial_gallery/Data_Prep_Guide
 tutorial_gallery/Spatial_Plotting
 tutorial_gallery/Spatial_Features
 :::
 
-::::{grid} 3
+::::{grid} 2
 :::{grid-item-card}  Main Guide
 :link: tutorial_gallery/Main_Guide.html
 
@@ -22,6 +23,7 @@ This tutorial will walk you through how to load, visualize data, and perform sub
 :link: tutorial_gallery/Data_Prep_Guide.html
 
 This guide will explain and demonstrate how to prepare SpatialData objects for Bento.
+:::
 
 :::{grid-item-card}  Spatial Plotting
 :link: tutorial_gallery/Spatial_Plotting.html
