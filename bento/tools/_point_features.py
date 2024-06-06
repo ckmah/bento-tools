@@ -133,12 +133,12 @@ def analyze_points(
     for shape in list(
         set(obs_attrs).intersection(set([x for x in shape_keys if x != instance_key]))
     ):
-        points_df = (
-            points_df.join(
-                sdata.shapes[shape].set_index(instance_key), on=instance_key, lsuffix="", rsuffix=f"_{shape}"
-            )
-            .rename(columns={shape: f"{shape}_index", f"geometry_{shape}": shape})
-        )
+        points_df = points_df.join(
+            sdata.shapes[shape].set_index(instance_key),
+            on=instance_key,
+            lsuffix="",
+            rsuffix=f"_{shape}",
+        ).rename(columns={shape: f"{shape}_index", f"geometry_{shape}": shape})
 
     # Pull cell_boundaries shape features into the points dataframe
     points_df = (
