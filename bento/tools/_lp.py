@@ -332,6 +332,9 @@ def lp_diff_discrete(
         .reset_index()
     )
 
+    if diff_output.empty:
+        raise ValueError("No significant patterns found.")
+
     # FDR correction
     diff_output["padj"] = diff_output["pvalue"] * diff_output[groups_name].nunique()
 
