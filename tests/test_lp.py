@@ -9,10 +9,7 @@ from . import conftest
 
 @pytest.fixture(scope="module")
 def lp_data():
-    # This uses a six cell dataset with one to one mapped nuclei
-    data = sd.read_zarr(
-        bt.__file__.rsplit("/", 1)[0] + "/datasets/" + conftest.SIX_CELL_ZARR
-    )
+    data = bt.ds.sample_data()
     data = bt.io.prep(
         data,
         points_key="transcripts",
@@ -31,19 +28,51 @@ def lp_data():
     return data
 
 
-# @pytest.fixture()
-# def lp_diff_discrete_data(lp_data):
-#     # Assign random category to each cell
-#     category = ["A", "B"]
-#     phenotype = [category[i % 2] for i in range(lp_data["cell_boundaries"].shape[0])]
-#     lp_data.shapes["cell_boundaries"]["cell_stage"] = phenotype
+@pytest.fixture(scope="module")
+def lp_small_data(small_data):
+    bt.tl.lp(
+        sdata=small_data,
+        instance_key="cell_boundaries",
+        nucleus_key="nucleus_boundaries",
+        groupby="feature_name",
+    )
+    bt.tl.lp_stats(sdata=small_data, instance_key="cell_boundaries")
 
-#     # Calculate lp_diff_discrete
-#     bt.tl.lp_diff_discrete(
-#         sdata=lp_data, instance_key="cell_boundaries", phenotype="cell_stage"
-#     )
+    return small_data
 
-#     return lp_data
+
+@pytest.fixture()
+def lp_diff_discrete_data(lp_data):
+    # Assign random category to each cell
+    category = ["A", "B"]
+    phenotype = [category[i % 2] for i in range(lp_data["cell_boundaries"].shape[0])]
+    lp_data.shapes["cell_boundaries"]["cell_stage"] = phenotype
+
+    # Assign random category to each cell
+    error_category = [0, 1]
+    error_phenotype = [
+        error_category[i % 2] for i in range(lp_data["cell_boundaries"].shape[0])
+    ]
+    lp_data.shapes["cell_boundaries"]["error_test"] = error_phenotype
+
+    # Calculate lp_diff_discrete
+    bt.tl.lp_diff_discrete(
+        sdata=lp_data, instance_key="cell_boundaries", phenotype="cell_stage"
+    )
+
+    return lp_data
+
+
+@pytest.fixture()
+def lp_diff_discrete_small_data(lp_small_data):
+    # Assign random category to each cell
+    category = ["A", "B"]
+    phenotype = [
+        category[i % 2] for i in range(lp_small_data["cell_boundaries"].shape[0])
+    ]
+    lp_small_data.shapes["cell_boundaries"]["cell_stage"] = phenotype
+
+    return lp_small_data
 
 
 @pytest.fixture()
@@ -72,35 +101,31 @@ def test_lp_stats(lp_data):
         assert column in lp_data.table.uns["lp_stats"].columns
 
 
-# def test_lp_diff_discrete(lp_diff_discrete_data):
-#     # Check lp_diff_discrete dataframe in sdata.table.uns
-#     assert all(
-#         column in lp_diff_discrete_data.table.uns["diff_cell_stage"].columns
-#         for column in conftest.LP_DIFF_DISCRETE_COLUMNS
-#     )
+def test_lp_diff_discrete(lp_diff_discrete_data):
+    # Check lp_diff_discrete dataframe in sdata.table.uns
+    assert all(
+        column in lp_diff_discrete_data.table.uns["diff_cell_stage"].columns
+        for column in conftest.LP_DIFF_DISCRETE_COLUMNS
+    )
 
 
-# def test_lp_diff_discrete_error(lp_diff_discrete_data):
-#     error_test = []
-#     for i in range(len(lp_diff_discrete_data.shapes["cell_boundaries"])):
-#         if (
-#             lp_diff_discrete_data.shapes["cell_boundaries"]["cell_boundaries_area"][i]
-#             > lp_diff_discrete_data.shapes["cell_boundaries"][
-#                 "cell_boundaries_area"
-#             ].median()
-#         ):
-#             error_test.append(1)
-#         else:
-#             error_test.append(0)
-#     lp_diff_discrete_data.shapes["cell_boundaries"]["error_test"] = error_test
+def test_lp_diff_discrete_error(lp_diff_discrete_data):
+    # Check that KeyError is raised when phenotype is numeric
+    with pytest.raises(KeyError):
+        bt.tl.lp_diff_discrete(
+            sdata=lp_diff_discrete_data,
+            instance_key="cell_boundaries",
+            phenotype="error_test",
+        )
 
-#     # Check that KeyError is raised when phenotype is numeric
-#     with pytest.raises(KeyError):
-#         bt.tl.lp_diff_discrete(
-#             sdata=lp_diff_discrete_data,
-#             instance_key="cell_boundaries",
-#             phenotype="error_test",
-#         )
+
+def test_lp_diff_discrete_small_data(lp_diff_discrete_small_data):
+    with pytest.raises(ValueError):
+        bt.tl.lp_diff_discrete(
+            sdata=lp_diff_discrete_small_data,
+            instance_key="cell_boundaries",
+            phenotype="cell_stage",
+        )
 
 
 def test_lp_diff_continuous(lp_diff_continuous_data):
