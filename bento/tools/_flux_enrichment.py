@@ -99,13 +99,10 @@ def fe(
     cell_raster = get_points(
         sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=False
     )[features]
-    cell_raster_matrix = np.mat(cell_raster)
-    mat = sparse.csr_matrix(cell_raster_matrix)  # sparse matrix in csr format
-
     samples = cell_raster.index.astype(str)
 
     enrichment = dc.run_wsum(
-        mat=[mat, samples, features],
+        mat=cell_raster,
         net=net,
         source=source,
         target=target,
