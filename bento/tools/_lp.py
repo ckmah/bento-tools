@@ -318,6 +318,10 @@ def lp_diff_discrete(
         .table.uns['diff_{phenotype}']
             Long DataFrame with differential localization test results across phenotype groups.
     """
+    lp_df = sdata.table.uns["lp"]
+    if (lp_df == 0).all(axis=0).any() or (lp_df == 0).all(axis=1).any():
+        raise ValueError("No significant patterns found.")
+
     lp_stats(sdata, instance_key=instance_key)
     stats = sdata.table.uns["lp_stats"]
 
@@ -337,9 +341,6 @@ def lp_diff_discrete(
         .progress_apply(lambda gp: _lp_diff_gene(gp, phenotype_series, instance_key))
         .reset_index()
     )
-
-    if diff_output.empty:
-        raise ValueError("No significant patterns found.")
 
     # FDR correction
     diff_output["padj"] = diff_output["pvalue"] * diff_output[groups_name].nunique()
