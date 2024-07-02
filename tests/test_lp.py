@@ -120,6 +120,7 @@ def test_lp_diff_discrete_error(lp_diff_discrete_data):
 
 
 def test_lp_diff_discrete_small_data(lp_diff_discrete_small_data):
+    # Check that ValueError is raised when no significant patterns are found when lp is run
     with pytest.raises(ValueError):
         bt.tl.lp_diff_discrete(
             sdata=lp_diff_discrete_small_data,
