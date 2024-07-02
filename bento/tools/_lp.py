@@ -320,7 +320,10 @@ def lp_diff_discrete(
     """
     lp_df = sdata.table.uns["lp"]
     if (lp_df == 0).all(axis=0).any() or (lp_df == 0).all(axis=1).any():
-        raise ValueError("No significant patterns found.")
+        warnings.simplefilter("always", UserWarning)
+        warnings.warn("No significant patterns found.")
+        warnings.filterwarnings("ignore")
+        return
 
     lp_stats(sdata, instance_key=instance_key)
     stats = sdata.table.uns["lp_stats"]
@@ -328,9 +331,12 @@ def lp_diff_discrete(
     # Retrieve cell phenotype
     phenotype_series = sdata.shapes[instance_key][phenotype]
     if is_numeric_dtype(phenotype_series):
-        raise KeyError(
+        warnings.simplefilter("always", UserWarning)
+        warnings.warn(
             f"Phenotype dtype must not be numeric | dtype: {phenotype_series.dtype}"
         )
+        warnings.filterwarnings("ignore")
+        return
 
     # [Sample by patterns] where sample id = [cell, group] pair
     pattern_df = sdata.table.uns["lp"].copy()

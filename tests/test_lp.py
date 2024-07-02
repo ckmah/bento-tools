@@ -110,8 +110,8 @@ def test_lp_diff_discrete(lp_diff_discrete_data):
 
 
 def test_lp_diff_discrete_error(lp_diff_discrete_data):
-    # Check that KeyError is raised when phenotype is numeric
-    with pytest.raises(KeyError):
+    # Check that UserWarning is raised when phenotype is numeric
+    with pytest.warns(UserWarning):
         bt.tl.lp_diff_discrete(
             sdata=lp_diff_discrete_data,
             instance_key="cell_boundaries",
@@ -120,8 +120,8 @@ def test_lp_diff_discrete_error(lp_diff_discrete_data):
 
 
 def test_lp_diff_discrete_small_data(lp_diff_discrete_small_data):
-    # Check that ValueError is raised when no significant patterns are found when lp is run
-    with pytest.raises(ValueError):
+    # Check that UserWarning is raised when no significant patterns are found when lp is run
+    with pytest.warns(UserWarning):
         bt.tl.lp_diff_discrete(
             sdata=lp_diff_discrete_small_data,
             instance_key="cell_boundaries",
