@@ -121,6 +121,12 @@ def lp(
     thresholds = [0.45300, 0.43400, 0.37900, 0.43700, 0.50500]
     indicator_df = (pattern_prob >= thresholds).replace({True: 1, False: 0})
 
+    lp_df = indicator_df.reset_index()[PATTERN_NAMES]
+    if (lp_df == 0).all(axis=0).any() or (lp_df == 0).all(axis=1).any():
+        warnings.simplefilter("always", UserWarning)
+        warnings.warn("No significant patterns found.")
+        warnings.filterwarnings("ignore")
+
     sdata.table.uns["lp"] = indicator_df.reset_index()
     sdata.table.uns["lpp"] = pattern_prob.reset_index()
 
