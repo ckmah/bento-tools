@@ -61,7 +61,6 @@ def overlay(
     )
 
 
-
 @singledispatch
 def labels_to_shapes(labels: np.ndarray, attrs: dict, bg_value: int = 0):
     """
@@ -80,7 +79,7 @@ def labels_to_shapes(labels: np.ndarray, attrs: dict, bg_value: int = 0):
     -------
     GeoPandas DataFrame
         GeoPandas DataFrame containing the polygons extracted from the labeled image.
-    
+
     """
     import rasterio as rio
     import shapely.geometry
@@ -91,8 +90,8 @@ def labels_to_shapes(labels: np.ndarray, attrs: dict, bg_value: int = 0):
     shapes = gpd.GeoDataFrame(
         polygons[:, 1], geometry=gpd.GeoSeries(polygons[:, 0]).T, columns=["id"]
     )
-    shapes = shapes[shapes["id"] != bg_value] # Ignore background
-    
+    shapes = shapes[shapes["id"] != bg_value]  # Ignore background
+
     # Validate for SpatialData
     sd_shape = ShapesModel.parse(shapes)
     sd_shape.attrs = attrs
@@ -112,13 +111,13 @@ def _(labels: SpatialImage, attrs: dict, bg_value: int = 0):
         Dictionary of attributes to set for the SpatialData object.
     bg_value : int, optional
         Value of the background pixels, by default 0
-    
+
     Returns
     -------
     GeoPandas DataFrame
         GeoPandas DataFrame containing the polygons extracted from the labeled image.
     """
-        
+
     # Convert spatial_image.SpatialImage to np.ndarray
     labels = labels.values
     return labels_to_shapes(labels, attrs, bg_value)
