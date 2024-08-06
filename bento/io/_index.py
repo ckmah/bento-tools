@@ -97,8 +97,11 @@ def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
         # Hack for polygons that are 99% contained in parent shape or have shared boundaries
         child_shape = gpd.GeoDataFrame(geometry=child_shape.buffer(-10e-6))
 
+        # Map child shape index to parent shape; this generates a one-to-many relationship
         parent_shape = parent_shape.sjoin(child_shape, how="left", predicate="covers")
-        parent_shape = parent_shape[~parent_shape.index.duplicated(keep="last")]
+        parent_shape = parent_shape[
+            ~parent_shape.index.duplicated(keep="last")
+        ]  # Remove multi-mapped child shapes
         parent_shape.loc[parent_shape["index_right"].isna(), "index_right"] = ""
         parent_shape = parent_shape.astype({"index_right": "category"})
 

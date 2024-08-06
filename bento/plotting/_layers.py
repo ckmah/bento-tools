@@ -72,10 +72,11 @@ def _polygons(sdata, shape, ax, hue=None, sync=True, **kwargs):
         else:
             shapes[hue] = df.reset_index()[hue].values
         style_kwds["facecolor"] = sns.axes_style()["axes.edgecolor"]
-        style_kwds["edgecolor"] = "none"  # let GeoDataFrame plot function handle facecolor
+        style_kwds["edgecolor"] = (
+            "none"  # let GeoDataFrame plot function handle facecolor
+        )
 
     style_kwds.update(kwargs)
-
 
     patches = []
     # Manually create patches for each polygon; GeoPandas plot function is slow
@@ -91,7 +92,9 @@ def _polygons(sdata, shape, ax, hue=None, sync=True, **kwargs):
     ax.add_collection(patches)
 
 
-def _raster(sdata, res, color, points_key, alpha, cbar=False, ax=None, **kwargs):
+def _raster(
+    sdata, res, color, points_key, alpha, pthreshold=None, cbar=False, ax=None, **kwargs
+):
     """Plot gradient."""
 
     if ax is None:
