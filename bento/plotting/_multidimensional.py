@@ -205,8 +205,8 @@ def comp(
     """
 
     comp_key = f"{groupby}_comp_stats"
-    if groupby and comp_key in sdata.table.uns.keys():
-        comp_stats = sdata.table.uns[comp_key]
+    if groupby and comp_key in sdata.tables["table"].uns.keys():
+        comp_stats = sdata.tables["table"].uns[comp_key]
         if group_order is None:
             groups = list(comp_stats.keys())
         else:
@@ -240,7 +240,7 @@ def comp(
             ax.set_title(group, fontsize=12)
     else:
         comp_key = "comp_stats"
-        comp_stats = sdata.table.uns[comp_key]
+        comp_stats = sdata.tables["table"].uns[comp_key]
         return _radviz(
             comp_stats,
             annotate=annotate,

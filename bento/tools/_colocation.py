@@ -42,14 +42,14 @@ def colocation(
     Returns
     -------
     sdata : SpatialData
-        .table.uns['factors']: Decomposed tensor factors.
-        .table.uns['factors_error']: Decomposition error.
+        .tables["table"].uns['factors']: Decomposed tensor factors.
+        .tables["table"].uns['factors_error']: Decomposition error.
     """
 
     print("Preparing tensor...")
     _colocation_tensor(sdata, instance_key, feature_key)
 
-    tensor = sdata.table.uns["tensor"]
+    tensor = sdata.tables["table"].uns["tensor"]
 
     print(emoji.emojize(":running: Decomposing tensor..."))
     factors, errors = decompose(tensor, ranks, iterations=iterations)
@@ -61,8 +61,8 @@ def colocation(
         kl.plot_knee()
         sns.lineplot(data=errors, x="rank", y="rmse", ci=95, marker="o")
 
-    sdata.table.uns["factors"] = factors
-    sdata.table.uns["factors_error"] = errors
+    sdata.tables["table"].uns["factors"] = factors
+    sdata.tables["table"].uns["factors_error"] = errors
 
     print(emoji.emojize(":heavy_check_mark: Done."))
 
@@ -81,7 +81,7 @@ def _colocation_tensor(sdata: SpatialData, instance_key: str, feature_key: str):
         Key that specifies genes in sdata.
     """
 
-    clqs = sdata.table.uns["clq"]
+    clqs = sdata.tables["table"].uns["clq"]
 
     clq_long = []
     for shape, clq in clqs.items():
@@ -106,9 +106,9 @@ def _colocation_tensor(sdata: SpatialData, instance_key: str, feature_key: str):
     s = sparse.COO(label_orders, data=clq_long["log_clq"].values)
     tensor = s.todense()
 
-    sdata.table.uns["tensor"] = tensor
-    sdata.table.uns["tensor_labels"] = labels
-    sdata.table.uns["tensor_names"] = label_names
+    sdata.tables["table"].uns["tensor"] = tensor
+    sdata.tables["table"].uns["tensor_labels"] = labels
+    sdata.tables["table"].uns["tensor_names"] = label_names
 
 
 def coloc_quotient(
@@ -145,7 +145,7 @@ def coloc_quotient(
     Returns
     -------
     sdata : SpatialData
-        .table.uns['clq']: Pairwise gene colocalization similarity within each cell formatted as a long dataframe.
+        .tables["table"].uns['clq']: Pairwise gene colocalization similarity within each cell formatted as a long dataframe.
     """
 
     all_clq = dict()
@@ -191,7 +191,7 @@ def coloc_quotient(
         # Save to uns['clq'] as adjacency list
         all_clq[shape] = cell_clqs
 
-    sdata.table.uns["clq"] = all_clq
+    sdata.tables["table"].uns["clq"] = all_clq
 
 
 def _cell_clq(cell_points, radius, min_points, feature_key):

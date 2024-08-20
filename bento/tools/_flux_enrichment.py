@@ -85,8 +85,8 @@ def fe(
             Enrichment scores for each gene set.
     """
     # Make sure embedding is run first
-    if "flux_genes" in sdata.table.uns:
-        flux_genes = set(sdata.table.uns["flux_genes"])
+    if "flux_genes" in sdata.tables["table"].uns:
+        flux_genes = set(sdata.tables["table"].uns["flux_genes"])
         cell_raster_columns = set(sdata.points[f"{instance_key}_raster"].columns)
         if len(flux_genes.intersection(cell_raster_columns)) != len(flux_genes):
             print("Recompute bento.tl.flux first.")
@@ -95,7 +95,7 @@ def fe(
         print("Run bento.tl.flux first.")
         return
 
-    features = sdata.table.uns["flux_genes"]
+    features = sdata.tables["table"].uns["flux_genes"]
     cell_raster = get_points(
         sdata, points_key=f"{instance_key}_raster", astype="pandas", sync=False
     )[features]
@@ -130,9 +130,11 @@ def _fe_stats(
     target: str = "target",
 ):
     # rows = cells, columns = pathways, values = count of genes in pathway
-    expr_binary = sdata.table.to_df() >= 5
+    expr_binary = sdata.tables["table"].to_df() >= 5
     # {cell : present gene list}
-    expr_genes = expr_binary.apply(lambda row: sdata.table.var_names[row], axis=1)
+    expr_genes = expr_binary.apply(
+        lambda row: sdata.tables["table"].var_names[row], axis=1
+    )
 
     # Count number of genes present in each pathway
     net_ngenes = net.groupby(source).size().to_frame().T.rename(index={0: "n_genes"})
@@ -148,8 +150,8 @@ def _fe_stats(
     fe_stats = pd.concat(common_ngenes, axis=1)
     fe_stats.columns = sources
 
-    sdata.table.uns["fe_stats"] = fe_stats
-    sdata.table.uns["fe_ngenes"] = net_ngenes
+    sdata.tables["table"].uns["fe_stats"] = fe_stats
+    sdata.tables["table"].uns["fe_ngenes"] = net_ngenes
 
 
 gene_sets = dict(

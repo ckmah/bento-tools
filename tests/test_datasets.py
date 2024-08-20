@@ -2,6 +2,8 @@ import bento as bt
 import pandas as pd
 import geopandas as gpd
 import spatialdata as sd
+import dask
+dask.config.set({'dataframe.query-planning': False})
 import dask.dataframe as dd
 
 

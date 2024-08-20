@@ -7,6 +7,7 @@ from scipy.stats import zscore
 from ._colors import red2blue, red_light
 from ._utils import savefig
 
+
 def colocation(
     sdata,
     rank,
@@ -42,9 +43,9 @@ def colocation(
     fname : str, optional
         Path to save figure, by default None
     """
-    factors = sdata.table.uns["factors"][rank].copy()
-    labels = sdata.table.uns["tensor_labels"].copy()
-    names = sdata.table.uns["tensor_names"].copy()
+    factors = sdata.tables["table"].uns["factors"][rank].copy()
+    labels = sdata.tables["table"].uns["tensor_labels"].copy()
+    names = sdata.tables["table"].uns["tensor_names"].copy()
 
     # Perform z-scaling upfront
     for i in range(len(factors)):

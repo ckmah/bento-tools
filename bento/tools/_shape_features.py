@@ -559,7 +559,7 @@ def analyze_shapes(
 
 def register_shape_feature(name: str, func: Callable):
     """Register a shape feature function. The function should take an SpatialData object and a shape name as input.
-       The function should add the feature to the SpatialData object as a column in SpatialData.table.obs.
+       The function should add the feature to the SpatialData object as a column in SpatialData.tables["table"].obs.
        This should be done in place and not return anything.
 
     Parameters

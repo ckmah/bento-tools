@@ -8,6 +8,7 @@ authors = [
 dependencies = [
     "adjusttext>=1.1.1",
     "astropy>=6.0.1",
+    "dask>=2024.2.1",
     "decoupler>=1.7.0",
     "emoji>=2.11.0",
     "kneed>=0.8.5",
