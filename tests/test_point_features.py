@@ -29,8 +29,8 @@ def test_multiple_shapes_multiple_groups(point_features_data):
     # Check if cell_boundaries and nucleus_boundaries point features are calculated
     assert all(
         feature
-        in point_features_data.table.uns[
-            "cell_boundaries_feature_name_features"
-        ].columns
+        in point_features_data.tables["table"]
+        .uns["cell_boundaries_feature_name_features"]
+        .columns
         for feature in point_features
     )

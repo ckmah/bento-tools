@@ -83,28 +83,30 @@ def lp_diff_continuous_data(lp_data):
 
 
 def test_lp(lp_data):
-    # Check lp and lpp dataframes in sdata.table.uns
+    # Check lp and lpp dataframes in sdata.tables["table"].uns
     assert all(
-        column in lp_data.table.uns["lp"].columns for column in conftest.LP_COLUMNS
+        column in lp_data.tables["table"].uns["lp"].columns
+        for column in conftest.LP_COLUMNS
     )
     assert all(
-        column in lp_data.table.uns["lpp"].columns for column in conftest.LP_COLUMNS
+        column in lp_data.tables["table"].uns["lpp"].columns
+        for column in conftest.LP_COLUMNS
     )
 
 
 def test_lp_stats(lp_data):
-    # Check lp_stats index in sdata.table.uns
-    assert lp_data.table.uns["lp_stats"].index.name == "feature_name"
+    # Check lp_stats index in sdata.tables["table"].uns
+    assert lp_data.tables["table"].uns["lp_stats"].index.name == "feature_name"
 
-    # Check lp_stats dataframe in sdata.table.uns
+    # Check lp_stats dataframe in sdata.tables["table"].uns
     for column in conftest.LP_STATS_COLUMNS:
-        assert column in lp_data.table.uns["lp_stats"].columns
+        assert column in lp_data.tables["table"].uns["lp_stats"].columns
 
 
 def test_lp_diff_discrete(lp_diff_discrete_data):
-    # Check lp_diff_discrete dataframe in sdata.table.uns
+    # Check lp_diff_discrete dataframe in sdata.tables["table"].uns
     assert all(
-        column in lp_diff_discrete_data.table.uns["diff_cell_stage"].columns
+        column in lp_diff_discrete_data.tables["table"].uns["diff_cell_stage"].columns
         for column in conftest.LP_DIFF_DISCRETE_COLUMNS
     )
 
@@ -130,9 +132,12 @@ def test_lp_diff_discrete_small_data(lp_diff_discrete_small_data):
 
 
 def test_lp_diff_continuous(lp_diff_continuous_data):
-    # Check lp_diff_continuous dataframe in sdata.table.uns
+    # Check lp_diff_continuous dataframe in sdata.tables["table"].uns
     assert all(
-        column in lp_diff_continuous_data.table.uns["diff_cell_boundaries_area"].columns
+        column
+        in lp_diff_continuous_data.tables["table"]
+        .uns["diff_cell_boundaries_area"]
+        .columns
         for column in conftest.LP_DIFF_CONTINUOUS_COLUMNS
     )
 

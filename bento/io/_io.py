@@ -101,17 +101,17 @@ def prep(
             by=instance_key,
             value_key=feature_key,
             aggfunc="count",
-        ).table
+        ).tables["table"]
     )
 
     pbar.update()
 
     try:
-        del sdata.table
+        del sdata.tables["table"]
     except KeyError:
         pass
 
-    sdata.table = table
+    sdata.tables["table"] = table
     # Set instance key to cell_shape_key for all points and table
     sdata.points[points_key].attrs["spatialdata_attrs"]["instance_key"] = instance_key
     sdata.points[points_key].attrs["spatialdata_attrs"]["feature_key"] = feature_key

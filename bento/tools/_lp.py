@@ -43,7 +43,7 @@ def lp(
     sdata : SpatialData
         .table.uns['lp']
             Localization pattern indicator matrix.
-        .table.uns['lpp']
+        .tables["table"].uns['lpp']
             Localization pattern probabilities.
     """
 
@@ -69,8 +69,11 @@ def lp(
     # Compute features
     feature_key = f"{instance_key}_{'_'.join(groupby)}_features"
     if (
-        feature_key not in sdata.table.uns.keys()
-        or not all(f in sdata.table.uns[feature_key].columns for f in pattern_features)
+        feature_key not in sdata.tables["table"].uns.keys()
+        or not all(
+            f in sdata.tables["table"].uns[feature_key].columns
+            for f in pattern_features
+        )
         or recompute
     ):
         bento.tl.analyze_points(
@@ -90,7 +93,7 @@ def lp(
             num_workers=num_workers,
         )
 
-    X_df = sdata.table.uns[feature_key][pattern_features]
+    X_df = sdata.tables["table"].uns[feature_key][pattern_features]
 
     # Save which samples have nan feature values
     invalid_samples = X_df.isna().any(axis=1)
@@ -127,8 +130,8 @@ def lp(
         warnings.warn("No significant patterns found.")
         warnings.filterwarnings("ignore")
 
-    sdata.table.uns["lp"] = indicator_df.reset_index()
-    sdata.table.uns["lpp"] = pattern_prob.reset_index()
+    sdata.tables["table"].uns["lp"] = indicator_df.reset_index()
+    sdata.tables["table"].uns["lpp"] = pattern_prob.reset_index()
 
 
 def lp_stats(sdata: SpatialData, instance_key: str = "cell_boundaries"):
@@ -144,9 +147,9 @@ def lp_stats(sdata: SpatialData, instance_key: str = "cell_boundaries"):
     Returns
     -------
     sdata : SpatialData
-        .table.uns['lp_stats']: DataFrame of localization pattern frequencies.
+        .tables["table"].uns['lp_stats']: DataFrame of localization pattern frequencies.
     """
-    lp = sdata.table.uns["lp"]
+    lp = sdata.tables["table"].uns["lp"]
 
     cols = lp.columns
     groupby = list(cols[~cols.isin(PATTERN_NAMES)])
@@ -155,7 +158,7 @@ def lp_stats(sdata: SpatialData, instance_key: str = "cell_boundaries"):
     g_pattern_counts = lp.groupby(groupby).apply(
         lambda df: df[PATTERN_NAMES].sum().astype(int)
     )
-    sdata.table.uns["lp_stats"] = g_pattern_counts
+    sdata.tables["table"].uns["lp_stats"] = g_pattern_counts
 
 
 def _lp_logfc(sdata, instance_key, phenotype=None):
@@ -175,14 +178,14 @@ def _lp_logfc(sdata, instance_key, phenotype=None):
     gene_fc_stats : DataFrame
         log2 fold change of patterns between groups in phenotype.
     """
-    stats = sdata.table.uns["lp_stats"]
+    stats = sdata.tables["table"].uns["lp_stats"]
 
     if phenotype not in sdata.shapes[instance_key].columns:
         raise ValueError("Phenotype is invalid.")
 
     phenotype_vector = sdata.shapes[instance_key][phenotype]
 
-    pattern_df = sdata.table.uns["lp"].copy()
+    pattern_df = sdata.tables["table"].uns["lp"].copy()
     groups_name = stats.index.name
 
     gene_fc_stats = []
@@ -315,18 +318,14 @@ def lp_diff_discrete(
     Returns
     -------
     sdata : SpatialData
-        .table.uns['diff_{phenotype}']
+        .tables["table"].uns['diff_{phenotype}']
             Long DataFrame with differential localization test results across phenotype groups.
     """
-    lp_df = sdata.table.uns["lp"]
-    if (lp_df == 0).all(axis=0).any() or (lp_df == 0).all(axis=1).any():
-        warnings.simplefilter("always", UserWarning)
-        warnings.warn("No significant patterns found.")
-        warnings.filterwarnings("ignore")
-        return
+    lp_df = sdata.tables["table"].uns["lp"]
+
 
     lp_stats(sdata, instance_key=instance_key)
-    stats = sdata.table.uns["lp_stats"]
+    stats = sdata.tables["table"].uns["lp_stats"]
 
     # Retrieve cell phenotype
     phenotype_series = sdata.shapes[instance_key][phenotype]
@@ -339,7 +338,7 @@ def lp_diff_discrete(
         return
 
     # [Sample by patterns] where sample id = [cell, group] pair
-    pattern_df = sdata.table.uns["lp"].copy()
+    pattern_df = sdata.tables["table"].uns["lp"].copy()
     groups_name = stats.index.name
 
     diff_output = (
@@ -379,7 +378,7 @@ def lp_diff_discrete(
     results = results.sort_values("pvalue").reset_index(drop=True)
     del results["level_1"]
     # Save back to SpatialData
-    sdata.table.uns[f"diff_{phenotype}"] = results
+    sdata.tables["table"].uns[f"diff_{phenotype}"] = results
 
 
 def lp_diff_continuous(
@@ -399,11 +398,11 @@ def lp_diff_continuous(
     Returns
     -------
     sdata : SpatialData
-        .table.uns['diff_{phenotype}']
+        .tables["table"].uns['diff_{phenotype}']
             Long DataFrame with differential localization test results across phenotype groups.
     """
-    stats = sdata.table.uns["lp_stats"]
-    lpp = sdata.table.uns["lpp"]
+    stats = sdata.tables["table"].uns["lp_stats"]
+    lpp = sdata.tables["table"].uns["lpp"]
     # Retrieve cell phenotype
     phenotype_series = sdata.shapes[instance_key][phenotype]
 
@@ -427,4 +426,4 @@ def lp_diff_continuous(
     )
 
     pattern_dfs = pattern_dfs.loc[~pattern_dfs["pearson_correlation"].isna()]
-    sdata.table.uns[f"diff_{phenotype}"] = pattern_dfs
+    sdata.tables["table"].uns[f"diff_{phenotype}"] = pattern_dfs
