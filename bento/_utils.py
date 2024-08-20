@@ -4,7 +4,10 @@ from typing import List, Optional, Union
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from dask import dataframe as dd
+import dask
+
+dask.config.set({"dataframe.query-planning": False})
+import dask.dataframe as dd
 from spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel, TableModel
 
