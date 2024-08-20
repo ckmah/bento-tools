@@ -166,7 +166,7 @@ def lp_stats(sdata: SpatialData, instance_key: str = "cell_boundaries"):
     groupby = list(cols[~cols.isin(PATTERN_NAMES)])
     groupby.remove(instance_key)
 
-    g_pattern_counts = lp.groupby(groupby, observed=True, include_groups=False).apply(
+    g_pattern_counts = lp.groupby(groupby, observed=True).apply(
         lambda df: df[PATTERN_NAMES].sum().astype(int)
     )
     sdata.tables["table"].uns["lp_stats"] = g_pattern_counts
