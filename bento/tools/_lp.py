@@ -41,7 +41,7 @@ def lp(
     Returns
     -------
     sdata : SpatialData
-        .table.uns['lp']
+        .tables["table"].uns['lp']
             Localization pattern indicator matrix.
         .tables["table"].uns['lpp']
             Localization pattern probabilities.
@@ -114,7 +114,7 @@ def lp(
 
     # Add cell and groupby identifiers
     pattern_prob.index = (
-        sdata.table.uns[feature_key].set_index([instance_key, *groupby]).index
+        sdata.tables["table"].uns[feature_key].set_index([instance_key, *groupby]).index
     )
 
     # Set to no class if sample had nan feature values
@@ -122,13 +122,24 @@ def lp(
 
     # Threshold probabilities to get indicator matrix
     thresholds = [0.45300, 0.43400, 0.37900, 0.43700, 0.50500]
-    indicator_df = (pattern_prob >= thresholds).replace({True: 1, False: 0})
+    indicator_df = (pattern_prob >= thresholds).astype(np.uint8)
 
     lp_df = indicator_df.reset_index()[PATTERN_NAMES]
-    if (lp_df == 0).all(axis=0).any() or (lp_df == 0).all(axis=1).any():
-        warnings.simplefilter("always", UserWarning)
-        warnings.warn("No significant patterns found.")
-        warnings.filterwarnings("ignore")
+
+    invalid_patterns = (lp_df == 0).all(axis=0)
+    invalid_patterns = invalid_patterns[invalid_patterns].index.tolist()
+    n_invalid_cells = (lp_df == 0).all(axis=1).sum()
+
+    if len(invalid_patterns) > 0:
+        warnings.warn(
+            f"Patterns {invalid_patterns} are not present in any cells.", UserWarning
+        )
+
+    if n_invalid_cells > 0:
+        warnings.warn(
+            f"Patterns not detected in {n_invalid_cells} / {lp_df.shape[0]} cells.",
+            UserWarning,
+        )
 
     sdata.tables["table"].uns["lp"] = indicator_df.reset_index()
     sdata.tables["table"].uns["lpp"] = pattern_prob.reset_index()
@@ -155,7 +166,7 @@ def lp_stats(sdata: SpatialData, instance_key: str = "cell_boundaries"):
     groupby = list(cols[~cols.isin(PATTERN_NAMES)])
     groupby.remove(instance_key)
 
-    g_pattern_counts = lp.groupby(groupby).apply(
+    g_pattern_counts = lp.groupby(groupby, observed=True, include_groups=False).apply(
         lambda df: df[PATTERN_NAMES].sum().astype(int)
     )
     sdata.tables["table"].uns["lp_stats"] = g_pattern_counts
@@ -274,37 +285,59 @@ def _lp_diff_gene(cell_by_pattern, phenotype_series, instance_key):
             # Look at marginal effect of each pattern coefficient
             r = res.get_margeff(dummy=True).summary_frame()
             r["phenotype"] = g
-
-            r.columns = [
-                "dy/dx",
-                "std_err",
-                "z",
-                "pvalue",
-                "ci_low",
-                "ci_high",
-                "phenotype",
-            ]
-            r = r.reset_index().rename({"index": "pattern"}, axis=1)
+            r = r.reset_index()
 
             results.append(r)
+
+        # Append empty Dataframe if empty groups or patterns missing from groups
         except (
             np.linalg.LinAlgError,
             ValueError,
             PerfectSeparationError,
             PatsyError,
         ):
-            pass
+            r = pd.DataFrame(
+                columns=[
+                    "index",
+                    "dy/dx",
+                    "Std. Err.",
+                    "z",
+                    "Pr(>|z|)",
+                    "Conf. Int. Low",
+                    "Cont. Int. Hi.",
+                    "phenotype",
+                ]
+            )
+            results.append(r)
 
-    if len(results) > 0:
-        results = pd.concat(results)
+    results = pd.concat(results)
 
-    return results if len(results) > 0 else None
+    col_map = {
+        "index": "pattern",
+        "dy/dx": "dy/dx",
+        "Std. Err.": "std_err",
+        "z": "z",
+        "Pr(>|z|)": "pvalue",
+        "Conf. Int. Low": "ci_low",
+        "Cont. Int. Hi.": "ci_high",
+        "phenotype": "phenotype",
+    }
+    results = results.rename(columns=col_map)
+
+    return results
 
 
 def lp_diff_discrete(
     sdata: SpatialData, instance_key: str = "cell_boundaries", phenotype: str = None
 ):
     """Gene-wise test for differential localization across phenotype of interest.
+
+    Scenarios:
+    Missing patterns within phenotype groupings
+    Solution:
+    - Warn user about missing patterns
+    - Remove missing patterns from analysis
+    - Return results with missing patterns removed
 
     Parameters
     ----------
@@ -323,6 +356,20 @@ def lp_diff_discrete(
     """
     lp_df = sdata.tables["table"].uns["lp"]
 
+    invalid_patterns = (lp_df == 0).all(axis=0)
+    invalid_patterns = invalid_patterns[invalid_patterns].index.tolist()
+    n_invalid_cells = (lp_df == 0).all(axis=1).sum()
+
+    if len(invalid_patterns) > 0:
+        warnings.warn(
+            f"Patterns {invalid_patterns} are not present in any cells.", UserWarning
+        )
+
+    if n_invalid_cells > 0:
+        warnings.warn(
+            f"Patterns not detected in {n_invalid_cells} / {lp_df.shape[0]} cells.",
+            UserWarning,
+        )
 
     lp_stats(sdata, instance_key=instance_key)
     stats = sdata.tables["table"].uns["lp_stats"]
@@ -342,7 +389,7 @@ def lp_diff_discrete(
     groups_name = stats.index.name
 
     diff_output = (
-        pattern_df.groupby(groups_name)
+        pattern_df.groupby(groups_name, observed=True)
         .progress_apply(lambda gp: _lp_diff_gene(gp, phenotype_series, instance_key))
         .reset_index()
     )

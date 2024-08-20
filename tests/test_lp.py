@@ -2,7 +2,6 @@ import pytest
 
 
 import bento as bt
-import spatialdata as sd
 
 from . import conftest
 
@@ -66,10 +65,10 @@ def lp_diff_discrete_data(lp_data):
 @pytest.fixture()
 def lp_diff_discrete_small_data(lp_small_data):
     # Assign random category to each cell
-    category = ["A", "B"]
-    phenotype = [
-        category[i % 2] for i in range(lp_small_data["cell_boundaries"].shape[0])
-    ]
+    n_cells = lp_small_data["cell_boundaries"].shape[0]
+    n_a = n_cells // 2
+    n_b = n_cells - n_a
+    phenotype = ["A"] * n_a + ["B"] * n_b
     lp_small_data.shapes["cell_boundaries"]["cell_stage"] = phenotype
 
     return lp_small_data
@@ -111,7 +110,7 @@ def test_lp_diff_discrete(lp_diff_discrete_data):
     )
 
 
-def test_lp_diff_discrete_error(lp_diff_discrete_data):
+def test_lp_diff_discrete_warn_continuous(lp_diff_discrete_data):
     # Check that UserWarning is raised when phenotype is numeric
     with pytest.warns(UserWarning):
         bt.tl.lp_diff_discrete(
