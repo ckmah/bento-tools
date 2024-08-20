@@ -71,7 +71,7 @@ def comp(sdata: SpatialData, points_key: str, shape_names: list):
     Returns
     -------
     sdata : spatialdata.SpatialData
-        Updates `sdata.table.uns` with average gene compositions for each shape.
+        Updates `sdata.tables["table"].uns` with average gene compositions for each shape.
     """
     points = get_points(sdata, points_key=points_key, astype="pandas")
 
@@ -83,7 +83,7 @@ def comp(sdata: SpatialData, points_key: str, shape_names: list):
         points, shape_names, instance_key=instance_key, feature_key=feature_key
     )
 
-    sdata.table.uns["comp_stats"] = comp_stats
+    sdata.tables["table"].uns["comp_stats"] = comp_stats
 
 
 def comp_diff(
@@ -132,4 +132,4 @@ def comp_diff(
             index=ref_comp.index,
         )
 
-    sdata.table.uns[f"{groupby}_comp_stats"] = comp_stats
+    sdata.tables["table"].uns[f"{groupby}_comp_stats"] = comp_stats

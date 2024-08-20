@@ -181,12 +181,12 @@ def analyze_points(
 
     groupby[groupby.index(f"{instance_key}_index")] = instance_key
     output_key = "_".join([*groupby, "features"])
-    if output_key in sdata.table.uns:
-        sdata.table.uns[output_key][output.columns] = output.reset_index(
+    if output_key in sdata.tables["table"].uns:
+        sdata.tables["table"].uns[output_key][output.columns] = output.reset_index(
             drop=True
         ).rename(columns={f"{instance_key}_index": instance_key})
     else:
-        sdata.table.uns[output_key] = output.reset_index().rename(
+        sdata.tables["table"].uns[output_key] = output.reset_index().rename(
             columns={f"{instance_key}_index": instance_key}
         )
 

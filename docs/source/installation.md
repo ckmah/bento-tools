@@ -32,12 +32,13 @@ We currently use [Rye](https://rye-up.com/) for package management.
 3. Install the package in editable mode:
 
    ```console
-      pip install -e .
+      rye sync
    ```
 
-Run tests:
+4. Run tests with rye:
    ```console
-      python -m unittest tests
+      rye test
+   ```
 
 ### Documentation
 
