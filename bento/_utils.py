@@ -309,9 +309,7 @@ def set_shape_metadata(
         if "" not in metadata[col].cat.categories:
             metadata[col] = metadata[col].cat.add_categories([""]).fillna("")
 
-    sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(
-        shape_index
-    ).fillna("")
+    sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(shape_index)
 
 
 def _sync_points(sdata, points_key):
