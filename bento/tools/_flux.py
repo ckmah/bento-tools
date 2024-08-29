@@ -80,9 +80,9 @@ def flux(
             flux values: <gene_name> for each gene used in embedding.
             embeddings: flux_embed_<i> for each component of the embedding.
             colors: hex color codes for each pixel.
-        .table.uns["flux_genes"] : list
+        .tables["table"].uns["flux_genes"] : list
             List of genes used for embedding.
-        .table.uns["flux_variance_ratio"] : np.ndarray
+        .tables["table"].uns["flux_variance_ratio"] : np.ndarray
             [components] array of explained variance ratio for each component.
     """
 
@@ -145,7 +145,7 @@ def flux(
     # points_grouped = dask.delayed(points_grouped)
     # rpoints_grouped = dask.delayed(rpoints_grouped)
 
-    cell_composition = sdata.table[cells, gene_names].X.toarray()
+    cell_composition = sdata.tables["table"][cells, gene_names].X.toarray()
 
     # Compute cell composition
     cell_composition = cell_composition / (cell_composition.sum(axis=1).reshape(-1, 1))
@@ -268,8 +268,8 @@ def flux(
         columns=metadata.columns,
     )
 
-    sdata.table.uns["flux_variance_ratio"] = variance_ratio
-    sdata.table.uns["flux_genes"] = gene_names  # gene names
+    sdata.tables["table"].uns["flux_variance_ratio"] = variance_ratio
+    sdata.tables["table"].uns["flux_genes"] = gene_names  # gene names
 
     pbar.set_description(emoji.emojize("Done. :bento_box:"))
     pbar.update()
@@ -546,7 +546,7 @@ def fluxmap(
         del sdata.shapes[key]
 
     sd_attrs = sdata.shapes[instance_key].attrs
-    fluxmap_df = fluxmap_df.reindex(sdata.table.obs_names).where(
+    fluxmap_df = fluxmap_df.reindex(sdata.tables["table"].obs_names).where(
         fluxmap_df.notna(), other=Polygon()
     )
     fluxmap_names = fluxmap_df.columns.tolist()

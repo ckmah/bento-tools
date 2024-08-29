@@ -2,9 +2,7 @@
 name = "bento-tools"
 version = "2.1.3"
 description = "A toolkit for subcellular analysis of spatial transcriptomics data"
-authors = [
-    { name = "ckmah", email = "clarence.k.mah@gmail.com" }
-]
+authors = [{ name = "ckmah", email = "clarence.k.mah@gmail.com" }]
 dependencies = [
     "adjusttext>=1.1.1",
     "astropy>=6.0.1",
@@ -31,7 +29,7 @@ dependencies = [
 ]
 license = "BSD-2-Clause"
 readme = "README.md"
-requires-python = ">= 3.9"
+requires-python = ">= 3.10"
 
 [project.optional-dependencies]
 docs = [
@@ -42,14 +40,8 @@ docs = [
     "sphinx-autodoc-typehints>=2.0.1",
     "sphinx-autobuild<=2024.2.4",
 ]
-extras = [
-    "torch>=2.2.2",
-    "spatialdata-plot>=0.2.4",
-]
-all = [
-    "bento-tools[docs]",
-    "bento-tools[extras]",
-]
+extras = ["torch>=2.2.2", "spatialdata-plot>=0.2.4"]
+all = ["bento-tools[docs]", "bento-tools[extras]"]
 
 [build-system]
 requires = ["hatchling"]

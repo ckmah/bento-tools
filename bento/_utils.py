@@ -4,7 +4,10 @@ from typing import List, Optional, Union
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-from dask import dataframe as dd
+import dask
+
+dask.config.set({"dataframe.query-planning": False})
+import dask.dataframe as dd
 from spatialdata import SpatialData
 from spatialdata.models import PointsModel, ShapesModel, TableModel
 
@@ -34,12 +37,14 @@ def filter_by_gene(
     -------
     sdata : SpatialData
         .points[points_key] is updated to remove genes with low expression.
-        .table is updated to remove genes with low expression.
+        .tables["table"] is updated to remove genes with low expression.
     """
-    gene_filter = (sdata.table.X >= min_count).sum(axis=0) > 0
-    filtered_table = sdata.table[:, gene_filter]
+    gene_filter = (sdata.tables["table"].X >= min_count).sum(axis=0) > 0
+    filtered_table = sdata.tables["table"][:, gene_filter]
 
-    filtered_genes = list(sdata.table.var_names.difference(filtered_table.var_names))
+    filtered_genes = list(
+        sdata.tables["table"].var_names.difference(filtered_table.var_names)
+    )
     points = get_points(sdata, points_key=points_key, astype="pandas", sync=False)
     points = points[~points[feature_key].isin(filtered_genes)]
     points[feature_key] = points[feature_key].cat.remove_unused_categories()
@@ -52,10 +57,10 @@ def filter_by_gene(
     sdata.points[points_key] = points
 
     try:
-        del sdata.table
+        del sdata.tables["table"]
     except KeyError:
         pass
-    sdata.table = TableModel.parse(filtered_table)
+    sdata.tables["table"] = TableModel.parse(filtered_table)
 
     return sdata
 
@@ -126,7 +131,7 @@ def get_shape(sdata: SpatialData, shape_key: str, sync: bool = True) -> gpd.GeoS
     GeoSeries
         GeoSeries of Polygon objects
     """
-    instance_key = sdata.table.uns["spatialdata_attrs"]["instance_key"]
+    instance_key = sdata.tables["table"].uns["spatialdata_attrs"]["instance_key"]
 
     # Make sure shape exists in sdata.shapes
     if shape_key not in sdata.shapes.keys():

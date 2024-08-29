@@ -23,12 +23,12 @@ def test_flux(flux_data):
     # Check that cell_boundaries_raster is in flux_data.points
     assert "cell_boundaries_raster" in flux_data.points
 
-    # Check that flux_genes is in flux_data.table.uns
-    assert "flux_genes" in flux_data.table.uns
-    genes = flux_data.table.uns["flux_genes"]
+    # Check that flux_genes is in flux_data.tables["table"].uns
+    assert "flux_genes" in flux_data.tables["table"].uns
+    genes = flux_data.tables["table"].uns["flux_genes"]
 
-    # Check that flux_variance_ratio is in flux_data.table.uns
-    assert "flux_variance_ratio" in flux_data.table.uns
+    # Check that flux_variance_ratio is in flux_data.tables["table"].uns
+    assert "flux_variance_ratio" in flux_data.tables["table"].uns
 
     # Check columns are added in cell_boundaries_raster
     assert all(
@@ -68,17 +68,17 @@ def test_fe_fazal2019(flux_data):
     # Check that cell_boundaries_raster is in flux_data.points
     assert "cell_boundaries_raster" in flux_data.points
 
-    # Check that fe_stats is in flux_data.table.uns
-    assert "fe_stats" in flux_data.table.uns
+    # Check that fe_stats is in flux_data.tables["table"].uns
+    assert "fe_stats" in flux_data.tables["table"].uns
 
-    # Check that fe_ngenes is in flux_data.table.uns
-    assert "fe_ngenes" in flux_data.table.uns
+    # Check that fe_ngenes is in flux_data.tables["table"].uns
+    assert "fe_ngenes" in flux_data.tables["table"].uns
 
     # Check columns are in cell_boundaries_raster, fe_stats, abd fe_ngenes
     for feature in conftest.FAZAL2019_FEATURES:
         assert f"flux_{feature}" in flux_data.points["cell_boundaries_raster"]
-        assert feature in flux_data.table.uns["fe_stats"]
-        assert feature in flux_data.table.uns["fe_ngenes"]
+        assert feature in flux_data.tables["table"].uns["fe_stats"]
+        assert feature in flux_data.tables["table"].uns["fe_ngenes"]
 
 
 def test_fe_xia2019(flux_data):
@@ -87,17 +87,17 @@ def test_fe_xia2019(flux_data):
     # Check that cell_boundaries_raster is in flux_data.points
     assert "cell_boundaries_raster" in flux_data.points
 
-    # Check that fe_stats is in flux_data.table.uns
-    assert "fe_stats" in flux_data.table.uns
+    # Check that fe_stats is in flux_data.tables["table"].uns
+    assert "fe_stats" in flux_data.tables["table"].uns
 
-    # Check that fe_ngenes is in flux_data.table.uns
-    assert "fe_ngenes" in flux_data.table.uns
+    # Check that fe_ngenes is in flux_data.tables["table"].uns
+    assert "fe_ngenes" in flux_data.tables["table"].uns
 
     # Check columns are in cell_boundaries_raster, fe_stats, abd fe_ngenes
     for feature in conftest.XIA2019_FEATURES:
         assert f"flux_{feature}" in flux_data.points["cell_boundaries_raster"]
-        assert feature in flux_data.table.uns["fe_stats"]
-        assert feature in flux_data.table.uns["fe_ngenes"]
+        assert feature in flux_data.tables["table"].uns["fe_stats"]
+        assert feature in flux_data.tables["table"].uns["fe_ngenes"]
 
 
 # def test_fluxmap_plot(flux_data):

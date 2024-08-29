@@ -15,8 +15,9 @@ from .._utils import get_points
 from ._utils import savefig
 from ._multidimensional import _radviz
 
+
 @savefig
-def lp_dist(sdata, show_counts="", show_percentages='{:.1%}', scale=1, fname=None):
+def lp_dist(sdata, show_counts="", show_percentages="{:.1%}", scale=1, fname=None):
     """Plot pattern combination frequencies as an UpSet plot.
 
     Parameters
@@ -32,7 +33,7 @@ def lp_dist(sdata, show_counts="", show_percentages='{:.1%}', scale=1, fname=Non
     fname : str, optional
         Save the figure to specified filename, by default None
     """
-    sample_labels = sdata.table.uns["lp"]
+    sample_labels = sdata.tables["table"].uns["lp"]
     sample_labels = sample_labels == 1
 
     # Sort by degree, then pattern name
@@ -60,12 +61,13 @@ def lp_dist(sdata, show_counts="", show_percentages='{:.1%}', scale=1, fname=Non
     upset.plot()
     plt.suptitle(f"Localization Patterns\n{sample_labels.shape[0]} samples")
 
+
 @savefig
 def lp_genes(
     sdata: SpatialData,
     groupby: str = "feature_name",
-    points_key = "transcripts",
-    instance_key = "cell_boundaries",
+    points_key="transcripts",
+    instance_key="cell_boundaries",
     annotate: Union[int, List[str], None] = None,
     sizes: Tuple[int] = (2, 100),
     size_norm: Tuple[int] = (0, 100),
@@ -101,17 +103,19 @@ def lp_genes(
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
 
-    n_cells = sdata.table.n_obs
-    gene_frac = sdata.table.uns["lp_stats"][PATTERN_NAMES] / n_cells
+    n_cells = sdata.tables["table"].n_obs
+    gene_frac = sdata.tables["table"].uns["lp_stats"][PATTERN_NAMES] / n_cells
     genes = gene_frac.index
-    gene_expression_array = sdata.table[:,genes].X.toarray()
+    gene_expression_array = sdata.tables["table"][:, genes].X.toarray()
     gene_logcount = gene_expression_array.mean(axis=0, where=gene_expression_array > 0)
     gene_logcount = np.log2(gene_logcount + 1)
     gene_frac["logcounts"] = gene_logcount
-    
+
     cell_fraction = (
         100
-        * get_points(sdata, points_key, astype="pandas", sync=True).groupby(groupby, observed=True)[instance_key].nunique()
+        * get_points(sdata, points_key, astype="pandas", sync=True)
+        .groupby(groupby, observed=True)[instance_key]
+        .nunique()
         / n_cells
     )
     gene_frac["cell_fraction"] = cell_fraction
@@ -119,6 +123,7 @@ def lp_genes(
     scatter_kws = dict(sizes=sizes, size_norm=size_norm)
     scatter_kws.update(kwargs)
     _radviz(gene_frac, annotate=annotate, ax=ax, **scatter_kws)
+
 
 @savefig
 def lp_diff_discrete(sdata: SpatialData, phenotype: str, fname: str = None):
@@ -134,7 +139,7 @@ def lp_diff_discrete(sdata: SpatialData, phenotype: str, fname: str = None):
     fname : str, optional
         Save the figure to specified filename, by default None
     """
-    diff_stats = sdata.table.uns[f"diff_{phenotype}"]
+    diff_stats = sdata.tables["table"].uns[f"diff_{phenotype}"]
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
     g = sns.relplot(
