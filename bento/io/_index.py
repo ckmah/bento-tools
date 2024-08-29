@@ -1,5 +1,6 @@
 from typing import List
 
+import pandas as pd
 import geopandas as gpd
 from spatialdata._core.spatialdata import SpatialData
 
@@ -44,17 +45,22 @@ def _sjoin_points(
     points = get_points(sdata, points_key, astype="geopandas", sync=False)
 
     # Index points to shapes
+    indexed_points = {}
     for shape_key, shape in query_shapes.items():
         shape = query_shapes[shape_key]
-        shape.index.name = None
+        shape.index.name = None  # Forces sjoin to name index "index_right"
         shape.index = shape.index.astype(str)
 
-        points = points.sjoin(shape, how="left", predicate="intersects")
-        points = points[~points.index.duplicated(keep="last")]
-        points["index_right"].fillna("", inplace=True)
-        points.rename(columns={"index_right": shape_key}, inplace=True)
+        indexed_points[shape_key] = (
+            points.sjoin(shape, how="left", predicate="intersects")["index_right"]
+            .fillna("")
+            .values.flatten()
+        )
 
-        set_points_metadata(sdata, points_key, points[shape_key], columns=shape_key)
+    index_points = pd.DataFrame(indexed_points)
+    set_points_metadata(
+        sdata, points_key, index_points, columns=list(indexed_points.keys())
+    )
 
     return sdata
 

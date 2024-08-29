@@ -225,7 +225,7 @@ def set_points_metadata(
     metadata: Union[List, pd.Series, pd.DataFrame, np.ndarray],
     columns: Union[List[str], str],
 ) -> None:
-    """Write metadata in SpatialData points element as column(s). Aligns metadata index to shape index if present.
+    """Write metadata in SpatialData points element as column(s).
 
     Parameters
     ----------

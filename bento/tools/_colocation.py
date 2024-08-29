@@ -1,17 +1,19 @@
 from typing import List
 
+import dask
 import emoji
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import sparse
-from spatialdata._core.spatialdata import SpatialData
 from kneed import KneeLocator
-from tqdm.auto import tqdm
+from spatialdata._core.spatialdata import SpatialData
+from tqdm.dask import TqdmCallback
 
 from .._utils import get_points
-from ._neighborhoods import _count_neighbors
 from ._decomposition import decompose
+from ._neighborhoods import _count_neighbors
+import dask.bag as db
 
 
 def colocation(
@@ -120,6 +122,7 @@ def coloc_quotient(
     radius: int = 20,
     min_points: int = 10,
     min_cells: int = 0,
+    num_workers=1,
 ):
     """Calculate pairwise gene colocalization quotient in each cell.
 
@@ -141,6 +144,8 @@ def coloc_quotient(
         Minimum number of points for sample to be considered for colocalization, default 10
     min_cells : int
         Minimum number of cells for gene to be considered for colocalization, default 0
+    num_workers : int
+        Number of workers to use for parallel processing
 
     Returns
     -------
@@ -160,25 +165,31 @@ def coloc_quotient(
         # Keep genes expressed in at least min_cells cells
         gene_counts = points.groupby(feature_key).size()
         valid_genes = gene_counts[gene_counts >= min_cells].index
+
+        # Filter points by valid genes
         points = points[points[feature_key].isin(valid_genes)]
 
-        # Partition so {chunksize} cells per partition
-        cells, group_loc = np.unique(
-            points[instance_key].astype(str),
-            return_index=True,
-        )
+        # Group points by cell
+        points_grouped = points.groupby(instance_key)
+        cells = list(points_grouped.groups.keys())
+        cells.sort()
 
-        end_loc = np.append(group_loc[1:], points.shape[0])
+        args = [
+            (
+                points_grouped.get_group(cell),
+                radius,
+                min_points,
+                feature_key,
+                instance_key,
+            )
+            for cell in cells
+        ]
 
-        cell_clqs = []
-        for cell, start, end in tqdm(
-            zip(cells, group_loc, end_loc), desc=shape, total=len(cells)
-        ):
-            cell_points = points.iloc[start:end]
-            cell_clq = _cell_clq(cell_points, radius, min_points, feature_key)
-            cell_clq[instance_key] = cell
+        bags = db.from_sequence(args).map(lambda x: _cell_clq(*x))
 
-            cell_clqs.append(cell_clq)
+        # Use dask.compute to execute the operations in parallel
+        with TqdmCallback(desc="Batches"), dask.config.set(num_workers=num_workers):
+            cell_clqs = bags.compute()
 
         cell_clqs = pd.concat(cell_clqs)
         cell_clqs[[instance_key, feature_key, "neighbor"]] = (
@@ -186,15 +197,22 @@ def coloc_quotient(
             .astype(str)
             .astype("category")
         )
-        cell_clqs["log_clq"] = cell_clqs["clq"].replace(0, np.nan).apply(np.log2)
 
+        # Compute log2 of clq and confidence intervals
+        cell_clqs["log_clq"] = cell_clqs["clq"].replace(0, np.nan).apply(np.log2)
+        cell_clqs["log_ci_lower"] = (
+            cell_clqs["ci_lower"].replace(0, np.nan).apply(np.log2)
+        )
+        cell_clqs["log_ci_upper"] = (
+            cell_clqs["ci_upper"].replace(0, np.nan).apply(np.log2)
+        )
         # Save to uns['clq'] as adjacency list
         all_clq[shape] = cell_clqs
 
     sdata.table.uns["clq"] = all_clq
 
 
-def _cell_clq(cell_points, radius, min_points, feature_key):
+def _cell_clq(cell_points, radius, min_points, feature_key, instance_key):
     # Count number of points for each gene
     gene_counts = cell_points[feature_key].value_counts()
 
@@ -217,15 +235,21 @@ def _cell_clq(cell_points, radius, min_points, feature_key):
         radius=radius,
         agg="binary",
     ).toarray()
+
+    point_neighbors = pd.DataFrame(
+        point_neighbors, columns=valid_points[feature_key].cat.categories
+    )
+
+    # Get gene-level neighbor counts for each gene
     neighbor_counts = (
-        pd.DataFrame(point_neighbors, columns=valid_points[feature_key].cat.categories)
-        .groupby(valid_points[feature_key].values)
+        point_neighbors.groupby(valid_points[feature_key].values)
         .sum()
         .reset_index()
         .melt(id_vars="index")
         .query("value > 0")
     )
     neighbor_counts.columns = [feature_key, "neighbor", "count"]
+    neighbor_counts[instance_key] = cell_points[instance_key].iloc[0]
     clq_df = _clq_statistic(neighbor_counts, gene_counts, feature_key)
 
     return clq_df
@@ -243,7 +267,16 @@ def _clq_statistic(neighbor_counts, counts, feature_key):
         Series of raw gene counts.
     """
     clq_df = neighbor_counts.copy()
-    clq_df["clq"] = (clq_df["count"] / counts.loc[clq_df[feature_key]].values) / (
-        counts.loc[clq_df["neighbor"]].values / counts.sum()
-    )
+    a = clq_df["count"]
+    b = counts.loc[clq_df[feature_key]].values
+    c = counts.loc[clq_df["neighbor"]].values
+    d = counts.sum()
+
+    clq_df["clq"] = (a / b) / (c / d)
+
+    # Calculate two-tailed 95% confidence interval
+    ci_lower = clq_df["clq"] - 1.96 * np.sqrt((1 / a) + (1 / b) + (1 / c) + (1 / d))
+    ci_upper = clq_df["clq"] + 1.96 * np.sqrt((1 / a) + (1 / b) + (1 / c) + (1 / d))
+    clq_df["ci_lower"] = ci_lower
+    clq_df["ci_upper"] = ci_upper
     return clq_df.drop("count", axis=1)
