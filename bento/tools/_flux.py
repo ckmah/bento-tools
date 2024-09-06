@@ -404,7 +404,7 @@ def fluxmap(
         )
 
     # Perform SOM clustering over n_clusters range and pick best number of clusters using elbow heuristic
-    pbar = tqdm(total=4)
+    pbar = tqdm(total=3)
     pbar.set_description(emoji.emojize("Optimizing # of clusters"))
     som_models = {}
     quantization_errors = []
