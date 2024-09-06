@@ -374,7 +374,7 @@ def fluxmap(
             "Flux embedding has not been computed. Run `bento.tl.flux()` first."
         )
 
-    flux_embed = raster_points.filter(regex=r"^flux_(?!embed|counts|color)").copy()
+    flux_embed = raster_points.filter(regex=r"^flux_embed").copy()
 
     # Keep only points with minimum neighborhood count
     flux_counts = raster_points["flux_counts"]
@@ -406,74 +406,74 @@ def fluxmap(
     # Perform SOM clustering over n_clusters range and pick best number of clusters using elbow heuristic
     pbar = tqdm(total=4)
     pbar.set_description(emoji.emojize("Optimizing # of clusters"))
-    # som_models = {}
-    # quantization_errors = []
-    # for k in tqdm(n_clusters, leave=False):
-    #     som = MiniSom(1, k, flux_train.shape[1], random_seed=random_state)
-    #     som.random_weights_init(flux_train)
-    #     som.train(flux_train, num_iterations, random_order=False, verbose=False)
-    #     som_models[k] = som
-    #     quantization_errors.append(som.quantization_error(flux_embed))
+    som_models = {}
+    quantization_errors = []
+    for k in tqdm(n_clusters, leave=False):
+        som = MiniSom(1, k, flux_train.shape[1], random_seed=random_state)
+        som.random_weights_init(flux_train)
+        som.train(flux_train, num_iterations, random_order=False, verbose=False)
+        som_models[k] = som
+        quantization_errors.append(som.quantization_error(flux_embed))
 
-    # # Use kneed to find elbow
-    # if len(n_clusters) > 1:
-    #     kl = KneeLocator(
-    #         n_clusters, quantization_errors, curve="convex", direction="decreasing"
-    #     )
-    #     best_k = kl.elbow
+    # Use kneed to find elbow
+    if len(n_clusters) > 1:
+        kl = KneeLocator(
+            n_clusters, quantization_errors, curve="convex", direction="decreasing"
+        )
+        best_k = kl.elbow
 
-    #     if plot_error:
-    #         kl.plot_knee()
-    #         plt.show()
+        if plot_error:
+            kl.plot_knee()
+            plt.show()
 
-    #     if best_k is None:
-    #         print("No elbow found. Rerun with a fixed k or a different range.")
-    #         return
+        if best_k is None:
+            print("No elbow found. Rerun with a fixed k or a different range.")
+            return
 
-    # else:
-    #     best_k = n_clusters[0]
-    from anndata import AnnData
-    import scanpy as sc
+    else:
+        best_k = n_clusters[0]
+    # from anndata import AnnData
+    # import scanpy as sc
 
     # Cluster flux_train using scanpy leiden clustering
-    flux_adata = AnnData(flux_embed)
-    sc.pp.pca(flux_adata)
-    sc.pp.neighbors(flux_adata)
-    sc.tl.leiden(flux_adata, resolution=0.5)
-    sc.tl.umap(flux_adata)
-    sc.pl.umap(flux_adata, color="leiden")
+    # flux_adata = AnnData(flux_embed)
+    # sc.pp.pca(flux_adata, n_comps=min(flux_embed.shape[1] - 1, 50))
+    # sc.pp.neighbors(flux_adata)
+    # sc.tl.leiden(flux_adata, resolution=0.5)
+    # sc.tl.umap(flux_adata)
+    # sc.pl.umap(flux_adata, color="leiden")
 
-    pbar.update()
+    # pbar.update()
 
-    pbar.set_description(f"Assigning to {flux_adata.obs['leiden'].nunique()} clusters")
-    fluxmap_values = pd.Series(
-        flux_adata.obs["leiden"].astype(int).values, index=embed_index
-    ).reindex(rpoints_index, fill_value=0)
-    raster_points["fluxmap"] = fluxmap_values
-    set_points_metadata(
-        sdata,
-        points_key=f"{instance_key}_raster",
-        metadata=list(fluxmap_values),
-        columns="fluxmap",
-    )
-
-    # Use best k to assign each sample to a cluster
-    # pbar.set_description(f"Assigning to {best_k} clusters")
-    # som = som_models[best_k]
-    # winner_coordinates = np.array([som.winner(x) for x in flux_embed]).T
-
-    # # Indices start at 0, so add 1; we will treat 0 as background
-    # qnt_index = np.ravel_multi_index(winner_coordinates, (1, best_k)) + 1
-    # qnt_index = pd.Series(qnt_index, index=embed_index).reindex(
-    #     rpoints_index, fill_value=0
-    # )
-    # raster_points["fluxmap"] = qnt_index
+    # pbar.set_description(f"Assigning to {flux_adata.obs['leiden'].nunique()} clusters")
+    # fluxmap_values = pd.Series(
+    #     flux_adata.obs["leiden"].astype(int).values, index=embed_index
+    # ).reindex(rpoints_index, fill_value=0)
+    # raster_points["fluxmap"] = fluxmap_values
     # set_points_metadata(
     #     sdata,
     #     points_key=f"{instance_key}_raster",
-    #     metadata=list(qnt_index),
+    #     metadata=list(fluxmap_values),
     #     columns="fluxmap",
     # )
+
+    # Use best k to assign each sample to a cluster
+    pbar.set_description(f"Assigning to {best_k} clusters")
+    som = som_models[best_k]
+    winner_coordinates = np.array([som.winner(x) for x in flux_embed]).T
+
+    # Indices start at 0, so add 1; we will treat 0 as background
+    qnt_index = np.ravel_multi_index(winner_coordinates, (1, best_k)) + 1
+    qnt_index = pd.Series(qnt_index, index=embed_index).reindex(
+        rpoints_index, fill_value=0
+    )
+    raster_points["fluxmap"] = qnt_index
+    set_points_metadata(
+        sdata,
+        points_key=f"{instance_key}_raster",
+        metadata=list(qnt_index),
+        columns="fluxmap",
+    )
     pbar.update()
 
     # Vectorize polygons in each cell
@@ -567,5 +567,3 @@ def fluxmap(
     pbar.update()
     pbar.set_description("Done")
     pbar.close()
-
-    return flux_adata
