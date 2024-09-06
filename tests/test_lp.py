@@ -22,7 +22,7 @@ def lp_data():
         nucleus_key="nucleus_boundaries",
         groupby="feature_name",
     )
-    bt.tl.lp_stats(sdata=data, instance_key="cell_boundaries")
+    bt.tl.lp_stats(sdata=data)
 
     return data
 
@@ -35,7 +35,7 @@ def lp_small_data(small_data):
         nucleus_key="nucleus_boundaries",
         groupby="feature_name",
     )
-    bt.tl.lp_stats(sdata=small_data, instance_key="cell_boundaries")
+    bt.tl.lp_stats(sdata=small_data)
 
     return small_data
 
