@@ -144,6 +144,8 @@ def lp(
     sdata.tables["table"].uns["lp"] = indicator_df.reset_index()
     sdata.tables["table"].uns["lpp"] = pattern_prob.reset_index()
 
+    lp_stats(sdata)
+
 
 def lp_stats(sdata: SpatialData):
     """Computes frequencies of localization patterns across cells and genes.
@@ -160,6 +162,8 @@ def lp_stats(sdata: SpatialData):
     sdata : SpatialData
         .tables["table"].uns['lp_stats']: DataFrame of localization pattern frequencies.
     """
+    instance_key = get_instance_key(sdata)
+    feature_key = get_feature_key(sdata)
     lp = sdata.table.uns["lp"]
 
     cols = lp.columns
@@ -170,6 +174,21 @@ def lp_stats(sdata: SpatialData):
         lambda df: df[PATTERN_NAMES].sum().astype(int)
     )
     sdata.table.uns["lp_stats"] = g_pattern_counts
+
+    lpp = sdata["table"].uns["lpp"]
+    top_pattern = lpp[[instance_key, feature_key]]
+    top_pattern["pattern"] = (
+        lpp[PATTERN_NAMES].mask(lp[PATTERN_NAMES] == 0).idxmax(axis=1)
+    )
+
+    points = get_points(sdata)
+    top_pattern_long = points.set_index(["cell_boundaries", "feature_name"]).merge(
+        top_pattern,
+        on=["cell_boundaries", "feature_name"],
+        how="left",
+        suffixes=("", "_y"),
+    )["pattern"]
+    set_points_metadata(sdata, "transcripts", top_pattern_long, "pattern")
 
 
 def _lp_logfc(sdata, instance_key, phenotype=None):
@@ -371,7 +390,7 @@ def lp_diff_discrete(
             UserWarning,
         )
 
-    lp_stats(sdata, instance_key=instance_key)
+    lp_stats(sdata)
     stats = sdata.tables["table"].uns["lp_stats"]
 
     # Retrieve cell phenotype

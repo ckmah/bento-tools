@@ -99,7 +99,7 @@ def lp_genes(
     **kwargs
         Options to pass to matplotlib plotting method.
     """
-    lp_stats(sdata, instance_key=instance_key)
+    lp_stats(sdata)
 
     palette = dict(zip(PATTERN_NAMES, PATTERN_COLORS))
 
