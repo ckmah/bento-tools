@@ -52,7 +52,8 @@ def _sjoin_points(
         shape.index = shape.index.astype(str)
 
         indexed_points[shape_key] = (
-            points.sjoin(shape, how="left", predicate="intersects")["index_right"]
+            points.sjoin(shape, how="left", predicate="intersects")
+            .drop_duplicates(subset="index")["index_right"]
             .fillna("")
             .values.flatten()
         )
