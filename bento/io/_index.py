@@ -121,6 +121,7 @@ def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
             )
             .rename(columns={"index_right": shape_key})
         )
+        parent_shape[shape_key] = parent_shape[shape_key].fillna("")
 
         # Save shape index as column in instance_key shape
         set_shape_metadata(
