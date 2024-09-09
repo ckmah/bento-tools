@@ -1,5 +1,6 @@
 from typing import List
 
+import pandas as pd
 import geopandas as gpd
 from spatialdata._core.spatialdata import SpatialData
 
@@ -42,19 +43,27 @@ def _sjoin_points(
 
     # Grab points as GeoDataFrame
     points = get_points(sdata, points_key, astype="geopandas", sync=False)
+    points.index.name = "pt_index"
 
     # Index points to shapes
+    indexed_points = {}
     for shape_key, shape in query_shapes.items():
         shape = query_shapes[shape_key]
-        shape.index.name = None
+        shape.index.name = None  # Forces sjoin to name index "index_right"
         shape.index = shape.index.astype(str)
 
-        points = points.sjoin(shape, how="left", predicate="intersects")
-        points = points[~points.index.duplicated(keep="last")]
-        points["index_right"].fillna("", inplace=True)
-        points.rename(columns={"index_right": shape_key}, inplace=True)
+        indexed_points[shape_key] = (
+            points.sjoin(shape, how="left", predicate="intersects")
+            .reset_index()
+            .drop_duplicates(subset="pt_index")["index_right"]
+            .fillna("")
+            .values.flatten()
+        )
 
-        set_points_metadata(sdata, points_key, points[shape_key], columns=shape_key)
+    index_points = pd.DataFrame(indexed_points)
+    set_points_metadata(
+        sdata, points_key, index_points, columns=list(indexed_points.keys())
+    )
 
     return sdata
 
@@ -97,23 +106,36 @@ def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
         # Hack for polygons that are 99% contained in parent shape or have shared boundaries
         child_shape = gpd.GeoDataFrame(geometry=child_shape.buffer(-10e-6))
 
-        parent_shape = parent_shape.sjoin(child_shape, how="left", predicate="covers")
-        parent_shape = parent_shape[~parent_shape.index.duplicated(keep="last")]
-        parent_shape.loc[parent_shape["index_right"].isna(), "index_right"] = ""
-        parent_shape = parent_shape.astype({"index_right": "category"})
+        # Map child shape index to parent shape and process the result
+        parent_shape = (
+            parent_shape.sjoin(child_shape, how="left", predicate="covers")
+            .reset_index()
+            .drop_duplicates(subset="index", keep="last")
+            .set_index("index")
+            .assign(
+                index_right=lambda df: df.loc[
+                    ~df["index_right"].duplicated(keep="first"), "index_right"
+                ]
+                .fillna("")
+                .astype("category")
+            )
+            .rename(columns={"index_right": shape_key})
+        )
+        parent_shape[shape_key] = parent_shape[shape_key].fillna("")
 
-        # save shape index as column in instance_key shape
-        parent_shape.rename(columns={"index_right": shape_key}, inplace=True)
+        # Save shape index as column in instance_key shape
         set_shape_metadata(
             sdata, shape_key=instance_key, metadata=parent_shape[shape_key]
         )
 
         # Add instance_key shape index to shape
-        parent_shape.index.name = "parent_index"
-        instance_index = parent_shape.reset_index().set_index(shape_key)["parent_index"]
-        instance_index.name = instance_key
-        instance_index.index.name = None
-        instance_index = instance_index[instance_index.index != ""]
+        instance_index = (
+            parent_shape.drop_duplicates(subset=shape_key)
+            .reset_index()
+            .set_index(shape_key)["index"]
+            .rename(instance_key)
+            .loc[lambda s: s.index != ""]
+        )
 
         set_shape_metadata(sdata, shape_key=shape_key, metadata=instance_index)
 

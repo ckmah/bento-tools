@@ -146,3 +146,5 @@ requirements.lock
 requirements-dev.lock
 profile.html
 profile.json
+
+notebooks/

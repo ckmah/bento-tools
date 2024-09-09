@@ -230,7 +230,7 @@ def set_points_metadata(
     metadata: Union[List, pd.Series, pd.DataFrame, np.ndarray],
     columns: Union[List[str], str],
 ) -> None:
-    """Write metadata in SpatialData points element as column(s). Aligns metadata index to shape index if present.
+    """Write metadata in SpatialData points element as column(s).
 
     Parameters
     ----------
@@ -314,9 +314,10 @@ def set_shape_metadata(
         if "" not in metadata[col].cat.categories:
             metadata[col] = metadata[col].cat.add_categories([""]).fillna("")
 
-    sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(
-        shape_index
-    ).fillna("")
+    sdata.shapes[shape_key] = sdata.shapes[shape_key].assign(
+        **metadata.reindex(shape_index).to_dict()
+    )
+    # sdata.shapes[shape_key].loc[:, metadata.columns] = metadata.reindex(shape_index)
 
 
 def _sync_points(sdata, points_key):

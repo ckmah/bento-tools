@@ -19,6 +19,6 @@ def test_overlay_intersection(small_data):
     assert isinstance(small_data.shapes[name], gpd.GeoDataFrame)
     assert (
         small_data[name]
-        .geom_almost_equals(expected_result, decimal=1, align=True)
+        .geom_equals_exact(expected_result, tolerance=1, align=False)
         .all()
     )

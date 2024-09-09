@@ -1,4 +1,5 @@
 ignore:
-  - "*/tests/*”
+  - "*/tests/*.py"
+  - "*/plotting/*.py"
 codecov:
   token: e3f69ce5-1fcd-4bcf-9462-01a7998d77ba

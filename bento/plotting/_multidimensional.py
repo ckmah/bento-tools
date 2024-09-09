@@ -97,10 +97,10 @@ def shape_stats(
     nucleus_gdf = pd.DataFrame(
         sdata[nucleus_key].melt(value_vars=[c for c in cols if f"{nucleus_key}_" in c])
     )
-    stats_long = cell_gdf.append(nucleus_gdf, ignore_index=True)
-    stats_long["quantile"] = stats_long.groupby("variable")["value"].transform(
-        lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=100).flatten()
-    )
+    stats_long = pd.concat([cell_gdf, nucleus_gdf], ignore_index=True)
+    # stats_long["quantile"] = stats_long.groupby("variable")["value"].transform(
+    #     lambda x: quantile_transform(x.values.reshape(-1, 1), n_quantiles=100).flatten()
+    # )
 
     stats_long["shape"] = stats_long["variable"].apply(lambda x: x.split("_")[0])
     stats_long["var"] = stats_long["variable"].apply(

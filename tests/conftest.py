@@ -15,9 +15,9 @@ CELL_TO_NUCLEUS_MAP = {
 }
 NUCLEUS_TO_CELL_MAP = {"n0": "c4", "n4": "c1", "n6": "c2"}
 
-FLUX_RES = 0.1
-FLUX_RADIUS = 0.5
-FLUXMAP_MIN_COUNT = 5
+FLUX_RES = 0.5
+FLUX_RADIUS = 20
+FLUXMAP_MIN_COUNT = 1
 FLUXMAP_TRAIN_SIZE = 1
 FLUXMAP_N_CLUSTERS = 3
 FAZAL2019_FEATURES = [
@@ -102,7 +102,7 @@ LP_DIFF_DISCRETE_COLUMNS = [
     "padj",
     "-log10p",
     "-log10padj",
-    "log2fc",  
+    "log2fc",
 ]
 
 LP_DIFF_CONTINUOUS_COLUMNS = [
@@ -110,6 +110,7 @@ LP_DIFF_CONTINUOUS_COLUMNS = [
     "pattern",
     "pearson_correlation",
 ]
+
 
 @pytest.fixture(scope="session")
 def small_data():

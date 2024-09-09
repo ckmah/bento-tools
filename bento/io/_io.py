@@ -49,7 +49,7 @@ def prep(
     for shape_key, shape_gdf in sdata.shapes.items():
         if shape_key == instance_key:
             shape_gdf[shape_key] = shape_gdf["geometry"]
-        shape_gdf.index = make_index_unique(shape_gdf.index)
+        shape_gdf.index = make_index_unique(shape_gdf.index.astype(str))
 
     # sindex points and sjoin shapes if they have not been indexed or joined
     point_sjoin = []
@@ -67,6 +67,8 @@ def prep(
             shape_sjoin.append(shape_key)
 
     # Set instance key for points
+    if "spatialdata_attrs" not in sdata.points[points_key].attrs:
+        sdata.points[points_key].attrs["spatialdata_attrs"] = {}
     sdata.points[points_key].attrs["spatialdata_attrs"]["instance_key"] = instance_key
 
     pbar = tqdm(total=3)

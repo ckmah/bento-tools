@@ -51,7 +51,7 @@ def flux(
     """
     Compute RNAflux embeddings of each pixel as local composition normalized by cell composition.
     For k-nearest neighborhoods or "knn", method, specify n_neighbors. For radius neighborhoods, specify radius.
-    The default method is "radius" with radius = 1/4 of cell radius. RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
+    The default method is "radius" with radius = 1/3 of cell radius. RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
 
     Parameters
     ----------
@@ -374,7 +374,7 @@ def fluxmap(
             "Flux embedding has not been computed. Run `bento.tl.flux()` first."
         )
 
-    flux_embed = raster_points.filter(like="flux_embed_")
+    flux_embed = raster_points.filter(regex=r"^flux_embed").copy()
 
     # Keep only points with minimum neighborhood count
     flux_counts = raster_points["flux_counts"]
@@ -404,7 +404,7 @@ def fluxmap(
         )
 
     # Perform SOM clustering over n_clusters range and pick best number of clusters using elbow heuristic
-    pbar = tqdm(total=4)
+    pbar = tqdm(total=3)
     pbar.set_description(emoji.emojize("Optimizing # of clusters"))
     som_models = {}
     quantization_errors = []
@@ -432,7 +432,30 @@ def fluxmap(
 
     else:
         best_k = n_clusters[0]
-    pbar.update()
+    # from anndata import AnnData
+    # import scanpy as sc
+
+    # Cluster flux_train using scanpy leiden clustering
+    # flux_adata = AnnData(flux_embed)
+    # sc.pp.pca(flux_adata, n_comps=min(flux_embed.shape[1] - 1, 50))
+    # sc.pp.neighbors(flux_adata)
+    # sc.tl.leiden(flux_adata, resolution=0.5)
+    # sc.tl.umap(flux_adata)
+    # sc.pl.umap(flux_adata, color="leiden")
+
+    # pbar.update()
+
+    # pbar.set_description(f"Assigning to {flux_adata.obs['leiden'].nunique()} clusters")
+    # fluxmap_values = pd.Series(
+    #     flux_adata.obs["leiden"].astype(int).values, index=embed_index
+    # ).reindex(rpoints_index, fill_value=0)
+    # raster_points["fluxmap"] = fluxmap_values
+    # set_points_metadata(
+    #     sdata,
+    #     points_key=f"{instance_key}_raster",
+    #     metadata=list(fluxmap_values),
+    #     columns="fluxmap",
+    # )
 
     # Use best k to assign each sample to a cluster
     pbar.set_description(f"Assigning to {best_k} clusters")

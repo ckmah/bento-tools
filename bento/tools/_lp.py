@@ -14,7 +14,8 @@ from statsmodels.tools.sm_exceptions import PerfectSeparationError
 from tqdm.auto import tqdm
 from spatialdata._core.spatialdata import SpatialData
 
-from .._constants import PATTERN_NAMES
+from .._constants import PATTERN_NAMES, PATTERN_THRESHOLDS_CALIB
+from .._utils import get_instance_key, get_feature_key, get_points, set_points_metadata
 
 tqdm.pandas()
 
@@ -121,8 +122,7 @@ def lp(
     pattern_prob.loc[:, invalid_samples] = 0
 
     # Threshold probabilities to get indicator matrix
-    thresholds = [0.45300, 0.43400, 0.37900, 0.43700, 0.50500]
-    indicator_df = (pattern_prob >= thresholds).astype(np.uint8)
+    indicator_df = (pattern_prob >= PATTERN_THRESHOLDS_CALIB).astype(np.uint8)
 
     lp_df = indicator_df.reset_index()[PATTERN_NAMES]
 
@@ -144,8 +144,10 @@ def lp(
     sdata.tables["table"].uns["lp"] = indicator_df.reset_index()
     sdata.tables["table"].uns["lpp"] = pattern_prob.reset_index()
 
+    lp_stats(sdata)
 
-def lp_stats(sdata: SpatialData, instance_key: str = "cell_boundaries"):
+
+def lp_stats(sdata: SpatialData):
     """Computes frequencies of localization patterns across cells and genes.
 
     Parameters
@@ -160,7 +162,9 @@ def lp_stats(sdata: SpatialData, instance_key: str = "cell_boundaries"):
     sdata : SpatialData
         .tables["table"].uns['lp_stats']: DataFrame of localization pattern frequencies.
     """
-    lp = sdata.tables["table"].uns["lp"]
+    instance_key = get_instance_key(sdata)
+    feature_key = get_feature_key(sdata)
+    lp = sdata.table.uns["lp"]
 
     cols = lp.columns
     groupby = list(cols[~cols.isin(PATTERN_NAMES)])
@@ -169,7 +173,22 @@ def lp_stats(sdata: SpatialData, instance_key: str = "cell_boundaries"):
     g_pattern_counts = lp.groupby(groupby, observed=True).apply(
         lambda df: df[PATTERN_NAMES].sum().astype(int)
     )
-    sdata.tables["table"].uns["lp_stats"] = g_pattern_counts
+    sdata.table.uns["lp_stats"] = g_pattern_counts
+
+    lpp = sdata["table"].uns["lpp"]
+    top_pattern = lpp[[instance_key, feature_key]]
+    top_pattern["pattern"] = (
+        lpp[PATTERN_NAMES].mask(lp[PATTERN_NAMES] == 0).idxmax(axis=1)
+    )
+
+    points = get_points(sdata)
+    top_pattern_long = points.set_index(["cell_boundaries", "feature_name"]).merge(
+        top_pattern,
+        on=["cell_boundaries", "feature_name"],
+        how="left",
+        suffixes=("", "_y"),
+    )["pattern"]
+    set_points_metadata(sdata, "transcripts", top_pattern_long, "pattern")
 
 
 def _lp_logfc(sdata, instance_key, phenotype=None):
@@ -371,7 +390,7 @@ def lp_diff_discrete(
             UserWarning,
         )
 
-    lp_stats(sdata, instance_key=instance_key)
+    lp_stats(sdata)
     stats = sdata.tables["table"].uns["lp_stats"]
 
     # Retrieve cell phenotype
