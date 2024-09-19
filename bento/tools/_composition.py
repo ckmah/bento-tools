@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from typing import List
 from scipy.stats import wasserstein_distance
 from sklearn.metrics.pairwise import paired_distances
 from spatialdata._core.spatialdata import SpatialData
@@ -8,26 +9,26 @@ from .._utils import get_feature_key, get_instance_key, get_points
 
 
 def _get_compositions(
-    points: pd.DataFrame, shape_names: list, instance_key: str, feature_key: str
+    points: pd.DataFrame, shape_names: List[str], instance_key: str, feature_key: str
 ) -> pd.DataFrame:
     """Compute the mean composition of each gene across shapes.
 
     Parameters
     ----------
-    points : pandas.DataFrame
+    points : pd.DataFrame
         Points indexed to shape_names denoted by boolean columns.
-    shape_names : list of str
+    shape_names : List[str]
         Names of shapes to calculate compositions for.
     instance_key : str
-        Key for
+        Key for identifying unique instances (e.g., cells).
+    feature_key : str
+        Key for identifying features (e.g., genes).
 
     Returns
     -------
-    comp_data : DataFrame
-        For every gene return the composition of each shape, mean log(counts) and cell fraction.
-
+    pd.DataFrame
+        For every gene, returns the composition of each shape, mean log(counts) and cell fraction.
     """
-
     n_cells = points[instance_key].nunique()
     points_grouped = points.groupby([instance_key, feature_key], observed=True)
     counts = points_grouped.apply(lambda x: (x[shape_names] != "").sum())
@@ -58,20 +59,23 @@ def _get_compositions(
     return comp_stats
 
 
-def comp(sdata: SpatialData, points_key: str, shape_names: list):
+def comp(sdata: SpatialData, points_key: str, shape_names: List[str]) -> SpatialData:
     """Calculate the average gene composition for shapes across all cells.
 
     Parameters
     ----------
-    sdata : spatialdata.SpatialData
-        Spatial formatted SpatialData object.
-    shape_names : list of str
+    sdata : SpatialData
+        SpatialData object.
+    points_key : str
+        Key for points DataFrame in `sdata.points`.
+    shape_names : List[str]
         Names of shapes to calculate compositions for.
 
     Returns
     -------
-    sdata : spatialdata.SpatialData
-        Updates `sdata.tables["table"].uns` with average gene compositions for each shape.
+    SpatialData
+        Updated SpatialData object with average gene compositions for each shape
+        stored in `sdata.tables["table"].uns["comp_stats"]`.
     """
     points = get_points(sdata, points_key=points_key, astype="pandas")
 
@@ -87,21 +91,30 @@ def comp(sdata: SpatialData, points_key: str, shape_names: list):
 
 
 def comp_diff(
-    sdata: SpatialData, points_key: str, shape_names: list, groupby: str, ref_group: str
-):
-    """Calculate the average difference in gene composition for shapes across batches of cells. Uses the Wasserstein distance.
+    sdata: SpatialData, points_key: str, shape_names: List[str], groupby: str, ref_group: str
+) -> SpatialData:
+    """Calculate the average difference in gene composition for shapes across batches of cells.
+
+    Uses the Wasserstein distance to compare compositions.
 
     Parameters
     ----------
-    sdata : spatialdata.SpatialData
-        Spatial formatted SpatialData object.
-    shape_names : list of str
+    sdata : SpatialData
+        SpatialData object.
+    points_key : str
+        Key for points DataFrame in `sdata.points`.
+    shape_names : List[str]
         Names of shapes to calculate compositions for.
     groupby : str
-        Key in `sdata.points['transcripts]` to group cells by.
+        Key in `sdata.points[points_key]` to group cells by.
     ref_group : str
         Reference group to compare other groups to.
 
+    Returns
+    -------
+    SpatialData
+        Updated SpatialData object with composition statistics for each group
+        stored in `sdata.tables["table"].uns["{groupby}_comp_stats"]`.
     """
     points = get_points(sdata, points_key=points_key, astype="pandas")
 

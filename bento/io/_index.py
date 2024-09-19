@@ -16,21 +16,21 @@ def _sjoin_points(
     points_key: str,
     shape_keys: List[str],
 ):
-    """Index points to shapes and add as columns to `data.points[points_key]`. Only supports 2D points for now.
+    """Index points to shapes and add as columns to `sdata.points[points_key]`. Only supports 2D points for now.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object
+        SpatialData object
     points_key : str
         Key for points DataFrame in `sdata.points`
-    shape_keys : str, list
+    shape_keys : List[str]
         List of shape names to index points to
 
     Returns
     -------
-    sdata : SpatialData
-        .points[points_key]: Updated points DataFrame with string index for each shape
+    SpatialData
+        Updated SpatialData object with `sdata.points[points_key]` containing new columns for each shape index
     """
 
     if isinstance(shape_keys, str):
@@ -69,21 +69,21 @@ def _sjoin_points(
 
 
 def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
-    """Adds polygon indexes to sdata.shapes[instance_key][shape_key] for point feature analysis.
+    """Adds polygon indexes to sdata.shapes[instance_key] for point feature analysis.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatially formatted SpatialData
+        SpatialData object
     instance_key : str
         Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
-    shape_keys : str or list of str
+    shape_keys : List[str]
         Names of the shapes to add.
 
     Returns
     -------
-    sdata : SpatialData
-        .shapes[cell_shape_key][shape_key]
+    SpatialData
+        Updated SpatialData object with `sdata.shapes[instance_key]` containing new columns for each shape index
     """
 
     # Cast to list if not already

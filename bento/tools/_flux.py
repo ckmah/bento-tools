@@ -46,44 +46,50 @@ def flux(
     train_size: Optional[float] = 1,
     random_state: int = 11,
     recompute: bool = False,
-    num_workers=1,
-):
+    num_workers: int = 1,
+) -> SpatialData:
     """
     Compute RNAflux embeddings of each pixel as local composition normalized by cell composition.
-    For k-nearest neighborhoods or "knn", method, specify n_neighbors. For radius neighborhoods, specify radius.
-    The default method is "radius" with radius = 1/3 of cell radius. RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-    points_key : str
-        key for points element that holds transcript coordinates
-    instance_key : str
-        Key for cell_boundaries instances
-    feature_key : str
-        Key for gene instances
-    method: str
-        Method to use for local neighborhood. Either 'knn' or 'radius'.
-    n_neighbors : int
-        Number of neighbors to use for local neighborhood.
-    radius : float
-        Fraction of mean cell radius to use for local neighborhood.
-    res : float
+        SpatialData object.
+    points_key : str, default "transcripts"
+        Key for points element that holds transcript coordinates.
+    instance_key : str, default "cell_boundaries"
+        Key for cell_boundaries instances.
+    feature_key : str, default "feature_name"
+        Key for gene instances.
+    method : Literal["knn", "radius"], default "radius"
+        Method to use for local neighborhood.
+    n_neighbors : Optional[int], default None
+        Number of neighbors to use for local neighborhood if method is "knn".
+    radius : Optional[float], default None
+        Fraction of mean cell radius to use for local neighborhood if method is "radius".
+        If None, defaults to 1/3 of average cell radius.
+    res : Optional[float], default 1
         Resolution to use for rendering embedding.
+    train_size : Optional[float], default 1
+        Fraction of data to use for training.
+    random_state : int, default 11
+        Random state for reproducibility.
+    recompute : bool, default False
+        If True, recompute flux even if it already exists.
+    num_workers : int, default 1
+        Number of workers to use for parallel processing.
 
     Returns
     -------
-    sdata : SpatialData
-        .points["{instance_key}_raster"]: pd.DataFrame
-            Length pixels DataFrame containing all computed flux values, embeddings, and colors as columns in a single DataFrame.
-            flux values: <gene_name> for each gene used in embedding.
-            embeddings: flux_embed_<i> for each component of the embedding.
-            colors: hex color codes for each pixel.
-        .tables["table"].uns["flux_genes"] : list
-            List of genes used for embedding.
-        .tables["table"].uns["flux_variance_ratio"] : np.ndarray
-            [components] array of explained variance ratio for each component.
+    SpatialData
+        Updated SpatialData object with:
+        - .points["{instance_key}_raster"]: pd.DataFrame containing flux values, embeddings, and colors.
+        - .tables["table"].uns["flux_genes"]: List of genes used for embedding.
+        - .tables["table"].uns["flux_variance_ratio"]: Array of explained variance ratio for each component.
+
+    Notes
+    -----
+    RNAflux requires a minimum of 4 genes per cell to compute all embeddings properly.
     """
 
     if (
@@ -285,8 +291,28 @@ def vec2color(
     ] = "hex",
     vmin: float = 0,
     vmax: float = 1,
-):
-    """Convert vector to color."""
+) -> Union[np.ndarray, List[str]]:
+    """
+    Convert vector to color.
+
+    Parameters
+    ----------
+    vec : np.ndarray
+        Input vector to convert to color.
+    alpha_vec : Optional[np.ndarray], default None
+        Vector of alpha values.
+    fmt : Literal["rgb", "hex"], default "hex"
+        Output format for colors.
+    vmin : float, default 0
+        Minimum value for color scaling.
+    vmax : float, default 1
+        Maximum value for color scaling.
+
+    Returns
+    -------
+    Union[np.ndarray, List[str]]
+        Array of RGB values or list of hex color codes.
+    """
 
     # Grab the first 3 channels
     color = vec[:, :3]
@@ -330,37 +356,39 @@ def fluxmap(
     random_state: int = 11,
     plot_error: bool = False,
 ):
-    """Cluster flux embeddings using self-organizing maps (SOMs) and vectorize clusters as Polygon shapes.
+    """
+    Cluster flux embeddings using self-organizing maps (SOMs) and vectorize clusters as Polygon shapes.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-    points_key : str
-        key for points element that holds transcript coordinates
-    instance_key : str
-        Key for cell_boundaries instances
-    n_clusters : int or list
-        Number of clusters to use. If list, will pick best number of clusters
+        SpatialData object.
+    points_key : str, default "transcripts"
+        Key for points element that holds transcript coordinates.
+    instance_key : str, default "cell_boundaries"
+        Key for cell_boundaries instances.
+    n_clusters : Union[Iterable[int], int], default range(2, 9)
+        Number of clusters to use. If iterable, will pick best number of clusters
         using the elbow heuristic evaluated on the quantization error.
-    num_iterations : int
+    num_iterations : int, default 1000
         Number of iterations to use for SOM training.
-    train_size : float
-        Fraction of cells to use for SOM training. Default 0.2.
-    res : float
-        Resolution used for rendering embedding. Default 0.05.
-    random_state : int
-        Random state to use for SOM training. Default 11.
-    plot_error : bool
-        Whether to plot quantization error. Default True.
+    min_count : int, default 50
+        Minimum count for a point to be included in clustering.
+    train_size : float, default 1
+        Fraction of cells to use for SOM training.
+    res : float, default 1
+        Resolution used for rendering embedding.
+    random_state : int, default 11
+        Random state to use for SOM training.
+    plot_error : bool, default False
+        Whether to plot quantization error.
 
     Returns
     -------
-    sdata : SpatialData
-        .points["points"] : DataFrame
-            Adds "fluxmap" column denoting cluster membership.
-        .shapes["fluxmap#"] : GeoSeries
-            Adds "fluxmap#" columns for each cluster rendered as (Multi)Polygon shapes.
+    SpatialData
+        Updated SpatialData object with:
+        - .points[f"{instance_key}_raster"]: Added "fluxmap" column denoting cluster membership.
+        - .shapes["fluxmap#"]: Added "fluxmap#" columns for each cluster rendered as (Multi)Polygon shapes.
     """
 
     raster_points = get_points(

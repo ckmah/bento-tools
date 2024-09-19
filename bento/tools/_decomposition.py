@@ -19,27 +19,27 @@ def decompose(
     random_state: int = 11,
 ):
     """
-    Perform tensor decomposition on an input tensor, optionally automatically selecting the best rank across a list of ranks.
+    Perform tensor decomposition on an input tensor using non-negative PARAFAC.
 
     Parameters
     ----------
     tensor : np.ndarray
-        numpy array
-    ranks : int or list of int
-        Rank(s) to perform decomposition.
-    iterations : int, 3 by default
-        Number of times to run decomposition to compute confidence interval at each rank. Only the best iteration for each rank is saved.
-    device : str, optional
-        Device to use for decomposition. If "auto", will use GPU if available. By default "auto".
-    random_state : int, optional
-        Random state for decomposition. By default 11.
+        Input tensor for decomposition.
+    ranks : List[int]
+        List of ranks to perform decomposition for.
+    iterations : int, default 3
+        Number of times to run decomposition for each rank to compute confidence interval. The best iteration for each rank is saved.
+    device : Literal["auto", "cpu", "cuda"], default "auto"
+        Device to use for decomposition. If "auto", will use GPU if available.
+    random_state : int, default 11
+        Random state for reproducibility.
 
     Returns
     -------
-    factors_per_rank : dict
-        Dictionary of factors for each rank.
-    errors : pd.DataFrame
-        Dataframe of errors for each rank.
+    Tuple[Dict[int, List[np.ndarray]], pd.DataFrame]
+        A tuple containing:
+        - factors_per_rank: Dictionary mapping each rank to a list of factor matrices.
+        - errors: DataFrame with columns 'rmse' and 'rank', containing the error for each rank.
     """
     # Replace nans with 0 for decomposition
     tensor_mask = ~np.isnan(tensor)
@@ -109,5 +109,20 @@ def decompose(
     return factors_per_rank, errors
 
 
-def rmse(tensor, tensor_mu):
+def rmse(tensor: np.ndarray, tensor_mu: np.ndarray) -> float:
+    """
+    Calculate the Root Mean Square Error (RMSE) between two tensors, ignoring zero values.
+
+    Parameters
+    ----------
+    tensor : np.ndarray
+        Original tensor.
+    tensor_mu : np.ndarray
+        Reconstructed tensor.
+
+    Returns
+    -------
+    float
+        RMSE between the non-zero elements of the original and reconstructed tensors.
+    """
     return np.sqrt((tensor[tensor != 0] - tensor_mu[tensor != 0]) ** 2).mean()

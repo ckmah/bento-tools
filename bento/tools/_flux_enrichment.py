@@ -12,17 +12,18 @@ from .._utils import get_points, set_points_metadata
 
 def fe_fazal2019(sdata: SpatialData, **kwargs):
     """Compute enrichment scores from subcellular compartment gene sets from Fazal et al. 2019 (APEX-seq).
-    See `bento.tl.fe` docs for parameter details.
 
     Parameters
     ----------
-    data : SpatialData
-        Spatial formatted SpatialData object.
+    sdata : SpatialData
+        SpatialData object.
+    **kwargs
+        Additional keyword arguments passed to `bento.tl.fe()` function.
 
     Returns
     -------
-    DataFrame
-        Enrichment scores for each gene set.
+    SpatialData
+        Updated SpatialData object with enrichment scores added to points metadata.
     """
 
     gene_sets = load_gene_sets("fazal2019")
@@ -31,17 +32,18 @@ def fe_fazal2019(sdata: SpatialData, **kwargs):
 
 def fe_xia2019(sdata: SpatialData, **kwargs):
     """Compute enrichment scores from subcellular compartment gene sets from Xia et al. 2019 (MERFISH 10k U2-OS).
-    See `bento.tl.fe` docs for parameters details.
 
     Parameters
     ----------
-    data : SpatialData
-        Spatial formatted SpatialData object.
+    sdata : SpatialData
+        SpatialData object.
+    **kwargs
+        Additional keyword arguments passed to `bento.tl.fe()` function.
 
     Returns
     -------
-    DataFrame
-        Enrichment scores for each gene set.
+    SpatialData
+        Updated SpatialData object with enrichment scores added to points metadata.
     """
 
     gene_sets = load_gene_sets("xia2019")
@@ -51,38 +53,41 @@ def fe_xia2019(sdata: SpatialData, **kwargs):
 def fe(
     sdata: SpatialData,
     net: pd.DataFrame,
-    instance_key: Optional[str] = "cell_boundaries",
-    source: Optional[str] = "source",
-    target: Optional[str] = "target",
-    weight: Optional[str] = "weight",
+    instance_key: str = "cell_boundaries",
+    source: str = "source",
+    target: str = "target",
+    weight: str = "weight",
     batch_size: int = 10000,
     min_n: int = 0,
-):
+) -> SpatialData:
     """
-    Perform functional enrichment of RNAflux embeddings. Uses decoupler wsum function.
+    Perform functional enrichment of RNAflux embeddings using decoupler's wsum function.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-    net : DataFrame
-        DataFrame with columns "source", "target", and "weight". See decoupler API for more details.
-    source : str, optional
-        Column name for source nodes in `net`. Default "source".
-    target : str, optional
-        Column name for target nodes in `net`. Default "target".
-    weight : str, optional
-        Column name for weights in `net`. Default "weight".
-    batch_size : int
-        Number of points to process in each batch. Default 10000.
-    min_n : int
+        SpatialData object.
+    net : pd.DataFrame
+        DataFrame with columns for source, target, and weight. See decoupler API for more details.
+    instance_key : str, default "cell_boundaries"
+        Key for the instance in sdata.points.
+    source : str, default "source"
+        Column name for source nodes in `net`.
+    target : str, default "target"
+        Column name for target nodes in `net`.
+    weight : str, default "weight"
+        Column name for weights in `net`.
+    batch_size : int, default 10000
+        Number of points to process in each batch.
+    min_n : int, default 0
         Minimum number of targets per source. If less, sources are removed.
 
     Returns
     -------
-    sdata : SpatialData
-        .points["cell_boundaries_raster"]["flux_fe"] : DataFrame
-            Enrichment scores for each gene set.
+    SpatialData
+        Updated SpatialData object with:
+        - Enrichment scores added to `sdata.points[f"{instance_key}_raster"]`
+        - Enrichment statistics added to `sdata.tables["table"].uns["fe_stats"]` and `sdata.tables["table"].uns["fe_ngenes"]`
     """
     # Make sure embedding is run first
     if "flux_genes" in sdata.tables["table"].uns:
@@ -160,18 +165,23 @@ gene_sets = dict(
 )
 
 
-def load_gene_sets(name):
-    """Load a gene set; list available ones with `bento.tl.gene_sets`.
+def load_gene_sets(name: str) -> pd.DataFrame:
+    """Load a gene set from the predefined collection.
 
     Parameters
     ----------
     name : str
-        Name of gene set to load.
+        Name of gene set to load. Available options can be listed with `bento.tl.gene_sets`.
 
     Returns
     -------
-    DataFrame
-        Gene set.
+    pd.DataFrame
+        Gene set as a DataFrame.
+
+    Raises
+    ------
+    KeyError
+        If the specified gene set name is not found in the collection.
     """
     from importlib.resources import files, as_file
 

@@ -29,23 +29,24 @@ def colocation(
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-    ranks : list
+        SpatialData object.
+    ranks : List[int]
         List of ranks to decompose the tensor.
-    instance_key : str
+    instance_key : str, default "cell_boundaries"
         Key that specifies cell_boundaries instance in sdata.
-    feature_key : str
+    feature_key : str, default "feature_name"
         Key that specifies genes in sdata.
-    iterations : int
+    iterations : int, default 3
         Number of iterations to run the decomposition.
-    plot_error : bool
+    plot_error : bool, default True
         Whether to plot the error of the decomposition.
 
     Returns
     -------
-    sdata : SpatialData
-        .tables["table"].uns['factors']: Decomposed tensor factors.
-        .tables["table"].uns['factors_error']: Decomposition error.
+    SpatialData
+        Updated SpatialData object with:
+        - .tables["table"].uns['factors']: Decomposed tensor factors.
+        - .tables["table"].uns['factors_error']: Decomposition error.
     """
 
     print("Preparing tensor...")
@@ -76,7 +77,7 @@ def _colocation_tensor(sdata: SpatialData, instance_key: str, feature_key: str):
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
+        SpatialData object.
     instance_key : str
         Key that specifies cell_boundaries instance in sdata.
     feature_key : str
@@ -122,35 +123,36 @@ def coloc_quotient(
     radius: int = 20,
     min_points: int = 10,
     min_cells: int = 0,
-    num_workers=1,
+    num_workers: int = 1,
 ):
     """Calculate pairwise gene colocalization quotient in each cell.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object.
-    points_key: str
+        SpatialData object.
+    points_key: str, default "transcripts"
         Key that specifies transcript points in sdata.
-    instance_key : str
+    instance_key : str, default "cell_boundaries"
         Key that specifies cell_boundaries instance in sdata.
-    feature_key : str
+    feature_key : str, default "feature_name"
         Key that specifies genes in sdata.
-    shapes : list
+    shapes : List[str], default ["cell_boundaries"]
         Specify which shapes to compute colocalization separately.
-    radius : int
-        Unit distance to count neighbors, default 20
-    min_points : int
-        Minimum number of points for sample to be considered for colocalization, default 10
-    min_cells : int
-        Minimum number of cells for gene to be considered for colocalization, default 0
-    num_workers : int
-        Number of workers to use for parallel processing
+    radius : int, default 20
+        Unit distance to count neighbors.
+    min_points : int, default 10
+        Minimum number of points for sample to be considered for colocalization.
+    min_cells : int, default 0
+        Minimum number of cells for gene to be considered for colocalization.
+    num_workers : int, default 1
+        Number of workers to use for parallel processing.
 
     Returns
     -------
-    sdata : SpatialData
-        .tables["table"].uns['clq']: Pairwise gene colocalization similarity within each cell formatted as a long dataframe.
+    SpatialData
+        Updated SpatialData object with:
+        - .tables["table"].uns['clq']: Pairwise gene colocalization similarity within each cell formatted as a long dataframe.
     """
 
     all_clq = dict()

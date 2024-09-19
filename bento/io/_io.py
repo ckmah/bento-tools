@@ -22,26 +22,29 @@ def prep(
 ) -> SpatialData:
     """Computes spatial indices for elements in SpatialData to enable usage of bento-tools.
 
-    Specifically, this function indexes points to shapes and joins shapes to the instance shape. It also computes a count table for the points.
+    This function indexes points to shapes, joins shapes to the instance shape, and computes a count table for the points.
 
     Parameters
     ----------
     sdata : SpatialData
-        Spatial formatted SpatialData object
-    points_key : str
+        SpatialData object
+    points_key : str, default "transcripts"
         Key for points DataFrame in `sdata.points`
-    feature_key : str
+    feature_key : str, default "feature_name"
         Key for the feature name in the points DataFrame
-    instance_key : str
+    instance_key : str, default "cell_boundaries"
         Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
-    shape_keys : str, list
+    shape_keys : List[str], default ["cell_boundaries", "nucleus_boundaries"]
         List of shape names to index points to
 
     Returns
     -------
     SpatialData
-        .shapes[shape_key]: Updated shapes GeoDataFrame with string index
-        .points[points_key]: Updated points DataFrame with string index for each shape
+        Updated SpatialData object with:
+        - Updated shapes in `sdata.shapes[shape_key]` with string index
+        - Updated points in `sdata.points[points_key]` with string index for each shape
+        - New count table in `sdata.tables["table"]`
+        - Updated attributes for instance_key and feature_key
     """
 
     # Renames geometry column of shape element to match shape name
