@@ -1,5 +1,5 @@
 import warnings
-from typing import List
+from typing import List, Union
 
 import emoji
 from anndata.utils import make_index_unique
@@ -19,6 +19,7 @@ def prep(
     feature_key: str = "feature_name",
     instance_key: str = "cell_boundaries",
     shape_keys: List[str] = ["cell_boundaries", "nucleus_boundaries"],
+    instance_map_type: Union[dict, str] = "1to1",
 ) -> SpatialData:
     """Computes spatial indices for elements in SpatialData to enable usage of bento-tools.
 
@@ -36,6 +37,11 @@ def prep(
         Key for the shape that will be used as the instance for all indexing. Usually the cell shape.
     shape_keys : str, list
         List of shape names to index points to
+    instance_map_type : str, dict
+        Type of mapping to use for the instance shape. If "1to1", each instance shape will be mapped to a single shape at most.
+        If "1tomany", each instance shape will be mapped to one or more shapes;
+        multiple shapes mapped to the same instance shape will be merged into a single MultiPolygon.
+        Use a dict to specify different mapping types for each shape.
 
     Returns
     -------
@@ -85,7 +91,10 @@ def prep(
     if len(shape_sjoin) > 0:
         pbar.set_description("Mapping shapes")
         sdata = _sjoin_shapes(
-            sdata=sdata, instance_key=instance_key, shape_keys=shape_sjoin
+            sdata=sdata,
+            instance_key=instance_key,
+            shape_keys=shape_sjoin,
+            instance_map_type=instance_map_type,
         )
 
     pbar.update()
