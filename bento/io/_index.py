@@ -1,9 +1,9 @@
-from typing import List
+from typing import List, Union
 
 import pandas as pd
 import geopandas as gpd
 from spatialdata._core.spatialdata import SpatialData
-
+from spatialdata.models import ShapesModel
 from .._utils import (
     get_points,
     set_points_metadata,
@@ -68,7 +68,12 @@ def _sjoin_points(
     return sdata
 
 
-def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
+def _sjoin_shapes(
+    sdata: SpatialData,
+    instance_key: str,
+    shape_keys: List[str],
+    instance_map_type: Union[str, dict],
+):
     """Adds polygon indexes to sdata.shapes[instance_key][shape_key] for point feature analysis.
 
     Parameters
@@ -102,17 +107,36 @@ def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
 
     # sjoin shapes to instance_key shape
     for shape_key in shape_keys:
-        child_shape = sdata.shapes[shape_key]
+        child_shape = sdata.shapes[shape_key].copy()
+        child_attrs = child_shape.attrs
         # Hack for polygons that are 99% contained in parent shape or have shared boundaries
         child_shape = gpd.GeoDataFrame(geometry=child_shape.buffer(-10e-6))
 
         # Map child shape index to parent shape and process the result
+
+        if instance_map_type == "1tomany":
+            child_shape = (
+                child_shape.sjoin(
+                    parent_shape.reset_index(drop=True),
+                    how="left",
+                    predicate="covered_by",
+                )
+                .dissolve(by="index_right", observed=True, dropna=False)
+                .reset_index(drop=True)[["geometry"]]
+            )
+            child_shape.index = child_shape.index.astype(str)
+            child_shape = ShapesModel.parse(child_shape)
+            child_shape.attrs = child_attrs
+            sdata.shapes[shape_key] = child_shape
+
         parent_shape = (
             parent_shape.sjoin(child_shape, how="left", predicate="covers")
-            .reset_index()
-            .drop_duplicates(subset="index", keep="last")
+            .reset_index()  # ignore any user defined index name
+            .drop_duplicates(
+                subset="index", keep="last"
+            )  # Remove multiple child shapes mapped to same parent shape
             .set_index("index")
-            .assign(
+            .assign(  # can this just be fillna on index_right?
                 index_right=lambda df: df.loc[
                     ~df["index_right"].duplicated(keep="first"), "index_right"
                 ]
@@ -121,6 +145,12 @@ def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
             )
             .rename(columns={"index_right": shape_key})
         )
+
+        if (
+            parent_shape[shape_key].dtype == "category"
+            and "" not in parent_shape[shape_key].cat.categories
+        ):
+            parent_shape[shape_key] = parent_shape[shape_key].cat.add_categories([""])
         parent_shape[shape_key] = parent_shape[shape_key].fillna("")
 
         # Save shape index as column in instance_key shape
@@ -128,7 +158,7 @@ def _sjoin_shapes(sdata: SpatialData, instance_key: str, shape_keys: List[str]):
             sdata, shape_key=instance_key, metadata=parent_shape[shape_key]
         )
 
-        # Add instance_key shape index to shape
+        # Add instance_key shape index to child shape
         instance_index = (
             parent_shape.drop_duplicates(subset=shape_key)
             .reset_index()

@@ -165,6 +165,7 @@ def density(sdata: SpatialData, shape_key: str, recompute: bool = False):
         .query(f"{shape_key} != 'None'")[shape_key]
         .value_counts()
         .compute()
+        .reindex_like(sdata.shapes[shape_key])
     )
     area(sdata, shape_key)
 

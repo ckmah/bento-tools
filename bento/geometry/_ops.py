@@ -20,6 +20,7 @@ def overlay(
     name: str,
     how: str = "intersection",
     make_valid: bool = True,
+    instance_map_type: str = "1to1",
 ):
     """Overlay two shape elements in a SpatialData object and store the result as a new shape element.
 
@@ -37,6 +38,8 @@ def overlay(
         If True, correct invalid geometries with GeoPandas, by default True
     instance_key : str
         Name of the shape element to use as the instance for indexing, by default "cell_boundaries". If None, no indexing is performed.
+    instance_map_type : str, optional
+        Type of instance mapping to use. Options are "1to1", "1tomany", by default "1to1".
 
     Returns
     -------
@@ -46,7 +49,8 @@ def overlay(
     shape1 = sdata[s1]
     shape2 = sdata[s2]
 
-    new_shape = shape1.overlay(shape2, how=how, make_valid=make_valid)
+    new_shape = shape1.overlay(shape2, how=how, make_valid=make_valid)[["geometry"]]
+    new_shape.index = new_shape.index.astype(str)
     new_shape.attrs = {}
 
     transform = shape1.attrs
@@ -58,6 +62,7 @@ def overlay(
         shape_keys=[name],
         instance_key=get_instance_key(sdata),
         feature_key=get_feature_key(sdata),
+        instance_map_type=instance_map_type,
     )
 
 
