@@ -2,6 +2,7 @@ import warnings
 from typing import List, Union
 
 import emoji
+import spatialdata as sd
 from anndata.utils import make_index_unique
 from spatialdata import SpatialData
 from spatialdata.models import TableModel
@@ -56,6 +57,21 @@ def prep(
         if shape_key == instance_key:
             shape_gdf[shape_key] = shape_gdf["geometry"]
         shape_gdf.index = make_index_unique(shape_gdf.index.astype(str))
+
+    if "global" in sdata.points[points_key].attrs["transform"]:
+        # Force points to 2D for Xenium data
+        xyz_scale = sd.transformations.get_transformation(sdata.points[points_key])
+        if isinstance(xyz_scale, sd.transformations.Scale):
+            xy_scale = sd.transformations.Scale(
+                scale=xyz_scale.to_scale_vector(["x", "y"]), axes=["x", "y"]
+            )
+            sdata.points[points_key] = sd.models.PointsModel.parse(
+                sdata.points[points_key].compute().reset_index(drop=True),
+                coordinates={"x": "x", "y": "y"},
+                feature_key=feature_key,
+                instance_key=instance_key,
+                transform=xy_scale,
+            )
 
     # sindex points and sjoin shapes if they have not been indexed or joined
     point_sjoin = []
