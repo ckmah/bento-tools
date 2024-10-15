@@ -124,6 +124,7 @@ def _sjoin_shapes(
                 .dissolve(by="index_right", observed=True, dropna=False)
                 .reset_index(drop=True)[["geometry"]]
             )
+            child_shape.index = child_shape.index.astype(str)
             child_shape = ShapesModel.parse(child_shape)
             child_shape.attrs = child_attrs
             sdata.shapes[shape_key] = child_shape

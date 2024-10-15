@@ -49,7 +49,8 @@ def overlay(
     shape1 = sdata[s1]
     shape2 = sdata[s2]
 
-    new_shape = shape1.overlay(shape2, how=how, make_valid=make_valid)
+    new_shape = shape1.overlay(shape2, how=how, make_valid=make_valid)[["geometry"]]
+    new_shape.index = new_shape.index.astype(str)
     new_shape.attrs = {}
 
     transform = shape1.attrs
