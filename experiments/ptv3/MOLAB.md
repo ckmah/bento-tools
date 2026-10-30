@@ -7,7 +7,8 @@ from `ptv3_gpu/molab/template.py` plus the scripts in `ptv3_gpu/` (in the bento3
 - **Option A (recommended): from GitHub.** The notebook is on branch `bento3-ptv3-molab` of `ckmah/bento-tools` at
   `experiments/ptv3/molab_gpu_run.py`. Open
   `https://molab.marimo.io/github/ckmah/bento-tools/blob/bento3-ptv3-molab/experiments/ptv3/molab_gpu_run.py`.
-  uv builds the environment from the PEP 723 header.
+  uv builds the environment from the PEP 723 header. This only works while the repo is public: molab downloads the file
+  anonymously, and for the private repo it shows "Failed to Download File" (checked 2026-10-30). Until then use option B.
 - **Option B: paste.** Open the scratch notebook (https://molab.marimo.io/notebooks/nb_d3bpcjKVJkV55nVggdX8b2), replace its code
   with the whole file, and let the package panel install the header's dependencies (torch 2.11.0 is already installed there).
   Then turn on the GPU and click **Run all**.
