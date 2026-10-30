@@ -271,14 +271,27 @@ def _(HF_PUSH, HF_MODEL_REPO, HF_TOKEN, LOG_IMAGES, RUNDIR, TRACKIO, TRACKIO_PRO
                 self.publish()
             return poll
 
+        def _has_rows(self):
+            try:
+                import sqlite3
+                _db = self.dir / f"{self.project}.db"
+                if not _db.exists(): return False
+                _c = sqlite3.connect(f"file:{_db}?mode=ro", uri=True)
+                try: return _c.execute("SELECT EXISTS(SELECT 1 FROM metrics)").fetchone()[0] == 1
+                finally: _c.close()
+            except Exception: return False
+
         def publish(self, force=False, wait=0):
             # re-publish the whole project to the static Space in a background thread (never blocks the poll loop); throttled.
             # A failure turns publishing off (one warning); local logging and the HF-repo copy carry on.
             if not (self.on and self.space) or (self.pub_th is not None and self.pub_th.is_alive()): return
             if not force and time.time() - self.pub_t < TRACKIO_PUBLISH_MIN * 60: return
+            if not self._has_rows(): return   # Trackio writes its database a moment after the first log: skip this cycle, retry next poll
             self.pub_t = time.time()
             def go():
                 try: self.trackio.sync(project=self.project, space_id=self.space, sdk="static", force=True)
+                except FileNotFoundError as e:   # database not there yet (race with Trackio's writer): try again next cycle
+                    print(f"Trackio publish skipped this cycle ({e})", flush=True); self.pub_t = 0.0
                 except Exception as e:
                     print(f"WARNING: Trackio publishing to {self.space} disabled ({type(e).__name__}: {e}). Logging continues locally.", flush=True)
                     self.space = None
