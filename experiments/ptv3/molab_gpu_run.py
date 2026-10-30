@@ -1189,7 +1189,7 @@ def _(ARMS, CODE_READY, HF_DATA, HF_DATA_REPO, HF_TOKEN, ROOT, RUNDIR, ZIP_LOCAL
     if not (all((_d / f).exists() for f in _need) and (_d / "built.ok").exists()):
         _zip = ZIP_LOCAL or str(_d / "xenium_2fov.zip")
         if not ZIP_LOCAL and not (_d / "xenium_2fov.zip").exists():
-            _t = time.time(); print("downloading", URL, flush=True); urllib.request.urlretrieve(URL, _zip + ".part")
+            _t = time.time(); print("downloading", URL, flush=True); _op = urllib.request.build_opener(); _op.addheaders = [("User-Agent", "Mozilla/5.0 (bento3-molab)")]; urllib.request.install_opener(_op); urllib.request.urlretrieve(URL, _zip + ".part")
             (_d / "xenium_2fov.zip.part").rename(_zip); print(f"downloaded in {time.time() - _t:.0f}s")
         assert _sha(_zip) == ZIP_SHA, f"sha256 mismatch for {_zip}"
         _r = subprocess.run([sys.executable, str(RUNDIR / "build_data.py"), _zip], cwd=ROOT)
