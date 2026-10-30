@@ -590,8 +590,9 @@ CK = f"{OUT}/ckpt.pt"
 if os.path.exists(CK) and not (a.no_resume or a.force):
     ck = torch.load(CK, map_location=DEV, weights_only=False)
     net.load_state_dict(ck["net"]); opt.load_state_dict(ck["opt"]); scaler.load_state_dict(ck["scaler"])
-    rng.bit_generator.state = ck["rng"]; torch.set_rng_state(ck["torch_rng"])
-    if DEV.type == "cuda" and ck.get("cuda_rng") is not None: torch.cuda.set_rng_state(ck["cuda_rng"])
+    # RNG states must be CPU ByteTensors: map_location=DEV moves them to the GPU, and set_rng_state then raises (first GPU resume, 2026-10-30)
+    rng.bit_generator.state = ck["rng"]; torch.set_rng_state(ck["torch_rng"].cpu())
+    if DEV.type == "cuda" and ck.get("cuda_rng") is not None: torch.cuda.set_rng_state(ck["cuda_rng"].cpu())
     step, sec0, total = ck["step"], ck["sec"], ck["total"]
     lines = open(f"{OUT}/train_log.tsv").read().splitlines()
     keep = [lines[0]] + [l for l in lines[1:] if int(l.split("\t")[0]) < step]
@@ -1503,6 +1504,9 @@ def _(AMP, ARMS, DATA_READY, GPU, HF_MODEL_REPO, HF_PUSH, HF_TOKEN, NWIN, PREVIE
                 if _progress(_rd) > _progress(_ld):
                     shutil.copytree(_rd, _ld, dirs_exist_ok=True); say(f"restored {_rd.name} from HF (step {_progress(_rd)})")
         except Exception as e: say(f"nothing restored from HF ({e})")
+    def tail(log, n=40):   # show why a step failed: the log files live only as long as the session
+        try: _l = (_runs / log).read_text(errors="replace").splitlines()[-n:]; print(f"---- last {len(_l)} lines of runs/{log} ----\n" + "\n".join(_l) + "\n----", flush=True)
+        except Exception as e: print(f"(could not read runs/{log}: {e})")
     def sh(args, log, poll=None):   # poll: called every 5 s while it runs and once at the end (Trackio; never raises)
         last = time.time()
         with open(_runs / log, "a") as f:
@@ -1539,21 +1543,21 @@ def _(AMP, ARMS, DATA_READY, GPU, HF_MODEL_REPO, HF_PUSH, HF_TOKEN, NWIN, PREVIE
                 _t = time.time(); say(f"train {_A} s{_seed}" + (" (resuming)" if (_d / "ckpt.pt").exists() else ""))
                 _pv = ["--preview-every", str(PREVIEW_EVERY)] if TRK.on and TRK.images and PREVIEW_EVERY > 0 else []
                 if sh(["train.py"] + _base + ["--steps", str(STEPS), "--nwin", str(NWIN)] + _pv, f"log_{_A}_s{_seed}.txt", poll=TRK.follow(_d / "train_log.tsv")):
-                    say(f"FAILED train {_A} s{_seed}: see runs/log_{_A}_s{_seed}.txt"); TRK.finish(); continue
+                    say(f"FAILED train {_A} s{_seed}: see runs/log_{_A}_s{_seed}.txt"); tail(f"log_{_A}_s{_seed}.txt"); TRK.finish(); continue
                 _r = json.load(open(_d / "result.json"))
                 say(f"done train {_A} s{_seed}: held-out top-1 {100 * _r['test_acc']:.2f}% in {(time.time() - _t) / 60:.1f} min, "
                     f"{_r.get('sec_per_step', float('nan')):.3f} s/step"); sync(f"trained {_A} s{_seed}")
                 _log_json("result.json", "eval", ["test_acc", "test_nll", "covered", "sec_per_step", "train_min"])
             if not (_d / "hier.json").exists():
-                if sh(["hier.py", f"runs/{_A}_s{_seed}"], "hier.log"): say(f"FAILED hier {_A} s{_seed}")
+                if sh(["hier.py", f"runs/{_A}_s{_seed}"], "hier.log"): say(f"FAILED hier {_A} s{_seed}"); tail("hier.log")
                 else: _log_json("hier.json", "hier", _H)
             if not (_d / "hier_ctx.json").exists():
                 _e = sh(["train.py"] + _base + ["--ctx-only"], "hier.log")
                 _env["EMB"] = "emb_ctx_test"; _e = _e or sh(["hier.py", f"runs/{_A}_s{_seed}"], "hier.log"); _env.pop("EMB")
-                if _e: say(f"FAILED ctx {_A} s{_seed}")
+                if _e: say(f"FAILED ctx {_A} s{_seed}"); tail("hier.log")
                 else: _log_json("hier_ctx.json", "hier_ctx", _H)
             if _todo: TRK.finish()
-            if sh(["agg.py"], "agg.log") or sh(["verdict.py"], "agg.log"): say("FAILED agg/verdict")
+            if sh(["agg.py"], "agg.log") or sh(["verdict.py"], "agg.log"): say("FAILED agg/verdict"); tail("agg.log")
             say(f"done all steps {_A} s{_seed}"); sync(f"done {_A} s{_seed}")
     say("ALL DONE"); sync("all done")
     RUNS_DONE = True
