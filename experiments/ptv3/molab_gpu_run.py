@@ -89,10 +89,10 @@ def _(Path, hf_token_box, os):
     SMOKE_TOGGLE = None
     SMOKE = SMOKE_TOGGLE if SMOKE_TOGGLE is not None else os.environ.get("BENTO_SMOKE", "0") == "1"
     # everything below: environment variables override the defaults (= the recommended run)
-    STEPS = 120 if SMOKE else int(os.environ.get("BENTO_STEPS", 30000))   # CPU runs used 3,000
+    STEPS = 120 if SMOKE else int(os.environ.get("BENTO_STEPS", 15000))   # CPU runs used 3,000; 15k x 7 arms x 1 seed ~ 10 h on RTX Pro 6000
     NWIN = 2 if SMOKE else int(os.environ.get("BENTO_NWIN", 4))          # 100 um windows per step (CPU runs used 2)
     ARMS = ["nusp", "nuspU"] if SMOKE else os.environ.get("BENTO_ARMS", "mol nusp nuspL0 shuf int nuspU nuspUs").split()
-    SEEDS = [0] if SMOKE else [int(s) for s in os.environ.get("BENTO_SEEDS", "0 1 2").split()]
+    SEEDS = [0] if SMOKE else [int(s) for s in os.environ.get("BENTO_SEEDS", "0").split()]   # session 1: seed 0; later sessions "1", then "2" (resume from HF)
     AMP = os.environ.get("BENTO_AMP", "none")                  # none | bf16 | fp16
     THREADS = int(os.environ.get("BENTO_THREADS", os.cpu_count() or 4))
     ROOT = Path(os.environ.get("BENTO_WORK", "bento3_work")).resolve()
