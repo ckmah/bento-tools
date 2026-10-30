@@ -31,9 +31,9 @@ from `ptv3_gpu/molab/template.py` plus the scripts in `ptv3_gpu/` (in the bento3
   - `figs/*.png`;
   - `bento3_results.zip`, the small files only, also offered as a download button.
 - **Resume:** run all again. Finished steps are skipped and training resumes from `ckpt.pt`.
-- **External store: Hugging Face Hub.** It is used only when `HF_TOKEN` is set in molab's secrets / `.env` and the repo name is not
+- **External store: Hugging Face Hub.** It is used only when `HF_TOKEN` is entered in the password box or set as an env var and the repo name is not
   the `YOUR_HF_USER/...` placeholder. The model repo defaults to `ckmah/bento3-ptv3-runs` (private, created on the first push).
-  In molab, add `HF_TOKEN` (a Hugging Face write token) as a notebook secret; secrets are exposed as environment variables.
+  molab has no secrets feature, so paste a Hugging Face write token into the notebook's password box (the cell above config) before Run all. It stays in session memory only and is never saved in the notebook. The `HF_TOKEN` env var still works elsewhere.
   - `BENTO_HF_MODEL_REPO` (private model repo; created on first push if missing) receives `ckpt.pt` at every new checkpoint (1,000
     steps), plus every 30 min, after each run, and at the end. It also receives `model.pt`, `result.json`/`config.json`/`hier*.json`,
     `train_log.tsv`, logs, `summary.md`/`verdict.md`, and figures, under `full/` or `smoke/`. At start the notebook pulls the repo and

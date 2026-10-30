@@ -73,7 +73,16 @@ def _():
 
 
 @app.cell
-def _(Path, os):
+def _(mo):
+    # ---- Hugging Face token (molab has no secrets feature). Paste a write token here BEFORE Run all; it lives only in this
+    # session's memory and is never saved in the notebook. Leave empty to skip pushing checkpoints to the Hub.
+    hf_token_box = mo.ui.text(kind="password", label="HF write token (optional, paste before Run all)", full_width=True)
+    hf_token_box
+    return (hf_token_box,)
+
+
+@app.cell
+def _(Path, hf_token_box, os):
     # ---- config
     # >>> SMOKE TOGGLE: True = quick check (nusp + nuspU, seed 0, 120 steps; prints GPU s/step), False = the full matrix.
     # >>> None = read the BENTO_SMOKE env var (1 = smoke). Smoke and full runs write to different folders (smoke/ vs full/).
@@ -90,7 +99,7 @@ def _(Path, os):
     RUNDIR = ROOT / ("smoke" if SMOKE else "full")             # code + runs/ + figs/; data/ is shared
     ZIP_LOCAL = os.environ.get("BENTO_ZIP", "")                # optional local copy of the 10x zip (still sha256-checked)
     # Hugging Face Hub = the external store. Both repos are PRIVATE and used only when HF_TOKEN is set and the name is not a placeholder.
-    HF_TOKEN = os.environ.get("HF_TOKEN", "")                  # molab: put it in the notebook's secrets / .env, never in code
+    HF_TOKEN = (hf_token_box.value or "").strip() or os.environ.get("HF_TOKEN", "")   # from the password box above, else env; never in code
     HF_MODEL_REPO = os.environ.get("BENTO_HF_MODEL_REPO", "ckmah/bento3-ptv3-runs")      # checkpoints, results, logs (private; created on first push)
     HF_DATA_REPO = os.environ.get("BENTO_HF_DATA_REPO", "YOUR_HF_USER/bento3-xenium-breast-2fov")  # optional: prebuilt data (dataset repo)
     _on = lambda r: bool(HF_TOKEN) and not r.startswith("YOUR_HF_USER/")
