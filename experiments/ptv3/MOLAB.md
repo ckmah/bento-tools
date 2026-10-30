@@ -64,16 +64,17 @@ The notebook logs every run to [Trackio](https://github.com/gradio-app/trackio) 
   fraction of that.
 - **Never blocks training.** Trackio runs in the notebook kernel, not in train.py. A missing token or any Trackio error prints one
   warning and turns it off. Network calls have a timeout.
-- **Where the dashboard lives.** A *private* hosted dashboard needs a Gradio Space, and Hugging Face only runs those for PRO
-  accounts: creating one without PRO returns 402 (checked 2026-10-30). Static Spaces are free but always public. So by default
-  (`BENTO_TRACKIO_SPACE=""`) Trackio logs locally in the session, and a consistent copy of its database plus images goes to the private
-  model repo with every checkpoint push (`full/trackio_hf/`). To view it on your computer:
-  ```
-  hf download ckmah/bento3-ptv3-runs --include 'full/trackio_hf/*' --local-dir bento3_runs
-  TRACKIO_DIR=bento3_runs/full/trackio_hf uvx --from trackio==0.44.0 trackio show --project bento3-ptv3
-  ```
-  With HF PRO, set `TRACKIO_SPACE = "ckmah/bento3-ptv3-trackio"` (config cell or `BENTO_TRACKIO_SPACE`). Trackio then creates it
-  private, gives a live URL, and stores the token as a Space secret.
+- **Where the dashboard lives.** It is public, at https://huggingface.co/spaces/ckmah/bento3-ptv3-trackio
+  (direct link: https://ckmah-bento3-ptv3-trackio.static.hf.space). It is a free *static* Trackio Space, because Gradio Spaces
+  need HF PRO (402 without it, whether public or private). Trackio logs locally in the session. `trackio.sync(..., sdk="static")`
+  re-publishes the project to the Space and its public bucket `ckmah/bento3-ptv3-trackio-bucket`:
+  - every `BENTO_TRACKIO_PUBLISH_MIN` (5) minutes, in a background thread;
+  - when each run ends.
+
+  Each publish took about 7 s from the box. No token or secret is stored in the Space; only the notebook's token is used to upload.
+  Smoke runs do not publish. The Space shows one project, the last one published. As a backup and for resume, a consistent copy of the
+  database and images also goes to the HF model repo with every checkpoint push (`full/trackio_hf/`). To view that copy offline:
+  `hf download ckmah/bento3-ptv3-runs --include 'full/trackio_hf/*' --local-dir bento3_runs && TRACKIO_DIR=bento3_runs/full/trackio_hf uvx --from trackio==0.44.0 trackio show --project bento3-ptv3`.
 - **Resume.** At start the notebook restores the Trackio database from the repo along with the checkpoints, and opens each run with
   `resume="allow"`, so a new session continues the same run. Rows below the run's last logged step are skipped. A run resumed from
   its 1,000-step checkpoint therefore replays steps without duplicating them, and steps stay global.
@@ -94,7 +95,8 @@ The notebook logs every run to [Trackio](https://github.com/gradio-app/trackio) 
 | `BENTO_HF_DATA_REPO` | `YOUR_HF_USER/bento3-xenium-breast-2fov` | optional private dataset repo with prebuilt data |
 | `BENTO_SYNC_MIN` | 30 | minimum push interval while training, besides every checkpoint |
 | `BENTO_TRACKIO` | 1 | 0 turns Trackio off (or `TRACKIO_TOGGLE` in the config cell) |
-| `BENTO_TRACKIO_SPACE` | (empty) | empty = local database pushed to the model repo; a Space id needs HF PRO for a private Gradio Space |
+| `BENTO_TRACKIO_SPACE` | `ckmah/bento3-ptv3-trackio` | public static dashboard Space (empty in smoke mode); "" = no Space |
+| `BENTO_TRACKIO_PUBLISH_MIN` | 5 | minutes between dashboard publishes (plus one at the end of each run) |
 | `BENTO_TRACKIO_PROJECT` | `bento3-ptv3` | Trackio project (`bento3-ptv3-smoke` in smoke mode) |
 | `BENTO_LOG_IMAGES` | 1 | dashboard images at checkpoint cadence |
 | `BENTO_PREVIEW_EVERY` | 1000 | steps between images |

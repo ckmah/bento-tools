@@ -47,9 +47,10 @@ def _(mo):
 
     Settings: `SMOKE_TOGGLE` at the top of the config cell (True = short check on 2 arms that prints GPU s/step), else environment
     variables read in that cell (`BENTO_SMOKE=1` does the same).
-    Live dashboard: [Trackio](https://github.com/gradio-app/trackio) logs every run (`<arm>_s<seed>`, project `bento3-ptv3`) to the
-    private Space `ckmah/bento3-ptv3-trackio`: training losses, lr and s/step every 25 steps, then held-out and hierarchy scores. It
-    needs the HF token below and turns itself off with one warning if anything about it fails; training never waits on it.
+    Live dashboard: [Trackio](https://github.com/gradio-app/trackio) logs every run (`<arm>_s<seed>`, project `bento3-ptv3`): training
+    losses, lr and s/step every 25 steps, images every 1,000 steps, then held-out and hierarchy scores. It is published to the public
+    static Space https://huggingface.co/spaces/ckmah/bento3-ptv3-trackio every 5 min (needs the HF token below) and turns itself off
+    with one warning if anything about it fails; training never waits on it.
     External store: a private Hugging Face model repo (`BENTO_HF_MODEL_REPO`) gets every checkpoint, result, and log, and a new
     session resumes from it. This is used only when `HF_TOKEN` is set. Prebuilt data can optionally come from a private HF dataset
     repo (`BENTO_HF_DATA_REPO`); otherwise the data is rebuilt from the public 10x files.
@@ -112,10 +113,12 @@ def _(Path, hf_token_box, os):
     SYNC_MIN = float(os.environ.get("BENTO_SYNC_MIN", 30))     # also push at least this often while training (besides every new checkpoint)
     # Trackio live dashboard. None = on when there is an HF token (BENTO_TRACKIO=0 turns it off); True/False to force.
     TRACKIO_TOGGLE = None
-    # Default "" = log inside this session and copy the Trackio database to the private HF model repo with every checkpoint push
-    # (view it with `trackio show`, see MOLAB.md). A hosted *private* dashboard needs a Gradio Space, which Hugging Face only runs
-    # for PRO accounts (402 on create without PRO, checked 2026-10-30); with PRO, set "ckmah/bento3-ptv3-trackio" (created private).
-    TRACKIO_SPACE = os.environ.get("BENTO_TRACKIO_SPACE", "")
+    # Public dashboard = a free *static* Trackio Space (Gradio Spaces need HF PRO): Trackio logs locally in this session and the
+    # project is re-published to the Space (+ its public bucket) at most every TRACKIO_PUBLISH_MIN and when each run ends. No token is
+    # stored in the Space. The Trackio database is also copied to the HF model repo with every checkpoint push (backup + resume).
+    # "" = no Space. Smoke runs do not publish, so they never replace the dashboard's project.
+    TRACKIO_SPACE = os.environ.get("BENTO_TRACKIO_SPACE", "" if SMOKE else "ckmah/bento3-ptv3-trackio")
+    TRACKIO_PUBLISH_MIN = float(os.environ.get("BENTO_TRACKIO_PUBLISH_MIN", 5))
     TRACKIO_PROJECT = os.environ.get("BENTO_TRACKIO_PROJECT", "bento3-ptv3-smoke" if SMOKE else "bento3-ptv3")
     TRACKIO = TRACKIO_TOGGLE if TRACKIO_TOGGLE is not None else os.environ.get("BENTO_TRACKIO", "1") == "1"
     # Dashboard images at checkpoint cadence (fixed held-out window: true vs predicted gene, embedding PCA, top-20 confusion).
@@ -124,11 +127,11 @@ def _(Path, hf_token_box, os):
     print(dict(SMOKE=SMOKE, STEPS=STEPS, NWIN=NWIN, ARMS=ARMS, SEEDS=SEEDS, AMP=AMP, THREADS=THREADS, RUNDIR=str(RUNDIR),
                HF_push=HF_MODEL_REPO if HF_PUSH else "off (no HF_TOKEN or placeholder repo)", HF_data=HF_DATA_REPO if HF_DATA else "off: rebuild from 10x",
                trackio=(f"{TRACKIO_PROJECT} @ {TRACKIO_SPACE or 'local'}" + (f", images every {PREVIEW_EVERY} steps" if LOG_IMAGES else "")) if TRACKIO else "off"))
-    return AMP, ARMS, HF_DATA, HF_DATA_REPO, HF_MODEL_REPO, HF_PUSH, HF_TOKEN, LOG_IMAGES, NWIN, PREVIEW_EVERY, ROOT, RUNDIR, SEEDS, STEPS, SYNC_MIN, THREADS, TRACKIO, TRACKIO_PROJECT, TRACKIO_SPACE, ZIP_LOCAL
+    return AMP, ARMS, HF_DATA, HF_DATA_REPO, HF_MODEL_REPO, HF_PUSH, HF_TOKEN, LOG_IMAGES, NWIN, PREVIEW_EVERY, ROOT, RUNDIR, SEEDS, STEPS, SYNC_MIN, THREADS, TRACKIO, TRACKIO_PROJECT, TRACKIO_PUBLISH_MIN, TRACKIO_SPACE, ZIP_LOCAL
 
 
 @app.cell
-def _(HF_PUSH, HF_MODEL_REPO, HF_TOKEN, LOG_IMAGES, RUNDIR, TRACKIO, TRACKIO_PROJECT, TRACKIO_SPACE, mo, os, shutil, time):
+def _(HF_PUSH, HF_MODEL_REPO, HF_TOKEN, LOG_IMAGES, RUNDIR, TRACKIO, TRACKIO_PROJECT, TRACKIO_PUBLISH_MIN, TRACKIO_SPACE, mo, os, shutil, time):
     # ---- Trackio live dashboard. Everything here is best effort: the first failure (or a missing token) prints one warning and
     # turns tracking off; training and checkpoints never depend on it. Each run is logged from this kernel by reading the run's
     # train_log.tsv, so train.py itself does not import Trackio.
@@ -141,6 +144,7 @@ def _(HF_PUSH, HF_MODEL_REPO, HF_TOKEN, LOG_IMAGES, RUNDIR, TRACKIO, TRACKIO_PRO
             self.project, self.space, self.run, self.on, self.images = project, space or None, None, False, images
             self.img_sec = []   # seconds spent per image set (read + 3 plots + log), reported at the end of each run
             self.url = f"https://huggingface.co/spaces/{space}" if space else None
+            self.pub_t, self.pub_th = 0.0, None
             if not on: print("Trackio: off (TRACKIO_TOGGLE / BENTO_TRACKIO)"); return
             if self.space and not token:
                 print("WARNING: Trackio disabled: no HF token (paste one in the box above, then re-run). Training is unaffected."); return
@@ -174,7 +178,7 @@ def _(HF_PUSH, HF_MODEL_REPO, HF_TOKEN, LOG_IMAGES, RUNDIR, TRACKIO, TRACKIO_PRO
             if not self.on: return
             try:
                 self.run = self._timed(lambda: self.trackio.init(
-                    project=self.project, name=name, group=group, space_id=self.space, private=True if self.space else None,
+                    project=self.project, name=name, group=group, space_id=None,   # local database; published to the Space by publish()
                     config=config, resume="allow", embed=False, auto_log_gpu=False, auto_log_cpu=False), 300)
                 self.next = int(getattr(self.run, "_next_step", 0) or 0)   # steps below this are already on the dashboard
                 self.win = _co.deque(maxlen=5); self.img_step, self.img_mt = self.next - 1, None
@@ -264,7 +268,22 @@ def _(HF_PUSH, HF_MODEL_REPO, HF_TOKEN, LOG_IMAGES, RUNDIR, TRACKIO, TRACKIO_PRO
                     m = dict(loss_gene=float(f[2]), loss_dapi=float(f[3]), acc_masked=float(f[4]), lr=self.lr_at(step), elapsed_min=sec / 60)
                     if s1 > s0: m["s_per_step"] = (t1 - t0) / (s1 - s0)   # over the last ~100 steps (sec is logged in whole seconds)
                     self.log({f"train/{k}": v for k, v in m.items()}, step)
+                self.publish()
             return poll
+
+        def publish(self, force=False, wait=0):
+            # re-publish the whole project to the static Space in a background thread (never blocks the poll loop); throttled.
+            # A failure turns publishing off (one warning); local logging and the HF-repo copy carry on.
+            if not (self.on and self.space) or (self.pub_th is not None and self.pub_th.is_alive()): return
+            if not force and time.time() - self.pub_t < TRACKIO_PUBLISH_MIN * 60: return
+            self.pub_t = time.time()
+            def go():
+                try: self.trackio.sync(project=self.project, space_id=self.space, sdk="static", force=True)
+                except Exception as e:
+                    print(f"WARNING: Trackio publishing to {self.space} disabled ({type(e).__name__}: {e}). Logging continues locally.", flush=True)
+                    self.space = None
+            self.pub_th = _th.Thread(target=go, daemon=True); self.pub_th.start()
+            if wait: self.pub_th.join(wait)
 
         def snapshot(self):
             # consistent copy of the Trackio database (sqlite backup API, safe while it is being written) + images, for the HF push
@@ -297,14 +316,15 @@ def _(HF_PUSH, HF_MODEL_REPO, HF_TOKEN, LOG_IMAGES, RUNDIR, TRACKIO, TRACKIO_PRO
                 try: self._timed(self.run.finish, 180)
                 except Exception as e: self._off(f"finish: {type(e).__name__}: {e}")
             self.run = None
+            self.publish(force=True, wait=300)   # the run's final numbers on the dashboard
 
     TRK = Tracker(TRACKIO, TRACKIO_PROJECT, TRACKIO_SPACE, HF_TOKEN, LOG_IMAGES)
     _view = (f"hf download {HF_MODEL_REPO} --include '{RUNDIR.name}/trackio_hf/*' --local-dir bento3_runs && "
              f"TRACKIO_DIR=bento3_runs/{RUNDIR.name}/trackio_hf uvx trackio show --project {TRACKIO_PROJECT}")
-    if TRK.on and TRK.url: print("Trackio dashboard:", TRK.url, "| project", TRACKIO_PROJECT)
+    if TRK.on and TRK.url: print("Trackio dashboard (public, updated every", TRACKIO_PUBLISH_MIN, "min):", TRK.url, "| project", TRACKIO_PROJECT)
     elif TRK.on: print(f"Trackio: project {TRACKIO_PROJECT}, database copied to hf.co/{HF_MODEL_REPO} with each push" if HF_PUSH else
                        f"Trackio: project {TRACKIO_PROJECT}, local to this session only (no HF push)")
-    (mo.md(f"**Live dashboard:** [{TRK.url}]({TRK.url}) (project `{TRACKIO_PROJECT}`, private: sign in to Hugging Face)") if TRK.url else
+    (mo.md(f"**Live dashboard (public, refreshed every {TRACKIO_PUBLISH_MIN:g} min and at the end of each run):** [{TRK.url}]({TRK.url}) (project `{TRACKIO_PROJECT}`)") if TRK.url else
      mo.md(f"**Trackio dashboard** (copied to the private repo with every checkpoint push; run on your computer):\n\n```\n{_view}\n```") if HF_PUSH else None) if TRK.on else None
     return (TRK,)
 
