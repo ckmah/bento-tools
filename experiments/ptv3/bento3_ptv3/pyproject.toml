@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bento3-ptv3"
+version = "0.1.0"
+description = "bento 3.0 experiments: pretrained PTv3 (Utonia-small) + LoRA, self-distillation over Xenium molecules"
+requires-python = ">=3.10"
+license = { text = "BSD-2-Clause (bento-tools); vendored Utonia code Apache-2.0; Utonia weights CC-BY-NC-4.0" }
+dependencies = [
+  "torch>=2.4",
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "pandas>=2.0",
+  "pyarrow>=14",
+  "timm>=1.0",
+  "addict>=2.4",
+  "packaging",
+  "huggingface-hub>=0.25",
+]
+
+[project.optional-dependencies]
+track = ["trackio==0.44.0"]
+
+[project.scripts]
+bento3-ptv3 = "bento3_ptv3.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"bento3_ptv3._vendor.utonia" = ["LICENSE"]
