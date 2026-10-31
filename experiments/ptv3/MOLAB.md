@@ -51,6 +51,15 @@ The notebook logs every run to [Trackio](https://github.com/gradio-app/trackio) 
   because `sec` is logged in whole seconds. After training come `eval/*` (held-out top-1, NLL, coverage, s/step, minutes), then
   `hier/*` and `hier_ctx/*` (ARI vs cells and vs k-means, nuclei/cells matched, chosen k, ToMATo, niche ARI). The arm's flags and
   settings are logged as the run config.
+- **Abundance-aware eval.** Gene counts are heavy-tailed (15 genes with ≥ 10k training molecules make about half the held-out strip),
+  so top-1 mostly scores abundant genes. `eval/*` also has `test_macro_recall` (mean per-gene recall; chance 1/280), top-1 within
+  half-decade bins of training count (`test_top1_lt100`, `_100_300`, `_300_1k`, `_1k_3k`, `_3k_10k`, `_ge10k`), and two baselines on
+  the same masked molecules (`base_majority_top1`, `base_prior_top1`). Per-gene counts go to `runs/<run>/per_gene.json`. Costs two
+  bincounts per eval batch.
+- **Audit scripts** (written next to train.py, not run by the notebook): `eval_detail.py RUN OUT.npz --variants real,zero,zero_flag,perm,shuf`
+  re-evaluates a finished `model.pt` with the DAPI input kept, zeroed, permuted, or swapped for the tile-shuffled features and keeps every
+  prediction; `abundance.py EVALDIR FIG.png` turns those into the per-bin table and figure (`knn_preds.py` adds the 20-NN baseline);
+  `stem_weights.py RUN ...` compares how strongly each input group drives the first layer.
 - **Images**, every 1,000 steps (`LOG_IMAGES` / `BENTO_LOG_IMAGES`, `BENTO_PREVIEW_EVERY`). Each one shows a fixed held-out window
   (x 1080–1180, y 325–425 µm, ≤ 20k molecules, the same molecules every time), using context predictions with each molecule's own gene
   masked (4 fixed 25% masks):

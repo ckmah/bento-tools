@@ -697,6 +697,7 @@ torch.save(net.state_dict(), f"{OUT}/model.pt")
 # ---------- evaluation on the held-out strip (x > 950): tiled windows with halo, 3 fixed masks
 bn_recalibrate(net, rng)
 emb = np.zeros((len(xyz), 48), np.float16); correct = n = 0; nll = 0.0
+n_g = torch.zeros(G, dtype=torch.long, device=DEV); hit_g = torch.zeros(G, dtype=torch.long, device=DEV)   # per-gene counts for abundance metrics
 with torch.no_grad(), torch.autocast(**AMP):
     for sel, core, x0, y0 in strip_tiles():
         b = collate([make_window(sel, x0, y0, np.random.default_rng(0), mask_gene=0.0, mask_dapi=False)])
@@ -706,8 +707,19 @@ with torch.no_grad(), torch.autocast(**AMP):
             mk = torch.tensor(b["gmask"].cpu().numpy() & core, device=DEV)
             lp = F.log_softmax(net.gene_head(net(b))[mk].float(), 1); tgt = b["g"][mk]
             correct += (lp.argmax(1) == tgt).sum().item(); n += len(tgt); nll += -lp[torch.arange(len(tgt), device=DEV), tgt].sum().item()
+            n_g += torch.bincount(tgt, minlength=G); hit_g += torch.bincount(tgt[lp.argmax(1) == tgt], minlength=G)
 res = dict(arm=a.arm, seed=a.seed, steps=step, train_min=train_sec / 60, sec_per_step=train_sec / max(step, 1), params=nparam, test_masked=n,
            test_acc=correct / n, test_nll=nll / n, covered=float(strip_tiles.have[tidx].mean()), device=str(DEV), spconv='real' if REAL_SPCONV else 'shim', nwin=a.nwin, win=a.win, amp=a.amp, backbone=a.backbone, init=a.init, enc_lr_mult=a.enc_lr_mult)
+# abundance: gene counts are heavy-tailed (15 genes with >= 10k training molecules make ~half the held-out strip), so top-1 mostly
+# scores the abundant genes. Also report macro recall (mean per-gene recall), top-1 within 6 half-decade bins of training count
+# (<100, 100-300, 300-1k, 1k-3k, 3k-10k, >=10k molecules), and two trivial baselines on the same masked molecules.
+n_g, hit_g = n_g.cpu().numpy(), hit_g.cpu().numpy(); ntr = np.bincount(gene[~test], minlength=G); ptr = ntr / ntr.sum()
+ABIN = ["lt100", "100_300", "300_1k", "1k_3k", "3k_10k", "ge10k"]; bin_of = np.digitize(ntr, [100, 300, 1000, 3000, 10000]); seen = n_g > 0
+res |= dict(test_macro_recall=float((hit_g[seen] / n_g[seen]).mean()),
+            **{f"test_top1_{ABIN[b]}": float(hit_g[bin_of == b].sum() / max(n_g[bin_of == b].sum(), 1)) for b in range(6)},
+            base_majority_top1=float(n_g[ntr.argmax()] / n), base_prior_top1=float((n_g * ptr).sum() / n), base_prior_macro_recall=float(ptr[seen].mean()))
+json.dump(dict(gene=[str(x) for x in M["genes"]], train_count=ntr.tolist(), test_masked=n_g.tolist(), test_correct=hit_g.tolist(), bin=bin_of.tolist()),
+          open(f"{OUT}/per_gene.json", "w"))
 json.dump(res, open(f"{OUT}/result.json", "w"), indent=1); np.save(f"{OUT}/emb_test.npy", emb[tidx])
 print(json.dumps(res))
 ''',
@@ -1197,6 +1209,157 @@ class SubMConv3d(SparseModule):
 
 modules = types.SimpleNamespace(is_spconv_module=lambda m: isinstance(m, SparseModule))
 ''',
+        'eval_detail.py': r'''"""Re-evaluate a finished run's model.pt on the held-out strip (x > 950 um) exactly like train.py's final eval (tiles with halo,
+3 fixed 25% masks), but keep every masked prediction, and optionally perturb the DAPI input to test whether the model uses it.
+usage: python eval_detail.py RUNDIR OUT.npz [--variants real,zero,zero_flag,perm,shuf] [--frac 1.0]
+  real      : features as trained
+  zero      : dapi_in = 0, dmask = 0  (out of distribution: 'present but all zero')
+  zero_flag : dapi_in = 0, dmask = 1  (in distribution: what the model sees inside a masked-DAPI disk)
+  perm      : dapi rows permuted across molecules within each window (marginals kept, alignment broken)
+  shuf      : the shuf arm's tile-shuffled NuSPIRe features (spatial alignment broken at the 10 um tile scale)"""
+import sys, os, json, time, argparse, numpy as np
+q = argparse.ArgumentParser(); q.add_argument("run"); q.add_argument("out"); q.add_argument("--variants", default="real")
+q.add_argument("--threads", type=int, default=8); q.add_argument("--frac", type=float, default=1.0, help="fraction of strip tiles (fixed subset)")
+A = q.parse_args()
+cfg = json.load(open(os.path.join(A.run, "config.json")))
+HERE = os.path.dirname(os.path.abspath(__file__))
+src = open(os.path.join(HERE, "train.py")).read(); src = src[:src.index("net = (Net() if")]
+sys.argv = ["train.py", "--arm", cfg["arm"], "--seed", str(cfg["seed"]), "--nwin", str(cfg["nwin"]), "--device", "cpu",
+            "--threads", str(A.threads), "--backbone", cfg.get("backbone", "ptv3"), "--ugrid", str(cfg.get("ugrid", 0.5)), "--out", "/tmp/_evd"]
+ns = dict(__file__=os.path.join(HERE, "train.py"), __name__="train_prefix"); exec(compile(src, "train.py", "exec"), ns)
+torch, F = ns["torch"], ns["F"]
+net = (ns["Net"]() if cfg.get("backbone", "ptv3") == "ptv3" else ns["UtoniaNet"]()); ns["net"] = net
+net.load_state_dict(torch.load(os.path.join(A.run, "model.pt"), map_location="cpu")); ns["bn_recalibrate"](net, np.random.default_rng(cfg["seed"]))
+D, G = ns["D"], ns["G"]; real = ns["dapi"]
+variants = A.variants.split(",") if D else ["real"]
+shuf_feats = np.load(os.path.join(HERE, "data/dapi_feats.npz"))["shuf"].astype(np.float32) if "shuf" in variants else None
+tiles = list(ns["strip_tiles"]())
+if A.frac < 1: keep = np.sort(np.random.default_rng(7).choice(len(tiles), max(1, int(len(tiles) * A.frac)), replace=False)); tiles = [tiles[i] for i in keep]
+res = {}
+for v in variants:
+    t0 = time.time(); ns["dapi"] = shuf_feats if v == "shuf" else real
+    G_, P_, LP_, IDX_ = [], [], [], []
+    with torch.no_grad():
+        for ti, (sel, core, x0, y0) in enumerate(tiles):
+            for r in range(3):
+                b = ns["collate"]([ns["make_window"](sel, x0, y0, np.random.default_rng(1234 + r), mask_gene=0.25, mask_dapi=False)])
+                if D and v in ("zero", "zero_flag"):
+                    b["dapi_in"] = torch.zeros_like(b["dapi_in"]); b["dmask"] = torch.full_like(b["dmask"], 1.0 if v == "zero_flag" else 0.0)
+                if D and v == "perm":
+                    b["dapi_in"] = b["dapi_in"][torch.tensor(np.random.default_rng(ti * 3 + r).permutation(len(sel)))]
+                mk = torch.tensor(b["gmask"].numpy() & core)
+                lp = F.log_softmax(net.gene_head(net(b))[mk].float(), 1); tgt = b["g"][mk]
+                G_.append(tgt.numpy().astype(np.int16)); P_.append(lp.argmax(1).numpy().astype(np.int16))
+                LP_.append(lp[torch.arange(len(tgt)), tgt].numpy().astype(np.float32)); IDX_.append(sel[mk.numpy()])
+    g, p, lpt = np.concatenate(G_), np.concatenate(P_), np.concatenate(LP_)
+    res[v] = dict(gene=g, pred=p, lp_true=lpt, idx=np.concatenate(IDX_))
+    print(f"{os.path.basename(A.run)} {v}: top1 {np.mean(g == p):.4f}  nll {-lpt.mean():.4f}  n {len(g)}  {time.time() - t0:.0f}s", flush=True)
+np.savez_compressed(A.out, **{f"{v}__{k}": x for v, d in res.items() for k, x in d.items()})
+''',
+        'stem_weights.py': r'''"""Input-layer weight audit: how strongly each input group (gene embedding / DAPI features / DAPI-mask flag / coords) drives the
+first layer of a trained run. usage: python stem_weights.py RUNDIR [RUNDIR ...]"""
+import sys, os, json, numpy as np, torch
+M = np.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data/mol.npz"), allow_pickle=True)
+freq = np.bincount(M["gene"][~M["test"]].astype(int), minlength=280).astype(float); freq /= freq.sum()
+for run in sys.argv[1:]:
+    sd = torch.load(f"{run}/model.pt", map_location="cpu"); cfg = json.load(open(f"{run}/config.json"))
+    W = (sd["bb.embedding.stem.conv.weight"] if "bb.embedding.stem.conv.weight" in sd else sd["bb.embedding.stem.linear.weight"]).float()
+    W = W.reshape(W.shape[0], -1, W.shape[-1]) if W.ndim == 5 else W[:, None, :]           # out x taps x in
+    if W.shape[1] > 1: W = W[:, W.shape[1] // 2:W.shape[1] // 2 + 1]                       # centre tap (each molecule's own voxel)
+    cin = W.shape[-1]; D = cin - 35 - (1 if cin > 35 else 0); D = max(D, 0)
+    E = sd["emb.weight"].float().numpy()[:280]; mu = (freq[:, None] * E).sum(0)
+    sd_gene = np.sqrt((freq[:, None] * (E - mu) ** 2).sum(0))                                # std of each gene-embedding channel
+    groups = dict(gene=(slice(0, 32), sd_gene), dapi=(slice(32, 32 + D), np.ones(D)), coord=(slice(cin - 3, cin), np.array([0.29, 0.29, 0.6])))
+    out = {}
+    for k, (sl, s) in groups.items():
+        if sl.stop - sl.start <= 0: continue
+        w = W[..., sl].numpy(); out[k] = (float(np.sqrt((w ** 2 * s ** 2).sum())), float(np.sqrt((w ** 2).sum(axis=(0, 1)).mean())))
+    print(os.path.basename(run), "  ".join(f"{k}: drive {v[0]:.2f} (per-input-col |w| {v[1]:.3f})" for k, v in out.items()),
+          f" dapi/gene drive {out['dapi'][0] / out['gene'][0]:.2f}" if "dapi" in out else "")
+''',
+        'knn_preds.py': r'''"""Per-molecule predictions of the non-deep baseline from baselines.py (logistic regression on log1p counts of the 20 nearest
+neighbours' genes), for every held-out molecule, so it can be stratified by abundance like the PTv3 arms. Writes OUT.npz (idx, pred)."""
+import sys, numpy as np
+from scipy.spatial import cKDTree
+from sklearn.linear_model import LogisticRegression
+M = np.load("data/mol.npz", allow_pickle=True); xyz, g, test = M["xyz"], M["gene"].astype(int), M["test"]
+G = g.max() + 1; rng = np.random.default_rng(0)
+def nbr_counts(idx, pool_mask):
+    pool = np.flatnonzero(pool_mask); tr = cKDTree(xyz[pool])
+    _, nn = tr.query(xyz[idx], k=21); nn = pool[nn[:, 1:]]
+    X = np.zeros((len(idx), G), np.float32); np.add.at(X, (np.repeat(np.arange(len(idx)), 20), g[nn].ravel()), 1); return X
+tri = rng.choice(np.flatnonzero(~test), 150000, replace=False); tei = np.flatnonzero(test)
+clf = LogisticRegression(max_iter=300, C=0.5).fit(np.log1p(nbr_counts(tri, ~test)), g[tri])
+pred = np.concatenate([clf.classes_[clf.predict_proba(np.log1p(nbr_counts(tei[k:k + 50000], test))).argmax(1)] for k in range(0, len(tei), 50000)])
+print("knn20 top1 on all held-out molecules:", np.mean(pred == g[tei])); np.savez_compressed(sys.argv[1], idx=tei, pred=pred.astype(np.int16))
+''',
+        'abundance.py': r'''"""Abundance-aware scores for the held-out masked-gene predictions written by eval_detail.py (+ knn_preds.py baseline).
+Genes are binned by training-side count in half decades: <100, 100-300, 300-1k, 1k-3k, 3k-10k, >=10k molecules (same as train.py).
+usage: python abundance.py EVALDIR FIGPATH  (EVALDIR has <arm>_s0.npz and knn20.npz; writes abundance.json next to FIGPATH)"""
+import sys, os, json, numpy as np
+import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
+from scipy.stats import spearmanr
+EV, FIG = sys.argv[1], sys.argv[2]
+M = np.load("data/mol.npz", allow_pickle=True); gene, test = M["gene"].astype(int), M["test"]; G = gene.max() + 1
+ntr = np.bincount(gene[~test], minlength=G); ptr = ntr / ntr.sum()
+EDGES = [100, 300, 1000, 3000, 10000]; NB = len(EDGES) + 1; bin_of = np.digitize(ntr, EDGES)   # same bins as train.py
+LAB = ["<100", "100–300", "300–1k", "1k–3k", "3k–10k", "≥10k"]
+def score(g, p):
+    n_g = np.bincount(g, minlength=G); c_g = np.bincount(g[g == p], minlength=G); seen = n_g > 0
+    rec = np.where(seen, c_g / np.maximum(n_g, 1), np.nan)
+    return dict(top1=float(np.mean(g == p)), macro_recall=float(np.nanmean(rec)),
+                bin_top1=[float(np.mean(p[bin_of[g] == b] == g[bin_of[g] == b])) for b in range(NB)],
+                bin_share=[float(np.mean(bin_of[g] == b)) for b in range(NB)],
+                pred_share_top_bin=float(np.mean(bin_of[p] == NB - 1)), pred_share=[float(np.mean(bin_of[p] == b)) for b in range(NB)], genes_predicted=int(len(np.unique(p))),
+                spearman_recall_vs_logfreq=float(spearmanr(np.log(ntr[seen]), rec[seen]).statistic)), rec
+ARMS = ["mol", "nusp", "nuspL0", "shuf", "int", "nuspU", "nuspUs"]
+R, REC = {}, {}
+ref = np.load(f"{EV}/mol_s0.npz"); g0, idx0 = ref["real__gene"].astype(int), ref["real__idx"]
+n_g = np.bincount(g0, minlength=G)
+# baselines on the same masked set: majority class; sampling from the training prior (expected value); 20-NN logistic regression
+maj = int(ntr.argmax())
+R["majority"], REC["majority"] = score(g0, np.full_like(g0, maj))
+exp_rec = np.where(n_g > 0, ptr, np.nan)
+R["prior_sample"] = dict(top1=float((ptr[g0]).mean()), macro_recall=float(np.nanmean(exp_rec)),
+                         bin_top1=[float(ptr[g0[bin_of[g0] == b]].mean()) for b in range(NB)]); REC["prior_sample"] = exp_rec
+if os.path.exists(f"{EV}/knn20.npz"):
+    k = np.load(f"{EV}/knn20.npz"); lut = np.full(len(gene), -1); lut[k["idx"]] = k["pred"]
+    R["knn20"], REC["knn20"] = score(g0, lut[idx0])
+for a in ARMS:
+    f = f"{EV}/{a}_s0.npz"
+    if not os.path.exists(f): continue
+    z = np.load(f); assert (z["real__idx"] == idx0).all()
+    R[a], REC[a] = score(z["real__gene"].astype(int), z["real__pred"].astype(int))
+    for v in ["zero", "zero_flag", "perm", "shuf"]:
+        if f"{v}__pred" in z: R[f"{a}:{v}"], _ = score(z[f"{v}__gene"].astype(int), z[f"{v}__pred"].astype(int))
+json.dump(dict(bins=dict(edges=EDGES, labels=LAB, genes_per_bin=[int((bin_of == b).sum()) for b in range(NB)]), scores=R),
+          open(os.path.join(os.path.dirname(FIG), "abundance.json"), "w"), indent=1)
+hdr = "| | top-1 % | macro recall % | " + " | ".join(f"{LAB[b]} ({(bin_of == b).sum()} genes)" for b in range(NB)) + " | preds in ≥10k % | genes predicted |"
+print(hdr); print("|" + "---|" * (NB + 5))
+for k, r in R.items():
+    print(f"| {k} | {100 * r['top1']:.2f} | {100 * r['macro_recall']:.2f} | " + " | ".join(f"{100 * x:.2f}" for x in r["bin_top1"]) +
+          f" | {100 * r.get('pred_share_top_bin', np.nan):.1f} | {r.get('genes_predicted', '')} |")
+print("share of held-out masked molecules per bin %:", [round(100 * x, 1) for x in R["mol"]["bin_share"]])
+# ---- figure: (a) top-1 per abundance bin, arms + baselines; (b) per-gene recall vs training count (binned means)
+COL = dict(mol="#444444", nusp="#1f77b4", nuspL0="#9467bd", shuf="#d62728", int="#ff7f0e", nuspU="#17becf", nuspUs="#8c564b")
+fig, ax = plt.subplots(1, 2, figsize=(13.5, 4.8)); xb = np.arange(NB)
+for a in ARMS:
+    if a in R: ax[0].plot(xb, 100 * np.array(R[a]["bin_top1"]), "o-", color=COL[a], lw=1.6, ms=4, label=a)
+for k, st, lab in [("knn20", "s--", "20-NN gene counts + logreg"), ("prior_sample", "^:", "sample from gene prior"), ("majority", "x:", f"majority class ({M['genes'][maj]})")]:
+    if k in R: ax[0].plot(xb, 100 * np.array(R[k]["bin_top1"]), st, color="gray", lw=1.2, label=lab)
+ax[0].set_yscale("symlog", linthresh=1); ax[0].set_xticks(xb, [f"{LAB[b]}\n{(bin_of == b).sum()} genes\n{100 * R['mol']['bin_share'][b]:.1f}% of mols" for b in range(NB)], fontsize=8)
+ax[0].set(ylabel="held-out top-1 within bin (%)", xlabel="training molecules per gene", title="Held-out top-1 by gene abundance"); ax[0].legend(fontsize=7.5, ncol=2)
+# (b) where the predictions go: share of predictions per abundance bin vs the true share of masked molecules
+truth = np.array(R["mol"]["bin_share"]); show = [k for k in ["knn20"] + ARMS if k in R and "pred_share" in R[k]]
+w = 0.8 / (len(show) + 1); ax[1].bar(xb - 0.4 + w / 2, 100 * truth, w, color="black", alpha=0.25, label="truth (masked molecules)")
+for i_, k in enumerate(show):
+    ax[1].bar(xb - 0.4 + w * (i_ + 1.5), 100 * np.array(R[k]["pred_share"]), w, color=COL.get(k, "gray"), hatch="//" if k == "knn20" else None,
+              label=f"{k if k != 'knn20' else '20-NN baseline'} (macro recall {100 * R[k]['macro_recall']:.2f}%)")
+ax[1].set_yscale("symlog", linthresh=1); ax[1].set_xticks(xb, LAB, fontsize=8)
+ax[1].set(xlabel="training molecules per gene", ylabel="% of predictions / of molecules", title="Where predictions go: collapse onto abundant genes")
+ax[1].legend(fontsize=7, loc="upper left", title="chance macro recall = 1/280 = 0.36%", title_fontsize=7)
+fig.tight_layout(); os.makedirs(os.path.dirname(FIG), exist_ok=True); fig.savefig(FIG, dpi=150); print("wrote", FIG)
+''',
         'runs/baselines.json': r'''{
  "prior_top1": 0.08744972153465347,
  "prior_nll": 4.277246087327609,
@@ -1558,9 +1721,10 @@ def _(AMP, ARMS, DATA_READY, GPU, HF_MODEL_REPO, HF_PUSH, HF_TOKEN, NWIN, PREVIE
                 if sh(["train.py"] + _base + ["--steps", str(STEPS), "--nwin", str(NWIN)] + _pv, f"log_{_A}_s{_seed}.txt", poll=TRK.follow(_d / "train_log.tsv")):
                     say(f"FAILED train {_A} s{_seed}: see runs/log_{_A}_s{_seed}.txt"); tail(f"log_{_A}_s{_seed}.txt"); TRK.finish(); continue
                 _r = json.load(open(_d / "result.json"))
-                say(f"done train {_A} s{_seed}: held-out top-1 {100 * _r['test_acc']:.2f}% in {(time.time() - _t) / 60:.1f} min, "
+                say(f"done train {_A} s{_seed}: held-out top-1 {100 * _r['test_acc']:.2f}% (macro recall {100 * _r.get('test_macro_recall', float('nan')):.2f}%) in {(time.time() - _t) / 60:.1f} min, "
                     f"{_r.get('sec_per_step', float('nan')):.3f} s/step"); sync(f"trained {_A} s{_seed}")
-                _log_json("result.json", "eval", ["test_acc", "test_nll", "covered", "sec_per_step", "train_min"])
+                _log_json("result.json", "eval", ["test_acc", "test_nll", "test_macro_recall"] + [f"test_top1_{_b}" for _b in ["lt100", "100_300", "300_1k", "1k_3k", "3k_10k", "ge10k"]]
+                          + ["base_majority_top1", "base_prior_top1", "covered", "sec_per_step", "train_min"])
             if not (_d / "hier.json").exists():
                 if sh(["hier.py", f"runs/{_A}_s{_seed}"], "hier.log"): say(f"FAILED hier {_A} s{_seed}"); tail("hier.log")
                 else: _log_json("hier.json", "hier", _H)
