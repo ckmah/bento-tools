@@ -17,7 +17,7 @@ from .track import Hub, Tracker
 
 
 def _amp(cfg, dev):
-    return dict(device_type="cuda" if dev.type == "cuda" else "cpu", dtype=torch.bfloat16, enabled=cfg.amp == "bf16" and dev.type == "cuda")
+    return dict(device_type="cuda" if dev.type == "cuda" else "cpu", dtype=torch.bfloat16, enabled=cfg.amp == "bf16" and (dev.type == "cuda" or cfg.amp_cpu))
 
 
 def build_batch(M, rng, cfg):
@@ -168,7 +168,7 @@ def train(cfg: TrainConfig):
             row = dict(step=step, sec=round(el), loss=float(loss.detach()), loss_dino=float(loss_dino.detach()), koleo=float(loss_kl.detach()), t_entropy=ent, t_batch_entropy=pent, agree=agree, lr=lr, ema=mom, t_temp=ttemp, s_per_step=sps)
             log.write("\t".join(f"{row[c]:.6g}" if isinstance(row[c], float) else str(row[c]) for c in COLS) + "\n"); log.flush()
             trk.log({f"train/{k}": v for k, v in row.items() if k != "step"}, step)
-            if not math.isfinite(float(loss)): raise FloatingPointError(f"loss is {float(loss)} at step {step}")
+            if not math.isfinite(row["loss"]): raise FloatingPointError(f"loss is {row['loss']} at step {step}")
         step += 1
         if cfg.eval_every and step % cfg.eval_every == 0 and (total is None or step < total): run_eval("quick", full=False); net.train()
         if (time.time() - last_ck > cfg.ckpt_min * 60 or step % cfg.ckpt_every == 0) and (total is None or step < total):

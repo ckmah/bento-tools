@@ -60,7 +60,8 @@ class TrainConfig:
     warmup: int = 1000
     weight_decay: float = 0.04
     clip: float = 3.0
-    amp: str = "bf16"                      # none | bf16 (CUDA only)
+    amp: str = "bf16"                      # none | bf16 (autocast on CUDA; on CPU only with amp_cpu)
+    amp_cpu: bool = False                  # tests only: also autocast bf16 on CPU, to exercise the GPU dtype path without a GPU
     device: str = "auto"
     threads: int = 8
     prefetch: int = 6                      # batches built ahead in a thread (CUDA)

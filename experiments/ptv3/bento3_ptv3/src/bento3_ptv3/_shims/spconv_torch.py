@@ -44,10 +44,16 @@ class SubMConv3d(SparseModule):
             nb = _neighbours(t, self.k); m = nb >= 0
             pairs = (t.features.shape[0], [(m[j].nonzero().squeeze(1), nb[j][m[j]]) for j in range(nb.shape[0])]); t.indice_dict[ck] = pairs
         x = t.features; W = self.weight.reshape(self.weight.shape[0], -1, x.shape[1])          # (out, K, in)
-        out = x.new_zeros(x.shape[0], W.shape[0])
+        # Under autocast the per-tap matmul runs in the autocast dtype (bf16 on molab) while x may be fp32 (e.g. straight out of a
+        # LayerNorm), so the products and `out` can differ in dtype. Accumulate the taps in fp32 (index_add needs equal dtypes, and
+        # fp32 keeps the up-to-27-term sum exact enough), add the bias in fp32, then return in the matmul's dtype, like a Linear would.
+        out = x.new_zeros(x.shape[0], W.shape[0], dtype=torch.float32); res_dtype = None
         for j, (oi, ii) in enumerate(pairs[1]):   # each input row is the j-th neighbour of at most one output row: deterministic adds
-            if len(oi): out = out.index_add(0, oi, x[ii] @ W[:, j].t())
-        if self.bias is not None: out = out + self.bias
-        return t.replace_feature(out)
+            if len(oi):
+                y = x[ii] @ W[:, j].t(); res_dtype = y.dtype
+                out = out.index_add(0, oi, y.float())
+        if res_dtype is None: res_dtype = (x[:0] @ W[:, 0].t()).dtype   # no active pairs: still report the dtype a matmul would give
+        if self.bias is not None: out = out + self.bias.float()
+        return t.replace_feature(out.to(res_dtype))
 
 modules = types.SimpleNamespace(is_spconv_module=lambda m: isinstance(m, SparseModule))

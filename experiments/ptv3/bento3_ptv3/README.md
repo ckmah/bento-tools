@@ -33,3 +33,8 @@ The same run from the command line: `bento3-ptv3 train --seed 0 --lora-rank 16`.
 
 `config.py` (TrainConfig), `data.py` (build/download, spatial index, split, views), `model.py` (Utonia + LoRA + head),
 `train.py` (the loop), `evaluate.py` (probes), `track.py` (HF push/restore, Trackio), `cli.py`, `httpzip.py`.
+
+## Tests
+
+`pytest experiments/ptv3/bento3_ptv3/tests` (CPU, no weights or data): the sparse-conv shim and a tiny forward/backward under
+bf16 autocast, the same dtype path the GPU run takes. `TrainConfig(amp_cpu=True)` turns on CPU bf16 autocast for a full CPU smoke run.
