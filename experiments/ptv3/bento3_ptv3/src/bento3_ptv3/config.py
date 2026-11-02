@@ -56,20 +56,25 @@ class TrainConfig:
     steps: int = 0                         # 0 = auto: fit train_hours (s/step measured over steps 50-250; fixed in the checkpoint)
     train_hours: float = 9.5               # training budget for steps=0 (molab hard-stops at 12 h: leaves time for download + eval)
     max_steps: int = 200000
-    lr: float = 1e-3
+    lr: float = 1e-3                       # head / neck / stem / gene embedding
+    freeze_lora: bool = False              # diagnostic: keep LoRA B at zero (encoder exactly pretrained); head/neck/stem still train
+    lora_lr: float = 5e-5                  # LoRA A/B (own param group; 0 = same as lr). 1e-3 blew the encoder up in lora_ssl_s0
     warmup: int = 1000
     weight_decay: float = 0.04
     clip: float = 3.0
+    max_feat_abs: float = 1e4              # abort (before checkpointing) if max |encoder feature| exceeds this; init is ~4
     amp: str = "bf16"                      # none | bf16 (autocast on CUDA; on CPU only with amp_cpu)
     amp_cpu: bool = False                  # tests only: also autocast bf16 on CPU, to exercise the GPU dtype path without a GPU
     device: str = "auto"
     threads: int = 8
+    loader_procs: int = 2                  # batch-building processes (fork; threads gave 1.0x: GIL). 0 = one prefetch thread
     prefetch: int = 6                      # batches built ahead in a thread (CUDA)
     log_every: int = 25
     ckpt_min: float = 15.0                 # checkpoint (and push to HF) every this many minutes ...
     ckpt_every: int = 5000                 # ... or every this many steps, whichever comes first
     session_hours: float = 11.25           # stop cleanly (checkpoint + push) after this long in one session; Run all resumes
     # eval: frozen-embedding linear probes on held-out blocks (probe-fit blocks vs probe-test blocks)
+    viz_every: int = 500                   # interpretation panels on a fixed held-out tile -> run_dir/viz/ (0 = off)
     eval_every: int = 10000                # quick probe (nucleus, cluster) every N steps; 0 = only at start and end
     eval_tiles: int = 160                  # held-out 100 um tiles in the final eval (quick eval: eval_tiles // 4)
     eval_per_tile: int = 2500              # core molecules kept per tile
@@ -78,7 +83,8 @@ class TrainConfig:
     hf_repo: str = "ckmah/bento3-ptv3-runs"
     hf_prefix: str = "lora"                # path in hf_repo
     trackio_project: str = "bento3-lora"
-    trackio_space: str = "ckmah/bento3-ptv3-trackio"
+    trackio_space: str = ""                # "" = no Space publishing. trackio's static export (a background thread reading the
+                                           # sqlite DB while training writes it) segfaulted the process; e.g. "ckmah/bento3-ptv3-trackio"
     trackio_publish_min: float = 5.0
 
     @property

@@ -29,13 +29,13 @@ def embed(net, M, tiles, cfg, dev, amp, gene_masked=False):
         if len(c) > cfg.eval_per_tile: c = np.sort(np.random.default_rng(len(sel)).choice(c, cfg.eval_per_tile, replace=False))
         v = make_view(M, sel, None, cfg, augment=False, mask=False); b = collate([v], dev)
         with torch.autocast(**amp): up, e = net.features(b)
-        I.append(sel[c]); X.append(up[c].half()); E.append(e[c].half().cpu())
+        I.append(sel[c]); X.append(up[c].float()); E.append(e[c].float().cpu())   # float32: fp16 overflowed to inf in lora_ssl_s0
         if gene_masked:
-            part = np.random.default_rng(99).integers(0, 4, len(sel)); xm = torch.zeros(len(c), up.shape[1], dtype=torch.float16, device=dev)
+            part = np.random.default_rng(99).integers(0, 4, len(sel)); xm = torch.zeros(len(c), up.shape[1], dtype=torch.float32, device=dev)
             for r in range(4):
                 b["mask"] = torch.tensor(part == r, device=dev)
                 with torch.autocast(**amp): u2, _ = net.features(b)
-                w = part[c] == r; xm[torch.tensor(w, device=dev)] = u2[c[w]].half()
+                w = part[c] == r; xm[torch.tensor(w, device=dev)] = u2[c[w]].float()
             XM.append(xm)
     out = dict(idx=np.concatenate(I), X=torch.cat(X), E=torch.cat(E))
     if gene_masked: out["Xm"] = torch.cat(XM)
@@ -81,7 +81,13 @@ def evaluate(net, M, cfg, dev, amp, n_tiles, gene=False, baselines=False):
     """Returns a flat dict of metrics (probe/*, base_*/*, gene/*) and the probe-test embeddings (idx, E) for saving."""
     tf, tt = M.eval_tiles(1, n_tiles // 2), M.eval_tiles(2, n_tiles // 2)
     A, B = embed(net, M, tf, cfg, dev, amp, gene), embed(net, M, tt, cfg, dev, amp, gene); res = dict(eval_tiles=len(tf) + len(tt), eval_mol=len(A["idx"]) + len(B["idx"]))
-    feats = {"model": (A["X"], B["X"])}
+    for nm, D in (("fit", A), ("test", B)):
+        res[f"feat_absmax_{nm}"] = float(D["X"].abs().max()); res[f"feat_nonfinite_{nm}"] = int((~torch.isfinite(D["X"])).sum())
+    model_ok = res["feat_nonfinite_fit"] == 0 and res["feat_nonfinite_test"] == 0
+    if not model_ok: print(f"eval: non-finite model features ({res['feat_nonfinite_fit']} fit / {res['feat_nonfinite_test']} test); model probes = NaN", flush=True)
+    feats = {"model": (A["X"], B["X"])} if model_ok else {}
+    if not model_ok:
+        res |= {"probe/nuc_auroc": float("nan"), "probe/nuc_bacc": float("nan"), "probe/clust_bacc": float("nan"), "probe/clust_acc": float("nan")}
     if baselines:
         split = lambda D, T: np.split(D["idx"], np.cumsum([min(core.sum(), cfg.eval_per_tile) for _, core, _, _ in T])[:-1])
         cf, ct = comp_feats(M, tf, split(A, tf)), comp_feats(M, tt, split(B, tt)); oh = lambda i: np.eye(M.G, dtype=np.float32)[M.gene[i]]
@@ -100,7 +106,7 @@ def evaluate(net, M, cfg, dev, amp, n_tiles, gene=False, baselines=False):
             out = {f"{pre}/gene_top1": float((p == yt).mean()), f"{pre}/gene_macro_recall": float((h_g[seen] / n_g[seen]).mean())}
             out |= {f"{pre}/gene_top1_{ABIN[b]}": float(h_g[bins == b].sum() / max(n_g[bins == b].sum(), 1)) for b in range(5)}
             return out
-        res |= gscore("probe", linear_probe(A["Xm"], yf, B["Xm"], G, dev))
+        if model_ok: res |= gscore("probe", linear_probe(A["Xm"], yf, B["Xm"], G, dev))
         if baselines:
             res |= gscore("base_comp20", linear_probe(cf, yf, ct, G, dev))
             res |= {"base_majority/gene_top1": float((yt == M.ntr.argmax()).mean()), "base_prior/gene_macro_recall": float(ptr[np.bincount(yt, minlength=G) > 0].mean())}

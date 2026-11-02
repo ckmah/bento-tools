@@ -42,6 +42,15 @@ class BatchStd(nn.Module):
         x = x.float(); return (x - x.mean(0)) / (x.std(0) + 1e-5) * s.w + s.b
 
 
+class LevelNormNeck(nn.Module):
+    """LayerNorm per encoder level, then one linear to emb_dim. A single LayerNorm over the concatenated levels let one level win by
+    growing its scale (lora_ssl_v2_s0: level 3 grew ~2x per 100 steps until LoRA dW ~ W); per-level norms make each level's scale moot."""
+    def __init__(s, levels, d_out):
+        super().__init__(); s.levels = tuple(levels); s.norms = nn.ModuleList(nn.LayerNorm(c) for c in s.levels); s.lin = nn.Linear(sum(s.levels), d_out)
+    def forward(s, x):
+        return s.lin(torch.cat([n(p) for n, p in zip(s.norms, x.split(s.levels, -1))], -1))
+
+
 class DINOHead(nn.Module):
     def __init__(s, d_in, hidden, bott, K):
         super().__init__()
@@ -60,7 +69,7 @@ class UtoniaLoRA(nn.Module):
         s.emb = nn.Embedding(G, cfg.gene_dim)
         s.bb = PointTransformerV3(in_channels=cfg.gene_dim + 3, enable_flash=False, drop_path=cfg.drop_path, mask_token=True, **UTONIA_SMALL)
         C = sum(UTONIA_SMALL["enc_channels"])
-        s.neck = nn.Sequential(nn.LayerNorm(C), nn.Linear(C, cfg.emb_dim))
+        s.neck = LevelNormNeck(UTONIA_SMALL["enc_channels"], cfg.emb_dim)   # levels concatenated finest-first in features()
         s.head = DINOHead(cfg.emb_dim, cfg.head_hidden, cfg.head_bottleneck, cfg.prototypes)
 
     def load_pretrained(s, path):
