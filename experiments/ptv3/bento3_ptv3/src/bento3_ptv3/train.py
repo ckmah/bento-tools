@@ -1,7 +1,7 @@
 """train(cfg): plain PyTorch loop over molecules with a frozen pretrained Utonia-small encoder + LoRA. No labels are used.
 
 Per step, for each of cfg.regions training regions: two overlapping view squares A and B (each rotated, flipped, scaled, jittered),
-with ~40% of subcellular square patches (side drawn from cfg.mask_patch_um, 1-3 um by default) masked.
+with ~40% of subcellular square patches (side drawn from cfg.mask_patch_um, 4-5 um by default) masked.
   objective='recon'        masked patches are removed and replaced by one query point each (pretrained mask token at the patch centre).
                            From the visible molecules only, the query's embedding predicts what the patch held, as log1p counts (MSE):
                            its molecule count, the count in each layout bin (radial x z) and the count of each gene. The log scale keeps
