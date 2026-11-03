@@ -14,6 +14,7 @@ svg.pele { background:#ffffff; border-radius:10px; }
 .pele .orange rect { fill:#fff1e5 !important; stroke:#f0a35e !important; }
 .pele .teal rect   { fill:#e3f6f2 !important; stroke:#5dbdac !important; }
 .pele .pink rect   { fill:#fde8ef !important; stroke:#e88aa9 !important; }
+.pele .purple rect { fill:#f1ebfd !important; stroke:#a585ef !important; }
 .pele .pele-node rect { stroke-width:1.6px; filter:drop-shadow(0 1px 1.5px rgba(31,35,40,.12)); }
 .pele .breaks rect   { fill:#ffecee !important; stroke:#e5484d !important; stroke-width:2.6px !important; }
 .pele .mayBreak rect { stroke:#e8730c !important; stroke-width:2.4px !important; stroke-dasharray:6 3; }
@@ -23,7 +24,7 @@ svg.pele { background:#ffffff; border-radius:10px; }
   .pele { --pele-bg:#181c1f; --pele-fg:#e6edf3; --pele-muted:#9ba7b4; --pele-line:#6e7681; --pele-surface:#22272e; --pele-surface-alt:#2d333b; --pele-border:#444c56; }
   .pele .pele-edge-label rect, .pele .pele-edge-labels rect { fill:#181c1f !important; }
   .pele .tan rect { fill:#3a3127 !important; } .pele .blue rect { fill:#1d2b45 !important; } .pele .orange rect { fill:#3d2a18 !important; }
-  .pele .teal rect { fill:#173a35 !important; } .pele .pink rect { fill:#3d1f2a !important; } .pele .breaks rect { fill:#4a1d22 !important; }
+  .pele .teal rect { fill:#173a35 !important; } .pele .pink rect { fill:#3d1f2a !important; } .pele .purple rect { fill:#2b2245 !important; } .pele .breaks rect { fill:#4a1d22 !important; }
 }
 </style>`;
 const a = process.argv.slice(2);

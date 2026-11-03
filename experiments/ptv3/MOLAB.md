@@ -9,7 +9,7 @@ from `ptv3_gpu/molab/template.py` plus the scripts in `ptv3_gpu/` (in the bento3
 > the kernel stays free. Open it with
 > https://molab.marimo.io/github/ckmah/bento-tools/blob/bento3-ptv3-molab/experiments/ptv3/molab_lora_run.py, pick the GPU
 > (RTX Pro 6000), set `HF_TOKEN` in molab Secrets, and click Run all. Then start a run from the controls. The dashboard
-> shows metrics next to the per-step viz panels, plus progress bars, a trace, the model tree and the loop statechart.
+> shows metrics next to the per-step viz panels, plus progress bars, a trace, the model tree and an architecture chart (what each part sees and learns).
 >
 > A run with `train_hours` set is sized to that time on whatever GPU it gets: the step count is measured over steps
 > 50–250 and then fixed. A checkpoint goes to `hf.co/ckmah/bento3-ptv3-runs/lora/<run>/` every 15 min, and the run pauses

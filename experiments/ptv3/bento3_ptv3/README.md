@@ -35,7 +35,7 @@ The same run from the command line: `bento3-ptv3 train --seed 0 --objective reco
 
 `config.py` (TrainConfig), `data.py` (build/download, spatial index, split, views), `model.py` (Utonia + LoRA + head),
 `train.py` (the loop), `evaluate.py` (probes), `viz.py` (per-step panels), `track.py` (HF push/restore, Trackio), `cli.py`, `httpzip.py`.
-`../figs/training_objective.png` summarises the objective (regenerate with `training_objective_fig.py`). `../figs/statechart/` has a TLA+ model of the loop's checkpoint guard and its blueprint statechart.
+`../figs/training_objective.png` summarises the objective (regenerate with `training_objective_fig.py`). `../figs/architecture/` charts what each part of the model sees and learns (a TLA+ model; TLC checks that labels, removed molecules and held-out blocks never reach training).
 
 ## Tests
 
