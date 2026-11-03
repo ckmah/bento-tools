@@ -371,7 +371,7 @@ def model_tree(RUNS, mo, run_pick, ws):
 @app.cell(hide_code=True)
 def statechart(mo):
     import urllib.request as _ur
-    _RAW = "https://raw.githubusercontent.com/ckmah/bento-tools/bento3-ptv3-molab/experiments/ptv3/figs/statechart"
+    _RAW = "https://raw.githubusercontent.com/ckmah/bento-tools/43fb0b8/experiments/ptv3/figs/statechart"   # pinned: the branch URL can serve a cached copy
     import base64 as _b64
     def _svg(name):   # as an <img> data URI: the chart's own <style> stays inside the image and cannot restyle the page (icons etc.)
         _d = _b64.b64encode(_ur.urlopen(f"{_RAW}/{name}", timeout=20).read()).decode()
@@ -380,7 +380,7 @@ def statechart(mo):
         mo.md("**Training loop with the guard fix.** TLC checks all three rules: no checkpoint holds blown-up weights, a pause is always resumable, no deadlock. "
               "The running max of |feature| is checked at each log step *and* before every checkpoint write."),
         _svg("loop_guard_fix.svg"),
-        mo.accordion({"Before the fix: the 7-step path to a blown-up checkpoint (dashed = breaks the rule, dotted = can break it, bold = bug path)":
+        mo.accordion({"Before the fix: the 7-step path to a blown-up checkpoint (red = breaks the rule, blue outline = path to it)":
                       _svg("loop_before_fix.svg")}),
     ])
     return (statechart_view,)
