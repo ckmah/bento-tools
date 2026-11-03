@@ -70,10 +70,10 @@ ax.text(7, 16.5, "• one molecule's gene is barely predictable:\n   20-NN conte
 
 # ---------------- B: now ----------------
 panel(53, 60, "B", "Now: subcellular masked reconstruction", "objective='recon' (Point-MAE style; default)", BLUE)
-masks = [(60.5, 49.5, 2.6), (65.5, 44.5, 2.6), (62.5, 41.5, 2.0), (67.5, 50.5, 3.0)]
+masks = [(59.8, 50.2, 5.6), (67.6, 41.8, 6.2)]   # 4-5 um squares on a ~12 um cell
 cell(63.5, 46, 8, 220, 2, masks=masks)
-ax.text(65, 35.3, "~40% of 1–3 µm squares removed,\none query point (mask token) each", ha="center", fontsize=8.8, color=MUTED, va="top")
-box(77, 43, 14, 7.5, "PTv3 encoder\n(frozen + LoRA)", ec=BLUE, bold=True, fs=9.6)
+ax.text(65, 35.3, "~40% of 4–5 µm squares removed,\none query point (mask token) each", ha="center", fontsize=8.8, color=MUTED, va="top")
+box(77, 43, 14, 7.5, "PTv3 encoder\n(pretrained,\nfrozen)", ec=BLUE, bold=True, fs=9.2)
 arrow(73.2, 46.5, 76.7, 46.5, color=BLUE)
 box(94, 43, 15.5, 7.5, "query\nembedding (64-d)", ec=BLUE, fc="#f1f6ff", fs=9.4)
 arrow(91.3, 46.5, 93.7, 46.5, color=BLUE)
@@ -85,7 +85,7 @@ for i, (h, b) in enumerate([("count", "how many\nmolecules"), ("layout", "radial
     box(59.5 + i * 17, 11.5, 15.5, 13, f"{h}\n\n{b}", fs=8.9)
 arrow(101.7, 42.7, 101.7, 32.0, color=TEAL)
 ax.text(103, 37.5, "fixed targets:\nno teacher,\nno collapse", fontsize=8.2, color=TEAL, va="center")
-ax.text(84, 4.9, "compared with objective='dino_pooled' (teacher targets averaged per square)\nand 'dino' at the same 1–3 µm mask scale", ha="center",
+ax.text(84, 4.9, "density ≈ 1 molecule/µm²: a 4–5 µm square holds ~18–27 molecules\n(1–3 µm held 2–10: too few for a composition over 280 genes)", ha="center",
         fontsize=8.0, color=MUTED, va="center", linespacing=1.3)
 
 # ---------------- C: evaluate ----------------
