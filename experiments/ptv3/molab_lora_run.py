@@ -12,6 +12,7 @@
 #     "packaging",
 #     "huggingface-hub==2.4.0",
 #     "trackio==0.44.0",
+#     "matplotlib",
 #     "wigglystuff==0.5.36",
 # ]
 # ///
