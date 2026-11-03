@@ -4,15 +4,17 @@
 from `ptv3_gpu/molab/template.py` plus the scripts in `ptv3_gpu/` (in the bento3-proto workspace, not in this repo). To change it, edit those files and regenerate; do not edit the notebook itself.
 
 > **New (Phase 2, first arm): `molab_lora_run.py`.** This one runs a pretrained Utonia-small PTv3 with LoRA adapters,
-> molecules only, on the full Xenium IDC section (68.1M molecules). The notebook is minimal: it installs the
-> `bento3_ptv3/` package, sets a `TrainConfig` and calls `train()`. Open it with
+> molecules only, on the full Xenium IDC section (68.1M molecules). The notebook installs the `bento3_ptv3/` package,
+> defines named runs in `RUNS`, and starts each one as a background subprocess (`python -m bento3_ptv3.cli train`), so
+> the kernel stays free. Open it with
 > https://molab.marimo.io/github/ckmah/bento-tools/blob/bento3-ptv3-molab/experiments/ptv3/molab_lora_run.py, pick the GPU
-> (RTX Pro 6000), give it `HF_TOKEN` (molab Secrets, or the password box) and click Run all.
+> (RTX Pro 6000), set `HF_TOKEN` in molab Secrets, and click Run all. Then start a run from the controls. The dashboard
+> shows metrics next to the per-step viz panels, plus progress bars, a trace, the model tree and the loop statechart.
 >
-> Training is sized to ~9.5 h on whatever GPU it gets: the step count is measured over steps 50–250 and then fixed. A
-> checkpoint goes to `hf.co/ckmah/bento3-ptv3-runs/lora/lora_ssl_s0/` every 15 min, and the run pauses itself at 11.25 h.
-> After any cut-off, open a fresh session and Run all: it pulls the newest HF checkpoint and continues. See
-> `bento3_ptv3/README.md` for details.
+> A run with `train_hours` set is sized to that time on whatever GPU it gets: the step count is measured over steps
+> 50–250 and then fixed. A checkpoint goes to `hf.co/ckmah/bento3-ptv3-runs/lora/<run>/` every 15 min, and the run pauses
+> itself at 11.25 h. After any cut-off, open a fresh session, Run all, and start the run again: it pulls the newest HF
+> checkpoint and continues. See `bento3_ptv3/README.md` for details.
 
 ## Getting it into molab
 - **Option A (recommended): from GitHub.** The notebook is on branch `bento3-ptv3-molab` of `ckmah/bento-tools` at

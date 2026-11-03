@@ -12,12 +12,15 @@
 #     "packaging",
 #     "huggingface-hub==2.4.0",
 #     "trackio==0.44.0",
+#     "matplotlib",
+#     "wigglystuff==0.5.36",
 # ]
 # ///
+
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="medium")
+app = marimo.App(width="full", auto_download=["html"])
 
 
 @app.cell(hide_code=True)
@@ -25,15 +28,15 @@ def _(mo):
     mo.md(r"""
     # bento 3.0: pretrained PTv3 + LoRA over molecules (full Xenium section)
 
-    One run: Utonia-small PTv3 encoder (pretrained, frozen) + LoRA adapters on attention, trained with Sonata-style
-    teacher-student self-distillation on molecules only (gene + position; no DAPI). Data: the full 10x Xenium human breast
-    IDC section (68.1M molecules, 280 genes). Scored by linear probes on held-out 1 mm blocks. All code is the
-    `bento3_ptv3` package in this repo; this notebook only installs it, sets the config and calls `train()`.
+    Utonia-small PTv3 encoder (pretrained, frozen) + LoRA adapters on attention, trained with Sonata-style teacher-student
+    self-distillation on molecules only (gene + position; no DAPI). Data: the full 10x Xenium human breast IDC section
+    (68.1M molecules, 280 genes). Scored by linear probes on held-out 1 mm blocks. All training code is the `bento3_ptv3`
+    package in this repo.
 
-    **Run:** GPU on (RTX Pro 6000), set `HF_TOKEN` (molab Secrets, or paste below), then **Run all**.
-    Training is sized to ~9.5 h (step count measured on this GPU), checkpoints go to Hugging Face every 15 min, and the run
-    pauses itself at 11.25 h. If the session ends for any reason, open a new session and **Run all**: it resumes from the
-    newest checkpoint on Hugging Face.
+    **Use:** GPU on, `HF_TOKEN` in molab Secrets (checkpoints sync to Hugging Face), **Run all**. Runs are defined in `RUNS`
+    below and train as background subprocesses, so the kernel stays free: start/stop them from the controls, watch them in
+    the dashboard (metrics + per-step viz panels side by side, trace, model tree, loop statechart). A stopped or paused run
+    resumes from its newest checkpoint (local, or on Hugging Face).
     """)
     return
 
@@ -46,38 +49,331 @@ def _():
     PKG = "git+https://github.com/ckmah/bento-tools@bento3-ptv3-molab#subdirectory=experiments/ptv3/bento3_ptv3"
     _cmd = ["uv", "pip", "install", "--python", sys.executable] if shutil.which("uv") else [sys.executable, "-m", "pip", "install", "-q"]
     subprocess.run(_cmd + ["--no-deps", "--reinstall" if shutil.which("uv") else "--force-reinstall", PKG], check=True)
-    return mo, os
+    return mo, os, subprocess, sys
 
 
-@app.cell
-def _(mo):
-    hf_token_box = mo.ui.text(kind="password", label="HF write token (only if HF_TOKEN is not set in molab Secrets)", full_width=True)
-    hf_token_box
-    return (hf_token_box,)
+@app.cell(hide_code=True)
+def run_defs(os, subprocess, sys):
+    # Background training runs: subprocesses (python -m bento3_ptv3.cli train), so this kernel stays free.
+    # Each named run below can be started/stopped from the controls.
+    import io, json, signal, time
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+
+    OUT = "bento3_lora/runs"
+    BASE = dict(seed=0, lr=1e-3, lora_lr=5e-5, lora_alpha=16.0, regions=16, loader_procs=2, out_dir=OUT, data_dir="bento3_lora/data")
+    RUNS = {
+        "lora_ssl_v3": dict(BASE, name="lora_ssl_v3", train_hours=1.0, eval_every=1000, viz_every=100),
+        # diagnostics for the level-3 blow-up (same LR schedule as v3: steps fixed to v3's auto budget)
+        "diag_frozen_lora": dict(BASE, name="diag_frozen_lora", steps=5211, freeze_lora=1, eval_every=0, viz_every=100),
+        "diag_lora_blocks": dict(BASE, name="diag_lora_blocks", steps=5211, eval_every=0, viz_every=100),
+    }
+    REF_RUNS = ["lora_ssl_s0", "lora_ssl_v2_s0"]   # earlier runs, for comparison only
+    run_dir = lambda name: os.path.join(OUT, f"{name}_s0")
 
 
-@app.cell
-def _(hf_token_box, mo, os):
-    from bento3_ptv3 import TrainConfig, train
-    if (hf_token_box.value or "").strip(): os.environ["HF_TOKEN"] = hf_token_box.value.strip()   # session memory only, never printed
-    cfg = TrainConfig(
-        name="lora_ssl", seed=0,           # run dir + HF path: lora/lora_ssl_s0
-        lora_rank=16, lora_alpha=32.0,     # LoRA on attention qkv + proj in all 14 encoder blocks
-        steps=0, train_hours=9.5,          # 0 = fit the step count to 9.5 h on this GPU (fixed after step 250, kept on resume)
-        out_dir="bento3_lora/runs", data_dir="bento3_lora/data",
+    def run_pid(name):
+        try: pid = int(open(os.path.join(run_dir(name), "pid")).read())
+        except (OSError, ValueError): return None
+        try:
+            if os.waitpid(pid, os.WNOHANG)[0] == pid: return None   # exited; reaped
+        except ChildProcessError: pass                              # not this kernel's child: fall back to /proc
+        try: return pid if open(f"/proc/{pid}/stat").read().split()[2] != "Z" else None
+        except OSError: return None
+
+
+    def launch_run(name):
+        if run_pid(name): return run_pid(name)
+        d = run_dir(name); os.makedirs(d, exist_ok=True)
+        args = [sys.executable, "-u", "-m", "bento3_ptv3.cli", "train"] + [a for k, v in RUNS[name].items() for a in (f"--{k.replace('_', '-')}", str(v))]
+        p = subprocess.Popen(args, cwd=os.getcwd(), stdout=open(os.path.join(d, "stdout.log"), "a"), stderr=subprocess.STDOUT,
+                             env=dict(os.environ, PYTHONFAULTHANDLER="1"), start_new_session=True)
+        open(os.path.join(d, "pid"), "w").write(str(p.pid)); return p.pid
+
+
+    def stop_run(name):
+        pid = run_pid(name)
+        if pid: os.killpg(pid, signal.SIGTERM)
+        return pid
+
+    return (
+        OUT,
+        REF_RUNS,
+        RUNS,
+        io,
+        json,
+        launch_run,
+        np,
+        pd,
+        plt,
+        run_dir,
+        run_pid,
+        stop_run,
+        time,
     )
-    _url = f"https://huggingface.co/spaces/{cfg.trackio_space}"
-    mo.md(f"""**HF token:** {'set' if os.environ.get('HF_TOKEN') else '**missing**: no checkpoints on HF, no dashboard'} ·
-    **Dashboard:** [{_url}]({_url}) (project `{cfg.trackio_project}`, run `{cfg.run_name}`) ·
-    **Checkpoints:** [hf.co/{cfg.hf_repo}/tree/main/{cfg.hf_prefix}/{cfg.run_name}](https://huggingface.co/{cfg.hf_repo}/tree/main/{cfg.hf_prefix}/{cfg.run_name})""")
-    return cfg, train
+
+
+@app.cell(hide_code=True)
+def run_controls(REF_RUNS, RUNS, mo):
+    import base64, re
+    import wigglystuff as ws
+    run_pick = mo.ui.dropdown(options=list(RUNS), value="diag_lora_blocks", label="run")
+    compare = mo.ui.multiselect(options=list(RUNS) + REF_RUNS, value=["diag_frozen_lora", "lora_ssl_v3"], label="compare with")
+    start_btn = mo.ui.run_button(label="▶ start / resume", kind="success")
+    stop_btn = mo.ui.run_button(label="■ stop", kind="danger")
+    refresh = mo.ui.refresh(options=["10s", "30s", "1m", "5m"], default_interval="30s")
+    follow = mo.ui.checkbox(value=True, label="follow latest step (untick to scrub / play)")
+    mo.hstack([run_pick, compare, start_btn, stop_btn, refresh, follow], justify="start", align="center", wrap=True)
+    return (
+        base64,
+        compare,
+        follow,
+        re,
+        refresh,
+        run_pick,
+        start_btn,
+        stop_btn,
+        ws,
+    )
+
+
+@app.cell(hide_code=True)
+def run_actions(launch_run, run_pick, start_btn, stop_btn, stop_run, time):
+    if start_btn.value: launch_run(run_pick.value)
+    if stop_btn.value: stop_run(run_pick.value)
+    action_t = time.time()
+    return (action_t,)
+
+
+@app.cell(hide_code=True)
+def widgets(RUNS, mo, ws):
+    metrics_w = ws.ImageRefreshWidget(src="")
+    viz_w = ws.ImageRefreshWidget(src="")
+    status_w = ws.HTMLRefreshWidget(html="")
+    vizinfo_w = ws.HTMLRefreshWidget(html="")
+    stdout_w = ws.HTMLRefreshWidget(html="")
+    player_w = ws.PlaySlider(value=0, min_value=0, max_value=1, step=1, interval_ms=600, loop=False, width=560)
+    trace_w = ws.TraceView(title="training runs", height=520)
+    bars_w = {n: ws.ProgressBar(value=0, max_value=1, color="#1d4ed8", height=14) for n in RUNS}
+    metrics_ui, viz_ui, status_ui, vizinfo_ui, stdout_ui = (mo.ui.anywidget(w) for w in (metrics_w, viz_w, status_w, vizinfo_w, stdout_w))
+    player, trace_ui = mo.ui.anywidget(player_w), mo.ui.anywidget(trace_w)
+    bars_ui = {n: mo.ui.anywidget(w) for n, w in bars_w.items()}
+    return (
+        bars_ui,
+        bars_w,
+        metrics_ui,
+        metrics_w,
+        player,
+        player_w,
+        status_ui,
+        status_w,
+        stdout_ui,
+        stdout_w,
+        trace_ui,
+        trace_w,
+        viz_ui,
+        viz_w,
+        vizinfo_ui,
+        vizinfo_w,
+    )
+
+
+@app.cell(hide_code=True)
+def run_data(
+    OUT,
+    RUNS,
+    action_t,
+    bars_w,
+    compare,
+    follow,
+    json,
+    os,
+    pd,
+    player_w,
+    re,
+    refresh,
+    run_dir,
+    run_pick,
+    run_pid,
+    status_w,
+    stdout_w,
+    trace_w,
+):
+    refresh.value, action_t   # re-read on every tick / button press
+    dir_of = lambda n: os.path.join(OUT, n) if n.endswith("_s0") else run_dir(n)
+
+
+    def _tsv(n):
+        try: return pd.read_csv(os.path.join(dir_of(n), "train_log.tsv"), sep="\t")
+        except Exception: return pd.DataFrame()
+
+
+    def _jsonl(p):
+        try: return [json.loads(l) for l in open(p) if l.strip()]
+        except OSError: return []
+
+
+    def _total(n):
+        try: m = re.findall(r"-> (\d+) steps", open(os.path.join(dir_of(n), "stdout.log"), errors="replace").read())
+        except OSError: m = []
+        return int(m[-1]) if m else int(RUNS.get(n, {}).get("steps", 0)) or None
+
+
+    sel_name = run_pick.value; sel_dir = dir_of(sel_name)
+    logs = {n: _tsv(n) for n in dict.fromkeys([sel_name, *compare.value])}
+    evals = _jsonl(os.path.join(sel_dir, "evals.jsonl"))
+    vizinfo = {d["step"]: d for d in _jsonl(os.path.join(sel_dir, "viz", "viz.jsonl"))}
+    blocks = pd.DataFrame(_jsonl(os.path.join(sel_dir, "lora_blocks.jsonl")))
+    try: viz_steps = sorted(int(f[5:12]) for f in os.listdir(os.path.join(sel_dir, "viz")) if f.startswith("step_") and f.endswith(".png"))
+    except OSError: viz_steps = []
+
+    # progress bars + status table for every launchable run
+    _rows = []
+    for _n in RUNS:
+        _d, _pid, _tot = _tsv(_n), run_pid(_n), _total(_n)
+        _st = int(_d["step"].max()) if len(_d) else 0
+        bars_w[_n].max_value, bars_w[_n].value = max(_tot or 1, 1), _st
+        bars_w[_n].color = "#1d4ed8" if _pid else "#94a3b8"
+        _last = _d.iloc[-1] if len(_d) else None
+        _rows.append(f"<tr><td><b>{_n}</b></td><td>{'🟢 running' if _pid else '⚪ stopped'}</td><td>{_st:,} / {_tot or '?':,}</td>"
+                     + (f"<td>{_last['s_per_step']:.3f} s/step</td><td>max|feat| {_last['up_absmax']:.3g}</td><td>LoRA ΔW/W {_last.get('lora_ratio', float('nan')):.3g}</td>" if _last is not None else "<td colspan=3></td>") + "</tr>")
+    status_w.html = "<style>.rs td{padding:2px 14px 2px 0}</style><table class='rs' style='font-size:13px'>" + "".join(_rows) + "</table>"
+
+    # trace spans (every run; the TraceView menu picks the trace)
+    _sp = {}
+    for _n in RUNS:
+        for _d in _jsonl(os.path.join(dir_of(_n), "trace.jsonl")): _sp[_d["span_id"]] = _d
+    if _sp: trace_w.add_spans(list(_sp.values()))
+
+    try: _out = "".join(open(os.path.join(sel_dir, "stdout.log"), errors="replace").readlines()[-60:])
+    except OSError: _out = "(no stdout yet)"
+    stdout_w.html = "<pre style='font-size:11px;max-height:420px;overflow:auto;white-space:pre-wrap'>" + _out.replace("&", "&amp;").replace("<", "&lt;") + "</pre>"
+
+    player_w.max_value = max(len(viz_steps) - 1, 1)
+    if follow.value: player_w.value = player_w.max_value
+    return blocks, logs, sel_dir, sel_name, viz_steps, vizinfo
+
+
+@app.cell(hide_code=True)
+def render(
+    base64,
+    blocks,
+    follow,
+    io,
+    logs,
+    metrics_w,
+    np,
+    os,
+    player,
+    plt,
+    re,
+    sel_dir,
+    sel_name,
+    viz_steps,
+    viz_w,
+    vizinfo,
+    vizinfo_w,
+):
+    # re-draws the metrics + viz images for the step the player points at (no layout re-render)
+    _k = int(player.value.get("value", 0) or 0)
+    sel_step = (viz_steps[-1] if follow.value else viz_steps[min(max(_k, 0), len(viz_steps) - 1)]) if viz_steps else None
+    _P = [("loss_dino", "DINO loss", False), ("koleo", "KoLeo", False), ("t_batch_entropy", "teacher per-molecule entropy", False),
+          ("agree", "student/teacher agreement", False), ("up_absmax", "max |encoder feature| (guard 1e4)", True), ("lora_ratio", "max LoRA ‖ΔW‖/‖W‖", True),
+          ("emb_std", "embedding std", False), ("grad_norm", "grad norm (pre-clip)", True)]
+    _fig = plt.figure(figsize=(13, 10.5), dpi=72); _gs = _fig.add_gridspec(4, 4)
+    _ax = [_fig.add_subplot(_gs[i // 4, i % 4]) for i in range(8)]
+    _cols = {n: ("C0" if n == sel_name else f"C{i + 1}") for i, n in enumerate(logs)}
+    _xmax = (float(logs[sel_name]["step"].max()) if len(logs[sel_name]) else 100) * 1.05
+    for _a, (_c, _t, _lg) in zip(_ax, _P):
+        for _n, _d in logs.items():
+            if _c in _d: _a.plot(_d["step"], _d[_c], color=_cols[_n], lw=1.6 if _n == sel_name else 0.9, alpha=1 if _n == sel_name else 0.7, label=_n)
+        if _lg: _a.set_yscale("log")
+        _a.set_xlim(0, _xmax); _a.set_title(_t, fontsize=10); _a.tick_params(labelsize=7)
+        if sel_step is not None: _a.axvline(sel_step, color="crimson", lw=0.8, alpha=0.6)
+    _ax[4].axhline(1e4, color="r", ls="--", lw=0.8); _ax[0].legend(fontsize=7)
+    _hb = _fig.add_subplot(_gs[2:, :])
+    if len(blocks):
+        _B = blocks.set_index("step").sort_index(); _B = _B.reindex(sorted(_B.columns, key=lambda s: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", s)]), axis=1)
+        _im = _hb.imshow(np.log10(_B.T.values + 1e-9), aspect="auto", cmap="magma", vmin=-4, vmax=0.5, interpolation="nearest",
+                         extent=[_B.index.min(), _B.index.max(), len(_B.columns) - 0.5, -0.5])
+        _hb.set_yticks(range(len(_B.columns)), [c.replace(".attn.", " ") for c in _B.columns], fontsize=6.5)
+        _fig.colorbar(_im, ax=_hb, label="log10 ‖ΔW‖/‖W‖", fraction=0.02); _hb.set_xlim(0, _xmax)
+        if sel_step is not None: _hb.axvline(sel_step, color="cyan", lw=0.8)
+        _hb.set_title("LoRA ‖ΔW‖/‖W‖ per block over steps (which block grows first?)", fontsize=10)
+    else:
+        _hb.axis("off"); _hb.text(0.5, 0.5, "no per-block LoRA log for this run", ha="center", transform=_hb.transAxes, color="0.5")
+    _fig.tight_layout(); _buf = io.BytesIO(); _fig.savefig(_buf, format="png"); plt.close(_fig)
+    metrics_w.src = "data:image/png;base64," + base64.b64encode(_buf.getvalue()).decode()
+    if sel_step is not None:
+        viz_w.src = "data:image/png;base64," + base64.b64encode(open(os.path.join(sel_dir, "viz", f"step_{sel_step:07d}.png"), "rb").read()).decode()
+        _vi = vizinfo.get(sel_step, {})
+        vizinfo_w.html = (f"<b>{sel_name}</b> · step <b>{sel_step:,}</b> · protos used <b>{_vi.get('protos_used', '?')}</b> · perplexity <b>{_vi.get('proto_perplexity', float('nan')):.0f}</b>"
+                          f" · max|feat| <b>{_vi.get('up_absmax', float('nan')):.3g}</b> · per level {[round(x, 2) for x in _vi.get('level_absmax', [])]}")
+    else:
+        viz_w.src = ""; vizinfo_w.html = "<i>no viz panels yet (first at step 1, then every viz_every steps)</i>"
+    return
+
+
+@app.cell(hide_code=True)
+def model_tree(RUNS, mo, ws):
+    # patched model structure (no weights loaded): trainable / frozen per module, LoRA placement, per-level neck
+    import importlib.util as _iu, sys as _sys
+    _PKG = __import__("os").path.dirname(_iu.find_spec("bento3_ptv3").origin)   # the installed package, loaded fresh (the kernel may hold an older import)
+    if "bento3_patched" not in _sys.modules:
+        _spec = _iu.spec_from_file_location("bento3_patched", f"{_PKG}/__init__.py", submodule_search_locations=[_PKG])
+        _m = _iu.module_from_spec(_spec); _sys.modules["bento3_patched"] = _m; _spec.loader.exec_module(_m)
+    _pm = _sys.modules["bento3_patched"]
+    from bento3_patched.model import UtoniaLoRA as _UL
+    from bento3_patched.config import TrainConfig as _TC
+    model_struct = _UL(280, _TC(**{k: v for k, v in RUNS["lora_ssl_v3"].items() if k in _TC.__dataclass_fields__})); model_struct.setup_trainable()
+    model_tree = mo.ui.anywidget(ws.ModuleTreeWidget(model_struct, initial_expand_depth=2))
+    return (model_tree,)
+
+
+@app.cell(hide_code=True)
+def statechart(mo):
+    import urllib.request as _ur
+    _RAW = "https://raw.githubusercontent.com/ckmah/bento-tools/bento3-ptv3-molab/experiments/ptv3/figs/statechart"
+    def _svg(name): return mo.Html(f"<div style='overflow-x:auto'>{_ur.urlopen(f'{_RAW}/{name}', timeout=20).read().decode()}</div>")
+    statechart_view = mo.vstack([
+        mo.md("**Training loop with the guard fix.** TLC checks all three rules: no checkpoint holds blown-up weights, a pause is always resumable, no deadlock. "
+              "The running max of |feature| is checked at each log step *and* before every checkpoint write."),
+        _svg("loop_guard_fix.svg"),
+        mo.accordion({"Before the fix: the 7-step path to a blown-up checkpoint (dashed = breaks the rule, dotted = can break it, bold = bug path)":
+                      _svg("loop_before_fix.svg")}),
+    ])
+    return (statechart_view,)
+
+
+@app.cell(hide_code=True)
+def dashboard(
+    RUNS,
+    bars_ui,
+    metrics_ui,
+    mo,
+    model_tree,
+    player,
+    statechart_view,
+    status_ui,
+    stdout_ui,
+    trace_ui,
+    viz_ui,
+    vizinfo_ui,
+):
+    mo.ui.tabs({
+        "Monitor": mo.vstack([status_ui, mo.hstack([mo.vstack([mo.hstack([mo.md(f"`{n}`"), bars_ui[n]], widths=[1, 4], align="center") for n in RUNS])], widths=[1]),
+                              mo.hstack([metrics_ui, mo.vstack([player, vizinfo_ui, viz_ui])], widths=[1.15, 1], align="start")]),
+        "Trace": trace_ui,
+        "Model": model_tree,
+        "Loop statechart": statechart_view,
+        "stdout": stdout_ui,
+    })
+    return
 
 
 @app.cell
-def _(cfg, mo, train):
-    result = train(cfg)
-    mo.md("**Paused at the session budget.** Open a new session and Run all to continue." if result["status"] == "paused" else
-          "**Done.** " + ", ".join(f"`{k}` {v:.3f}" for k, v in result.items() if k.startswith(("probe/", "base_comp20/")) and isinstance(v, float)))
+def _():
     return
 
 
