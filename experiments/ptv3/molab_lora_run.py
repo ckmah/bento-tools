@@ -65,9 +65,10 @@ def run_defs(os, subprocess, sys):
 
     OUT = "bento3_lora/runs"
     BASE = dict(seed=0, lr=1e-3, lora_lr=5e-5, lora_alpha=16.0, regions=16, loader_procs=2, out_dir=OUT, data_dir="bento3_lora/data")
-    # the one model: masked reconstruction of 4-5 um squares (count, layout, genes as log1p counts), LoRA frozen (encoder exactly
-    # pretrained: LoRA proj blew the encoder up in earlier runs), sized to train_hours on this GPU
-    RUNS = {"recon": dict(BASE, name="recon", objective="recon", mask_patch_um=(4.0, 5.0), freeze_lora=1, train_hours=9.5, eval_every=1000, viz_every=250)}
+    # the one model: masked reconstruction of 4-5 um squares (count, layout, genes as log1p counts), LoRA on attention qkv only
+    # (proj blew the encoder up; with the encoder frozen the model plateaued after ~1k steps), sized to train_hours on this GPU
+    RUNS = {"recon_qkv": dict(BASE, name="recon_qkv", objective="recon", mask_patch_um=(4.0, 5.0), lora_targets=("qkv",), freeze_lora=0,
+                              train_hours=9.5, eval_every=1000, viz_every=250)}
     run_dir = lambda name: os.path.join(OUT, f"{name}_s0")
     _arg = lambda v: ",".join(map(str, v)) if isinstance(v, (tuple, list)) else str(v)   # the CLI takes tuples as comma lists
 
@@ -369,33 +370,30 @@ def model_tree(RUNS, mo, run_pick, ws):
 
 
 @app.cell(hide_code=True)
-def statechart(mo):
-    import urllib.request as _ur
-    _RAW = "https://raw.githubusercontent.com/ckmah/bento-tools/43fb0b8/experiments/ptv3/figs/statechart"   # pinned: the branch URL can serve a cached copy
-    import base64 as _b64
-    def _svg(name):   # as an <img> data URI: the chart's own <style> stays inside the image and cannot restyle the page (icons etc.)
-        _d = _b64.b64encode(_ur.urlopen(f"{_RAW}/{name}", timeout=20).read()).decode()
-        return mo.Html(f"<div style='overflow-x:auto'><img style='max-width:100%' src='data:image/svg+xml;base64,{_d}'></div>")
-    statechart_view = mo.vstack([
-        mo.md("**Training loop with the guard fix.** TLC checks all three rules: no checkpoint holds blown-up weights, a pause is always resumable, no deadlock. "
-              "The running max of |feature| is checked at each log step *and* before every checkpoint write."),
-        _svg("loop_guard_fix.svg"),
-        mo.accordion({"Before the fix: the 7-step path to a blown-up checkpoint (red = breaks the rule, blue outline = path to it)":
-                      _svg("loop_before_fix.svg")}),
+def architecture(mo):
+    import urllib.request as _ur, base64 as _b64
+    # as an <img> data URI (pinned to its commit): the chart's own <style> stays inside the image and cannot restyle the page
+    _src = "https://raw.githubusercontent.com/ckmah/bento-tools/b1daf50/experiments/ptv3/figs/architecture/model_architecture.svg"
+    _d = _b64.b64encode(_ur.urlopen(_src, timeout=20).read()).decode()
+    architecture_view = mo.vstack([
+        mo.md("**What each part of the model sees and learns.** Blue = trained, purple = pretrained encoder (frozen) with trained LoRA on "
+              "attention qkv, orange = objective and update, teal = eval only. The 10x labels enter only the eval probes; TLC checks that "
+              "labels, the removed molecules and the held-out blocks never reach training."),
+        mo.Html(f"<div style='overflow-x:auto'><img style='max-width:100%' src='data:image/svg+xml;base64,{_d}'></div>"),
     ])
-    return (statechart_view,)
+    return (architecture_view,)
 
 
 @app.cell(hide_code=True)
 def dashboard(
     RUNS,
+    architecture_view,
     bars_ui,
     blocks_ui,
     metrics_ui,
     mo,
     model_tree,
     player,
-    statechart_view,
     status_ui,
     stdout_ui,
     trace_ui,
@@ -413,7 +411,7 @@ def dashboard(
         "LoRA layers": blocks_ui,
         "Trace": trace_ui,
         "Model": model_tree,
-        "Loop statechart": statechart_view,
+        "Architecture": architecture_view,
         "stdout": stdout_ui,
     })
     return
