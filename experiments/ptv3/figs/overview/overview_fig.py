@@ -72,16 +72,21 @@ def outlines(ax, lw=0.35, nuc=True):
 letter(0.02, 7.72, "a"); title(0.22, 7.70, "Molecules from one Xenium section, no segmentation")
 ax = axin(0.08, 5.35, 2.05, 2.1)
 dens = d["dens"].T.astype(float); ax.imshow(np.log1p(dens), origin="lower", cmap="Greys", vmax=np.percentile(np.log1p(dens), 99.5) * 1.35, extent=[0, dens.shape[1] * 20, 0, dens.shape[0] * 20])
-o = d["win_origin"]; ax.add_patch(Rectangle(o - 150, 400, 400, fc="none", ec="#d62728", lw=1.0)); ax_sec, win_o = ax, o
+o = d["win_origin"]; ax.add_patch(Rectangle(o, 100, 100, fc="none", ec="#d62728", lw=0.9)); ax_sec, win_o = ax, o
 bu = float(d["block_um"]); role = d["role"]; bnx = int(d["bnx"])
-for b in np.flatnonzero(role > 0):
-    ax.add_patch(Rectangle(((b % bnx) * bu, (b // bnx) * bu), bu, bu, fc="none", ec=EVAL, lw=0.5, ls=(0, (2, 1.5))))
+# planned split (Training plan tab): tissue blocks 80% train, 5% validation, 7.5% probe-fit, 7.5% probe-test; one seeded draw
+bny = int(d["bny"]); px = int(bu // 20)
+occ = np.array([dens[(b // bnx) * px:(b // bnx + 1) * px, (b % bnx) * px:(b % bnx + 1) * px].sum() for b in range(bnx * bny)])
+tissue = np.flatnonzero(occ > 0.7 * np.median(occ[occ > 0])); nt = len(tissue)
+perm = np.random.default_rng(0).permutation(tissue); nv, npf = round(0.05 * nt), round(0.075 * nt)
+for b in perm[:nv]: ax.add_patch(Rectangle(((b % bnx) * bu, (b // bnx) * bu), bu, bu, fc="none", ec=OBJ, lw=0.6, ls=(0, (2, 1.5))))
+for b in perm[nv:nv + 2 * npf]: ax.add_patch(Rectangle(((b % bnx) * bu, (b // bnx) * bu), bu, bu, fc="none", ec=EVAL, lw=0.6, ls=(0, (2, 1.5))))
 ax.plot([400, 2400], [300, 300], color=INK, lw=1.2); ax.text(1400, 450, "2 mm", ha="center", fontsize=5.5)
 ax.set_xticks([]); ax.set_yticks([]); [s.set_visible(False) for s in ax.spines.values()]
-ax.text(0.0, -0.05, "68.1 M molecules · 280 genes\ndashed: held-out 1 mm blocks (eval only)", transform=ax.transAxes, fontsize=5.5, color=MUTED, va="top")
+ax.text(0.0, -0.05, "68.1 M molecules · 280 genes · 1 mm blocks:\n80% train, 5% validation (orange), 15% probe (teal)", transform=ax.transAxes, fontsize=5.5, color=MUTED, va="top")
 ax = axin(2.3, 5.35, 2.05, 2.1)
 ax.scatter(xyz[:, 0], xyz[:, 1], s=0.9, c=gcol, lw=0, rasterized=True); outlines(ax, lw=0.25)
-for yy in (0, 1): fig.add_artist(matplotlib.patches.ConnectionPatch(xyA=(win_o[0] + 250, win_o[1] - 150 + 400 * yy), coordsA=ax_sec.transData, xyB=(0, 100 * yy), coordsB=ax.transData, color="#d62728", lw=0.5))
+for yy in (0, 1): fig.add_artist(matplotlib.patches.ConnectionPatch(xyA=(win_o[0] + 100, win_o[1] + 100 * yy), coordsA=ax_sec.transData, xyB=(0, 100 * yy), coordsB=ax.transData, color="#d62728", lw=0.5))
 ax.set_xlim(0, 100); ax.set_ylim(0, 100); ax.set_aspect("equal"); ax.set_xticks([]); ax.set_yticks([])
 for s in ax.spines.values(): s.set_color("#d62728"); s.set_linewidth(0.9)
 ax.plot([6, 26], [5, 5], color=INK, lw=1.2); ax.text(16, 7.5, "20 µm", ha="center", fontsize=5.5)
@@ -124,7 +129,7 @@ for (bx, by, s) in blocks: hidden |= (xyz[:, 0] >= bx) & (xyz[:, 0] < bx + s) & 
 ax.scatter(xyz[~hidden, 0], xyz[~hidden, 1], s=0.5, c=gcol[~hidden], lw=0, rasterized=True)
 for (bx, by, s) in blocks: ax.add_patch(Rectangle((bx, by), s, s, fc="#f3f3f3", ec=OBJ, lw=1.0, zorder=3))
 ax.set_xlim(0, 100); ax.set_ylim(0, 100); ax.set_aspect("equal"); ax.set_xticks([]); ax.set_yticks([])
-ax.text(0.0, -0.04, "hidden blocks of 5, 10 and 50 µm\n(about 60% of the window)", transform=ax.transAxes, fontsize=5.5, color=MUTED, va="top")
+ax.text(0.0, -0.04, "hidden blocks of 5, 10 and 50 µm (training\nhides 60–75% of the window; a few shown)", transform=ax.transAxes, fontsize=5.5, color=MUTED, va="top")
 ax = axin(2.0, 2.65, 3.05, 2.15); blank(ax, (0, 100), (0, 70))
 box(ax, 2, 46, 26, 13, "context encoder\nvisible patches", TRAIN, fc="#eaf1fd", fs=6)
 box(ax, 37, 46, 26, 13, "predictor\n+ block position, size", TRAIN, fc="#eaf1fd", fs=6)
@@ -137,8 +142,8 @@ arrow(ax, 28.2, 14.5, 36.8, 14.5, FROZEN); arrow(ax, 63.2, 14.5, 70.6, 14.5, FRO
 ax.plot([82, 82], [20, 46], color=OBJ, lw=1.0, ls=(0, (2, 1.5))); ax.text(83.5, 33, "smooth-L1\nloss", fontsize=6, color=OBJ, va="center", weight="bold")
 ax.annotate("", xy=(15, 21.3), xytext=(15, 45.7), arrowprops=dict(arrowstyle="-|>", color=FROZEN, lw=0.7, ls=(0, (2, 1.5)), mutation_scale=6))
 ax.text(16.5, 33, "EMA", fontsize=5.5, color=FROZEN, va="center")
-ax.annotate("", xy=(50, 45.7), xytext=(55, 21.3), arrowprops=dict(arrowstyle="-|>", color=OBJ, lw=0.6, mutation_scale=5))
-ax.text(54.5, 33, "10% target\nhint", fontsize=5, color=OBJ, va="center")
+ax.annotate("", xy=(50, 45.7), xytext=(50, 33), arrowprops=dict(arrowstyle="-|>", color=OBJ, lw=0.6, mutation_scale=5))
+ax.text(50, 31.5, "hint: 10% of the hidden\nblocks' molecules", fontsize=5, color=OBJ, va="top", ha="center", linespacing=1.1)
 box(ax, 37, 62, 61, 7.5, "composition head (w 0.1): pooled emb. · gene emb. → log1p counts", OBJ, fs=5.5)
 arrow(ax, 82, 59.6, 82, 61.8, OBJ)
 
@@ -150,7 +155,7 @@ for i in range(56):
     ax.add_patch(Rectangle((1 + i * 1.75, 19), 1.5, 7, fc=PAL[i % 8], ec="none"))
     ax.add_patch(Rectangle((1 + i * 1.75, 6), 1.5, 7, fc=PAL[i % 8] if keep[i] else FAINT, ec="none"))
 ax.text(0, 29.5, "target: full panel", fontsize=5.5, color=FROZEN); ax.text(0, 16.5, "context: random 30–100% of genes", fontsize=5.5, color=TRAIN)
-ax.text(0, 2.5, "→ same embedding from a partial panel", fontsize=5.5, color=INK, va="top")
+ax.text(0, 2.5, "→ same embedding from a partial panel;\n   molecules also thinned (keep 50–100%)", fontsize=5.5, color=INK, va="top")
 ax = axin(5.62, 2.85, 1.45, 0.82)
 side = np.array([1, 2, 3, 4, 5, 8, 10]); med = np.array([2, 5, 10, 18, 27, 70, 109]); p10 = np.array([1, 1, 2, 4, 6, 22, 38]); p90 = np.array([3, 9, 18, 30, 46, 112, 170])
 ax.fill_between(side, p10, p90, color=LINE, alpha=0.5, lw=0); ax.plot(side, med, color=INK, lw=0.9, marker="o", ms=1.8)
@@ -195,7 +200,7 @@ cl = d["win_clust"].astype(int); okc = cl >= 0; cpal = plt.get_cmap("tab20")(np.
 ax.scatter(xyz[okc, 0], xyz[okc, 1], s=0.3, c=cpal[cl[okc] % 20], lw=0, rasterized=True); outlines(ax, lw=0.3, nuc=False)
 ax.set_xlim(0, 100); ax.set_ylim(0, 100); ax.set_aspect("equal"); ax.set_xticks([]); ax.set_yticks([])
 ax.set_title("cell", fontsize=6, pad=2, weight="bold")
-ax.text(0.5, -0.05, "10x cell type of the\nmolecule's cell", transform=ax.transAxes, fontsize=5, color=MUTED, ha="center", va="top")
+ax.text(0.5, -0.05, "cell type; field averaged\ninside each 10x cell", transform=ax.transAxes, fontsize=5, color=MUTED, ha="center", va="top")
 ax = axin(5.94, 0.62, 1.15, 1.15)
 ni = d2["niche"].T.astype(float); ni[ni < 0] = np.nan
 cnt = np.bincount(d2["niche"][d2["niche"] >= 0].ravel(), minlength=8); rank = np.empty(8, int); rank[np.argsort(-cnt)] = np.arange(8)
@@ -204,8 +209,8 @@ img = np.ones(ni.shape + (4,)); okn = np.isfinite(ni); img[okn] = npal[rank[ni[o
 ax.imshow(img, origin="lower", interpolation="nearest")
 ax.set_xticks([]); ax.set_yticks([]); [s.set_visible(False) for s in ax.spines.values()]
 ax.set_title("niche", fontsize=6, pad=2, weight="bold")
-ax.text(0.5, -0.05, "domains from 50 µm\ncomposition (k = 8)", transform=ax.transAxes, fontsize=5, color=MUTED, ha="center", va="top")
-fig.text(3.5 / W, 0.22 / H, "Bar to beat, measured with comp20 (~2.6 µm composition):\nnucleus AUROC 0.82 · nucleus-distance ρ 0.62 · cell-distance ρ 0.33",
+ax.text(0.5, -0.05, "niche labels (shown: 50 µm\ncomposition clusters, k = 8)", transform=ax.transAxes, fontsize=5, color=MUTED, ha="center", va="top")
+fig.text(3.5 / W, 0.22 / H, "Bars to beat: subcellular, comp20 (~2.6 µm composition), measured: nucleus AUROC 0.82 ·\nnucleus-distance ρ 0.62 · cell-distance ρ 0.33; cell, the cell's own counts; niche, CellCompass",
          fontsize=5.5, color=EVAL, va="center")
 
 for ext in ("png", "pdf"): fig.savefig(HERE / f"overview.{ext}", dpi=300, facecolor="white")
