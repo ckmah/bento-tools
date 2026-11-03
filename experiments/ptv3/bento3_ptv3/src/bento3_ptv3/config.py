@@ -23,8 +23,9 @@ class TrainConfig:
     shift_frac: float = 0.3                # view B = view A shifted by up to this fraction of win_um in x and y
     scale_range: tuple = (0.9, 1.1)
     jitter_um: float = 0.1
-    mask_patch_um: tuple = (1.0, 3.0)      # mask square side (um), drawn per view from [lo, hi]: subcellular, so the molecule's own
-                                           # cell stays mostly visible (10 um hid whole cells and pushed the embedding to cell level)
+    mask_patch_um: tuple = (4.0, 5.0)      # mask square side (um), drawn per view from [lo, hi]. At ~1 molecule/um2 a 4-5 um square holds
+                                           # ~18-27 molecules (1-3 um: 2-10, too few for a composition target) and is ~1/3 of a cell, so the
+                                           # rest of the cell stays visible (10 um hid whole cells and pushed the embedding to cell level)
     mask_ratio: float = 0.4                # fraction of squares masked (pretrained Utonia mask token)
     min_mol: int = 500                     # skip windows with fewer molecules (glass)
     regions: int = 4                       # regions per step (each gives 2 views)
