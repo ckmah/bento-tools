@@ -30,7 +30,7 @@ def _(mo):
 
     Utonia-small PTv3 encoder (pretrained, frozen) + LoRA adapters on attention, trained on molecules only (gene + position; no DAPI),
     aimed at **subcellular** embeddings. Data: the full 10x Xenium human breast IDC section (68.1M molecules, 280 genes). Default
-    objective: masked reconstruction of 1–3 µm squares (count, layout and genes as log1p counts). Scored by linear probes on held-out
+    objective: masked reconstruction of 4–5 µm squares (~18–27 molecules each; count, layout and genes as log1p counts). Scored by linear probes on held-out
     1 mm blocks: nucleus vs cytoplasm, signed distance to the nucleus boundary, distance to the cell boundary. All training code is the
     `bento3_ptv3` package in this repo.
 
@@ -38,7 +38,7 @@ def _(mo):
     train as background subprocesses, so the kernel stays free: start/stop them from the controls and watch them in the dashboard.
     A stopped or paused run resumes from its newest checkpoint (local, or on Hugging Face).
     """),
-        mo.Html("<img style='width:100%;max-width:1500px' src='https://raw.githubusercontent.com/ckmah/bento-tools/bento3-ptv3-molab/experiments/ptv3/figs/training_objective.png'>"),
+        mo.Html("<img style='width:100%;max-width:1500px' src='https://raw.githubusercontent.com/ckmah/bento-tools/1d4719c/experiments/ptv3/figs/training_objective.png'>"),
     ])
     return
 
