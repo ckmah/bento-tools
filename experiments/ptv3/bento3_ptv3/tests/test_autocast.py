@@ -36,11 +36,15 @@ def test_amp_dict_cpu_opt_in():
     assert _amp(TrainConfig(amp="bf16", amp_cpu=True), cpu) == dict(AC, enabled=True)
 
 
+def _tiny(rng, n=600, G=12):
+    return types.SimpleNamespace(xyz=np.c_[rng.uniform(0, 20, (n, 2)), rng.uniform(0, 5, n)].astype(np.float32), gene=rng.integers(0, G, n), zmin=0.0, G=G)
+
+
 def test_tiny_forward_backward_bf16_autocast():
     torch.manual_seed(0); rng = np.random.default_rng(0)
-    cfg = TrainConfig(prototypes=64, head_hidden=64, head_bottleneck=32, drop_path=0.0, win_um=20.0)
+    cfg = TrainConfig(objective="dino", prototypes=64, head_hidden=64, head_bottleneck=32, drop_path=0.0, win_um=20.0)
     n, G = 600, 12
-    M = types.SimpleNamespace(xyz=np.c_[rng.uniform(0, 20, (n, 2)), rng.uniform(0, 5, n)].astype(np.float32), gene=rng.integers(0, G, n), zmin=0.0)
+    M = _tiny(rng, n, G)
     net = UtoniaLoRA(G, cfg); net.setup_trainable()
     views = [make_view(M, np.arange(i, i + 300), rng, cfg) for i in (0, 300)]
     b = collate(views, torch.device("cpu"))
@@ -52,3 +56,25 @@ def test_tiny_forward_backward_bf16_autocast():
     assert torch.isfinite(loss)
     grads = [p.grad for p in net.parameters() if p.requires_grad and p.grad is not None]
     assert grads and all(torch.isfinite(g).all() and g.dtype == torch.float32 for g in grads)
+
+
+def test_recon_view_and_head():
+    """objective='recon': masked molecules leave the student input, one query point per masked patch takes their place, and every
+    removed molecule is a target of exactly one query; the recon head gives count + layout + per-gene outputs per query."""
+    from bento3_ptv3.data import make_recon_view, N_LAYOUT
+    torch.manual_seed(0); rng = np.random.default_rng(1)
+    cfg = TrainConfig(objective="recon", head_hidden=64, drop_path=0.0, win_um=20.0, mask_patch_um=(1.0, 3.0), mask_ratio=0.4)
+    M = _tiny(rng); idx = np.arange(600)
+    v = make_recon_view(M, idx, rng, cfg); nq = v["nq"]; n_in = len(v["gene"])
+    assert nq > 0 and v["mask"][-nq:].all() and not v["mask"][:-nq].any()        # queries are the masked rows, at the end
+    assert n_in - nq + len(v["tq"]) == len(idx)                                      # kept + removed = all molecules
+    assert set(np.unique(v["tq"])) == set(range(nq))                                 # each query covers >= 1 removed molecule
+    assert v["tlay"].min() >= 0 and v["tlay"].max() < N_LAYOUT
+    assert len(np.unique(v["grid"], axis=0)) == n_in                                 # voxels stay unique
+    net = UtoniaLoRA(M.G, cfg); net.setup_trainable()
+    b = collate([v], torch.device("cpu"))
+    with torch.autocast(**AC):
+        _, e = net.features(b); out = net.recon(e[n_in - nq:]).float()
+    assert out.shape == (nq, 1 + N_LAYOUT + M.G)
+    out.pow(2).mean().backward()
+    assert all(torch.isfinite(p.grad).all() for p in net.recon.parameters())
