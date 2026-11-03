@@ -372,14 +372,12 @@ def model_tree(RUNS, mo, run_pick, ws):
 @app.cell(hide_code=True)
 def architecture(mo):
     import urllib.request as _ur, base64 as _b64
-    # as an <img> data URI (pinned to its commit): the chart's own <style> stays inside the image and cannot restyle the page
-    _src = "https://raw.githubusercontent.com/ckmah/bento-tools/b1daf50/experiments/ptv3/figs/architecture/model_architecture.svg"
-    _d = _b64.b64encode(_ur.urlopen(_src, timeout=20).read()).decode()
+    _RAW = "https://raw.githubusercontent.com/ckmah/bento-tools/91e5787/experiments/ptv3/figs/architecture"   # pinned: the branch URL can serve a cached copy
+    _flow = _b64.b64encode(_ur.urlopen(f"{_RAW}/checked_flow.svg", timeout=20).read()).decode()   # <img> data URI: its CSS cannot restyle the page
     architecture_view = mo.vstack([
-        mo.md("**What each part of the model sees and learns.** Blue = trained, purple = pretrained encoder (frozen) with trained LoRA on "
-              "attention qkv, orange = objective and update, teal = eval only. The 10x labels enter only the eval probes; TLC checks that "
-              "labels, the removed molecules and the held-out blocks never reach training."),
-        mo.Html(f"<div style='overflow-x:auto'><img style='max-width:100%' src='data:image/svg+xml;base64,{_d}'></div>"),
+        mo.Html(f"<img style='width:100%;max-width:1500px' src='{_RAW}/model_architecture.png'>"),
+        mo.accordion({"Same path as a TLC-checked state chart (labels, removed molecules and held-out blocks never reach training)":
+                      mo.Html(f"<div style='overflow-x:auto'><img style='max-width:100%' src='data:image/svg+xml;base64,{_flow}'></div>")}),
     ])
     return (architecture_view,)
 
