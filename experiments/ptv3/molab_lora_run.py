@@ -20,7 +20,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="full", auto_download=["html"])
+app = marimo.App(width="medium", auto_download=["html"])
 
 
 @app.cell(hide_code=True)
@@ -64,17 +64,10 @@ def run_defs(os, subprocess, sys):
     import matplotlib.pyplot as plt
 
     OUT = "bento3_lora/runs"
-    BASE = dict(seed=0, lr=1e-3, lora_lr=5e-5, lora_alpha=16.0, regions=8, loader_procs=2, out_dir=OUT, data_dir="bento3_lora/data")
-    # subcellular comparison: LoRA frozen (encoder exactly pretrained) so only the objective / mask scale differ; same fixed step count
-    SUB = dict(BASE, freeze_lora=1, steps=3000, eval_every=500, viz_every=100)
-    RUNS = {
-        "sub_recon": dict(SUB, name="sub_recon", objective="recon", mask_patch_um=(1.0, 3.0)),
-        "sub_dino_pooled": dict(SUB, name="sub_dino_pooled", objective="dino_pooled", mask_patch_um=(1.0, 3.0)),
-        "sub_dino": dict(SUB, name="sub_dino", objective="dino", mask_patch_um=(1.0, 3.0)),
-        "cell_dino_10um": dict(SUB, name="cell_dino_10um", objective="dino", mask_patch_um=10.0),   # the old cell-scale setup, same probes
-        "diag_frozen_lora": dict(BASE, name="diag_frozen_lora", regions=16, steps=5211, freeze_lora=1, objective="dino", mask_patch_um=10.0, eval_every=0, viz_every=100),
-    }
-    REF_RUNS = ["lora_ssl_s0", "lora_ssl_v2_s0", "lora_ssl_v3_s0", "diag_lora_blocks_s0"]   # earlier runs, for comparison only
+    BASE = dict(seed=0, lr=1e-3, lora_lr=5e-5, lora_alpha=16.0, regions=16, loader_procs=2, out_dir=OUT, data_dir="bento3_lora/data")
+    # the one model: masked reconstruction of 4-5 um squares (count, layout, genes as log1p counts), LoRA frozen (encoder exactly
+    # pretrained: LoRA proj blew the encoder up in earlier runs), sized to train_hours on this GPU
+    RUNS = {"recon": dict(BASE, name="recon", objective="recon", mask_patch_um=(4.0, 5.0), freeze_lora=1, train_hours=9.5, eval_every=1000, viz_every=250)}
     run_dir = lambda name: os.path.join(OUT, f"{name}_s0")
     _arg = lambda v: ",".join(map(str, v)) if isinstance(v, (tuple, list)) else str(v)   # the CLI takes tuples as comma lists
 
@@ -105,7 +98,6 @@ def run_defs(os, subprocess, sys):
 
     return (
         OUT,
-        REF_RUNS,
         RUNS,
         io,
         json,
@@ -121,27 +113,16 @@ def run_defs(os, subprocess, sys):
 
 
 @app.cell(hide_code=True)
-def run_controls(REF_RUNS, RUNS, mo):
+def run_controls(RUNS, mo):
     import base64, re
     import wigglystuff as ws
-    run_pick = mo.ui.dropdown(options=list(RUNS), value="sub_recon", label="run")
-    compare = mo.ui.multiselect(options=list(RUNS) + REF_RUNS, value=["sub_dino_pooled", "sub_dino", "cell_dino_10um"], label="compare with")
+    run_pick = mo.ui.dropdown(options=list(RUNS), value=list(RUNS)[0], label="run")
     start_btn = mo.ui.run_button(label="▶ start / resume", kind="success")
     stop_btn = mo.ui.run_button(label="■ stop", kind="danger")
     refresh = mo.ui.refresh(options=["10s", "30s", "1m", "5m"], default_interval="30s")
     follow = mo.ui.checkbox(value=True, label="follow latest step (untick to scrub / play)")
-    mo.hstack([run_pick, compare, start_btn, stop_btn, refresh, follow], justify="start", align="center", wrap=True)
-    return (
-        base64,
-        compare,
-        follow,
-        re,
-        refresh,
-        run_pick,
-        start_btn,
-        stop_btn,
-        ws,
-    )
+    mo.hstack([run_pick, start_btn, stop_btn, refresh, follow], justify="start", align="center", wrap=True)
+    return base64, follow, re, refresh, run_pick, start_btn, stop_btn, ws
 
 
 @app.cell(hide_code=True)
@@ -160,7 +141,7 @@ def widgets(RUNS, mo, ws):
     status_w = ws.HTMLRefreshWidget(html="")
     vizinfo_w = ws.HTMLRefreshWidget(html="")
     stdout_w = ws.HTMLRefreshWidget(html="")
-    player_w = ws.PlaySlider(value=0, min_value=0, max_value=1, step=1, interval_ms=600, loop=False, width=560)
+    player_w = ws.PlaySlider(value=0, min_value=0, max_value=1, step=1, interval_ms=600, loop=False, width=900)
     trace_w = ws.TraceView(title="training runs", height=520)
     bars_w = {n: ws.ProgressBar(value=0, max_value=1, color="#1d4ed8", height=14) for n in RUNS}
     metrics_ui, blocks_ui, viz_ui, status_ui, vizinfo_ui, stdout_ui = (mo.ui.anywidget(w) for w in (metrics_w, blocks_w, viz_w, status_w, vizinfo_w, stdout_w))
@@ -194,7 +175,6 @@ def run_data(
     RUNS,
     action_t,
     bars_w,
-    compare,
     follow,
     json,
     os,
@@ -230,7 +210,7 @@ def run_data(
 
 
     sel_name = run_pick.value; sel_dir = dir_of(sel_name)
-    logs = {n: _tsv(n) for n in dict.fromkeys([sel_name, *compare.value])}
+    logs = {sel_name: _tsv(sel_name)}
     evals_all = {n: _jsonl(os.path.join(dir_of(n), "evals.jsonl")) for n in logs}
     evals = evals_all[sel_name]
     vizinfo = {d["step"]: d for d in _jsonl(os.path.join(sel_dir, "viz", "viz.jsonl"))}
@@ -246,7 +226,7 @@ def run_data(
         bars_w[_n].max_value, bars_w[_n].value = max(_tot or 1, 1), _st
         bars_w[_n].color = "#1d4ed8" if _pid else "#94a3b8"
         _last = _d.iloc[-1] if len(_d) else None
-        _rows.append(f"<tr><td><b>{_n}</b></td><td>{'🟢 running' if _pid else '⚪ stopped'}</td><td>{_st:,} / {_tot or '?':,}</td>"
+        _rows.append(f"<tr><td><b>{_n}</b></td><td>{'🟢 running' if _pid else '⚪ stopped'}</td><td>{_st:,} / {f'{_tot:,}' if _tot else '? (sized at step 250)'}</td>"
                      + (f"<td>{_last['s_per_step']:.3f} s/step</td><td>max|feat| {_last['up_absmax']:.3g}</td><td>LoRA ΔW/W {_last.get('lora_ratio', float('nan')):.3g}</td>" if _last is not None else "<td colspan=3></td>") + "</tr>")
     status_w.html = "<style>.rs td{padding:2px 14px 2px 0}</style><table class='rs' style='font-size:13px'>" + "".join(_rows) + "</table>"
 
@@ -291,7 +271,7 @@ def render(
     # re-draws the monitor images for the step the player points at (no layout re-render)
     _k = int(player.value.get("value", 0) or 0)
     sel_step = (viz_steps[-1] if follow.value else viz_steps[min(max(_k, 0), len(viz_steps) - 1)]) if viz_steps else None
-    plt.rcParams.update({"font.size": 11, "axes.titlesize": 12, "axes.spines.top": False, "axes.spines.right": False})
+    plt.rcParams.update({"font.size": 10, "axes.titlesize": 11, "axes.spines.top": False, "axes.spines.right": False})
     _cols = {n: ("#1d4ed8" if n == sel_name else c) for n, c in zip(logs, ["#1d4ed8", "#ea580c", "#16a34a", "#9333ea", "#64748b", "#db2777", "#0891b2"])}
     _xmax = max([float(d["step"].max()) for d in logs.values() if len(d)] + [100]) * 1.03
 
@@ -309,7 +289,7 @@ def render(
         if logy: ax.set_yscale("log")
 
 
-    _fig, _ax = plt.subplots(2, 3, figsize=(15, 8.6), dpi=72); _ax = _ax.ravel()
+    _fig, _ax = plt.subplots(2, 3, figsize=(13, 7.4), dpi=72); _ax = _ax.ravel()   # ~940 px: fits medium width
     # 1 the selected run's objective (other objectives' losses are not on the same scale)
     _d = logs[sel_name]
     if len(_d) and _d.get("loss_genes", pd.Series(dtype=float)).notna().any():
@@ -329,7 +309,7 @@ def render(
     for _key, _ls in (("base_comp20/nuc_auroc", "-"), ("base_comp20/dnuc_r2", "--"), ("base_comp20/dcell_r2", ":")):
         _b = next((e[_key] for e in evals_all.get(sel_name, []) if _key in e), None)
         if _b is not None: _ax[1].axhline(_b, color="0.45", ls=_ls, lw=1)
-    _ax[1].set_title("held-out probes: ● nuc AUROC  ■ nuc-dist R²  ▲ cell-dist R²\n(grey = comp20 baseline)", fontsize=11)
+    _ax[1].set_title("probes: ● nuc AUROC ■ nuc-dist R² ▲ cell-dist R²\n(grey = comp20 baseline)", fontsize=10)
     _ax[1].legend(handles=[plt.Line2D([], [], color=_cols[n], lw=2, label=n) for n in logs], frameon=False, fontsize=9)
     # 3-6 health, shared across runs
     _lines(_ax[2], "up_absmax", logy=True); _ax[2].axhline(1e4, color="#dc2626", ls="--", lw=1); _ax[2].set_title("max |encoder feature| (abort at 1e4)")
@@ -350,7 +330,7 @@ def render(
     # per-block LoRA growth (own tab; only meaningful when LoRA trains)
     if len(blocks) and (blocks.drop(columns="step").to_numpy() > 0).any():
         _B = blocks.set_index("step").sort_index(); _B = _B.reindex(sorted(_B.columns, key=lambda s: [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", s)]), axis=1)
-        _f2, _h = plt.subplots(figsize=(13, 6), dpi=72)
+        _f2, _h = plt.subplots(figsize=(13, 6.5), dpi=72)
         _im = _h.imshow(np.log10(_B.T.values + 1e-9), aspect="auto", cmap="magma", vmin=-4, vmax=0.5, interpolation="nearest",
                         extent=[_B.index.min(), _B.index.max(), len(_B.columns) - 0.5, -0.5])
         _h.set_yticks(range(len(_B.columns)), [c.replace(".attn.", " ") for c in _B.columns], fontsize=8); _f2.colorbar(_im, ax=_h, label="log10 ‖ΔW‖/‖W‖")
@@ -360,7 +340,9 @@ def render(
         blocks_w.src = ""
 
     if sel_step is not None:
-        viz_w.src = "data:image/png;base64," + base64.b64encode(open(os.path.join(sel_dir, "viz", f"step_{sel_step:07d}.png"), "rb").read()).decode()
+        from PIL import Image as _Im
+        _im2 = _Im.open(os.path.join(sel_dir, "viz", f"step_{sel_step:07d}.png")); _im2 = _im2.resize((940, round(940 * _im2.height / _im2.width)), _Im.LANCZOS)
+        _b3 = io.BytesIO(); _im2.save(_b3, format="png"); viz_w.src = "data:image/png;base64," + base64.b64encode(_b3.getvalue()).decode()
         _vi = vizinfo.get(sel_step, {})
         vizinfo_w.html = (f"<b>{sel_name}</b> · step <b>{sel_step:,}</b> · max|feat| <b>{_vi.get('up_absmax', float('nan')):.3g}</b>"
                           f" · emb std <b>{_vi.get('emb_std', float('nan')):.3f}</b>" + (f" · protos used <b>{_vi['protos_used']}</b>" if "protos_used" in _vi else ""))
@@ -421,8 +403,13 @@ def dashboard(
     vizinfo_ui,
 ):
     mo.ui.tabs({
-        "Monitor": mo.vstack([status_ui, mo.vstack([mo.hstack([mo.md(f"`{n}`"), bars_ui[n]], widths=[1, 4], align="center") for n in RUNS]),
-                              mo.hstack([metrics_ui, mo.vstack([player, vizinfo_ui, viz_ui])], widths=[1.25, 1], align="start")]),
+        "Monitor": mo.vstack([
+            status_ui,
+            mo.vstack([mo.hstack([mo.md(f"`{n}`"), bars_ui[n]], widths=[1, 5], align="center") for n in RUNS]),
+            metrics_ui,
+            mo.md("**Viz panels** (held-out tile; the red line in the plots above marks this step)"),
+            player, vizinfo_ui, viz_ui,
+        ], gap=0.75),
         "LoRA layers": blocks_ui,
         "Trace": trace_ui,
         "Model": model_tree,
