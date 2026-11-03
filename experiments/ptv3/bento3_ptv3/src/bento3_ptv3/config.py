@@ -34,7 +34,8 @@ class TrainConfig:
     gene_dim: int = 32
     lora_rank: int = 16
     lora_alpha: float = 32.0
-    lora_targets: tuple = ("qkv", "proj")  # attention linears in every encoder block
+    lora_targets: tuple = ("qkv",)         # attention linears in every encoder block. Not proj: proj writes straight into the residual
+                                           # stream, and LoRA on it in the 6-block level 3 grew until dW ~ W (diag_lora_blocks)
     emb_dim: int = 64                      # neck output (per-molecule embedding saved for hierarchy work)
     head_hidden: int = 512
     head_bottleneck: int = 256
