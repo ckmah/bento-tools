@@ -8,8 +8,8 @@ export const group = (v: any) => (v.phase === "start" ? "setup" : ["done", "paus
 export const colors = { setup: "tan", train: "blue", end: "teal", stop: "orange" };
 export const step = (a: string, f: any, t: any) => {
   switch (a) {
-    case "Start": return "load data, fork loaders, build model, restore checkpoint, init eval";
-    case "Update": return !f.sick && t.sick ? "an update blows up a feature level" : "forward, backward, optimizer step, EMA teacher";
+    case "Start": return "load data + eval polygons, fork loaders, build model, restore checkpoint, init eval";
+    case "Update": return !f.sick && t.sick ? "an update blows up a feature level" : "masked step (recon or DINO), optimizer, EMA teacher";
     case "LogAbort": return "guard trips: abort, no checkpoint [log step]";
     case "LogPass": return "log metrics, guard passes [log step]";
     case "NoLog": return "no log, no guard check [between log steps]";

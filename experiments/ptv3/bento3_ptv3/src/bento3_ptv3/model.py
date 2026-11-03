@@ -70,7 +70,13 @@ class UtoniaLoRA(nn.Module):
         s.bb = PointTransformerV3(in_channels=cfg.gene_dim + 3, enable_flash=False, drop_path=cfg.drop_path, mask_token=True, **UTONIA_SMALL)
         C = sum(UTONIA_SMALL["enc_channels"])
         s.neck = LevelNormNeck(UTONIA_SMALL["enc_channels"], cfg.emb_dim)   # levels concatenated finest-first in features()
-        s.head = DINOHead(cfg.emb_dim, cfg.head_hidden, cfg.head_bottleneck, cfg.prototypes)
+        if getattr(cfg, "objective", "dino") == "recon":
+            from .data import N_LAYOUT
+            # query embedding -> [log count rate, layout logits (N_LAYOUT), composition logits (G)]; dropped after training like the head
+            s.recon = nn.Sequential(nn.Linear(cfg.emb_dim, cfg.head_hidden), nn.GELU(), nn.Linear(cfg.head_hidden, cfg.head_hidden), nn.GELU(),
+                                    nn.Linear(cfg.head_hidden, 1 + N_LAYOUT + G))
+        else:
+            s.head = DINOHead(cfg.emb_dim, cfg.head_hidden, cfg.head_bottleneck, cfg.prototypes)
 
     def load_pretrained(s, path):
         ck = torch.load(path, map_location="cpu", weights_only=True); src, dst = ck["state_dict"], s.bb.state_dict()

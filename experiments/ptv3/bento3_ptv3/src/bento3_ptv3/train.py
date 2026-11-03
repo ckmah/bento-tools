@@ -1,16 +1,23 @@
-"""train(cfg): plain PyTorch loop. Sonata-style self-distillation over molecules with a frozen pretrained Utonia-small encoder + LoRA.
+"""train(cfg): plain PyTorch loop over molecules with a frozen pretrained Utonia-small encoder + LoRA. No labels are used.
 
-Per step, for each of cfg.regions training regions: two overlapping view squares A and B (each rotated, flipped, scaled, jittered).
-The student sees A and B with ~40% of 10 um patches masked (pretrained Utonia mask token); the EMA teacher sees them unmasked.
-For molecules present in both views, the student's prototype distribution at a masked molecule in A must match the teacher's
-(centred, sharpened) distribution for the same molecule in B, and vice versa. No labels are used.
+Per step, for each of cfg.regions training regions: two overlapping view squares A and B (each rotated, flipped, scaled, jittered),
+with ~40% of subcellular square patches (side drawn from cfg.mask_patch_um, 1-3 um by default) masked.
+  objective='recon'        masked patches are removed and replaced by one query point each (pretrained mask token at the patch centre).
+                           From the visible molecules only, the query's embedding predicts what the patch held, as log1p counts (MSE):
+                           its molecule count, the count in each layout bin (radial x z) and the count of each gene. The log scale keeps
+                           abundant genes and dense patches from dominating the loss.
+  objective='dino'         the EMA teacher sees the views unmasked. For molecules present in both views, the student's prototype
+                           distribution at a masked molecule in A must match the teacher's (Sinkhorn-normalised) distribution for the
+                           same molecule in B, and vice versa.
+  objective='dino_pooled'  as dino, but each target is the teacher's distribution averaged over the molecule's masked patch.
+The EMA teacher is kept for every objective: probes and viz read its embeddings.
 
 Resume: run dir has ckpt.pt (trainable weights, EMA teacher, centre, optimiser, RNG states, step, total). train() first pulls the
 run's newest checkpoint from the Hub when it is further along than the local one, then continues. A session that is cut off loses
 at most cfg.ckpt_min minutes. train() stops by itself after cfg.session_hours (checkpoint + push) and returns status 'paused'."""
 import os, sys, json, time, copy, math, queue, threading, numpy as np, torch, torch.nn.functional as F
 from .config import TrainConfig
-from .data import ensure_data, Molecules, make_view
+from .data import ensure_data, ensure_boundaries, Molecules, make_view, make_recon_view, N_LAYOUT
 from .model import UtoniaLoRA, fetch_utonia, param_report
 from .evaluate import collate, evaluate
 from .track import Hub, Tracker
@@ -46,6 +53,7 @@ def _traced(namef, fn):
 
 def _proc_producer(M, cfg, seed, q, stop):
     """Forked batch builder (inherits M copy-on-write; numpy only, never touches CUDA)."""
+    import signal; signal.signal(signal.SIGTERM, signal.SIG_DFL)   # the parent's handler raises; a loader should just exit on terminate()
     rng = np.random.default_rng(seed)
     while not stop.is_set(): q.put(build_batch(M, rng, cfg))
 
@@ -55,19 +63,30 @@ def _amp(cfg, dev):
 
 
 def build_batch(M, rng, cfg):
-    """Student views (masked), teacher views (same coords, unmasked) and the matched pairs (student row -> teacher row)."""
-    S, Tv, pairs, off = [], [], [], 0
+    """recon: (student views, None, targets) with targets = dict(qrow, tq, tgene, tlay): the batch row of each query, and per removed
+    molecule its query, gene and layout bin. dino / dino_pooled: (student views (masked), teacher views (same coords, unmasked), pairs)
+    with pairs = [student row, teacher row, masked, student patch id (unique across the batch)]."""
+    if cfg.objective == "recon":
+        S, rows, tq, tg, tl, off, qoff = [], [], [], [], [], 0, 0
+        for _ in range(cfg.regions):
+            for ix in M.sample_region(rng, cfg):
+                v = make_recon_view(M, ix, rng, cfg); n, nq = len(v["gene"]), v["nq"]
+                rows.append(off + n - nq + np.arange(nq)); tq.append(qoff + v["tq"]); tg.append(v["tgene"]); tl.append(v["tlay"])
+                S.append(v); off += n; qoff += nq
+        return S, None, dict(qrow=np.concatenate(rows), tq=np.concatenate(tq), tgene=np.concatenate(tg), tlay=np.concatenate(tl))
+    S, Tv, pairs, off, poff = [], [], [], 0, 0
     for _ in range(cfg.regions):
         ia, ib = M.sample_region(rng, cfg)
         va, vb = make_view(M, ia, rng, cfg), make_view(M, ib, rng, cfg)
         _, pa, pb = np.intersect1d(ia, ib, assume_unique=True, return_indices=True)
-        na = len(ia)
-        for (ps, pt, vs) in [(pa, na + pb, va), (na + pb, pa, vb)]:   # student A -> teacher B, student B -> teacher A
-            ms = vs["mask"][ps if vs is va else ps - na]
+        na, npa = len(ia), int(va["patch"].max()) + 1
+        for (ps, pt, vs, po) in [(pa, na + pb, va, poff), (na + pb, pa, vb, poff + npa)]:   # student A -> teacher B, student B -> teacher A
+            loc = ps if vs is va else ps - na; ms = vs["mask"][loc]
             k = np.flatnonzero(ms) if cfg.loss_on == "masked" else np.arange(len(ps))
             if len(k) > cfg.match_max: k = rng.choice(k, cfg.match_max, replace=False)
-            pairs.append(np.c_[off + ps[k], off + pt[k], ms[k]])
-        S += [va, vb]; Tv += [dict(va, mask=np.zeros_like(va["mask"])), dict(vb, mask=np.zeros_like(vb["mask"]))]; off += na + len(ib)
+            pairs.append(np.c_[off + ps[k], off + pt[k], ms[k], po + vs["patch"][loc[k]]])
+        S += [va, vb]; Tv += [dict(va, mask=np.zeros_like(va["mask"])), dict(vb, mask=np.zeros_like(vb["mask"]))]
+        off += na + len(ib); poff += npa + int(vb["patch"].max()) + 1
     return S, Tv, np.concatenate(pairs)
 
 
@@ -121,7 +140,12 @@ def _train(cfg: TrainConfig):
     cfg.save(os.path.join(run_dir, "config.json"))
 
     # ---- data + model
-    with _span("load data"): M = Molecules(ensure_data(cfg), cfg)
+    with _span("load data"):
+        dpath = ensure_data(cfg)
+        if cfg.probe_boundaries:
+            try: ensure_boundaries(dpath)
+            except Exception as e: print(f"boundaries: skipped ({type(e).__name__}: {e}); no distance probes", flush=True)
+        M = Molecules(dpath, cfg)
     print("data:", json.dumps(M.split), flush=True)
     json.dump(M.split | dict(heldout_blocks_fit=np.flatnonzero(M.role == 1).tolist(), heldout_blocks_test=np.flatnonzero(M.role == 2).tolist()),
               open(os.path.join(run_dir, "split.json"), "w"), indent=1)
@@ -159,7 +183,10 @@ def _train(cfg: TrainConfig):
     step, sec0, total = 0, 0.0, (cfg.steps or None)
 
     CK = os.path.join(run_dir, "ckpt.pt"); log_path = os.path.join(run_dir, "train_log.tsv")
-    COLS = ["step", "sec", "loss", "loss_dino", "koleo", "t_entropy", "t_batch_entropy", "agree", "lr", "ema", "t_temp", "s_per_step", "up_absmax", "lora_ratio", "emb_std", "grad_norm", "lora_lr"]
+    COLS = ["step", "sec", "loss", "loss_dino", "koleo", "t_entropy", "t_batch_entropy", "agree", "lr", "ema", "t_temp", "s_per_step", "up_absmax", "lora_ratio", "emb_std", "grad_norm", "lora_lr",
+            "loss_count", "loss_layout", "loss_genes", "data_wait"]
+    wait_acc = 0.0   # seconds spent waiting for batches since the last log row
+    recon = cfg.objective == "recon"; nan = float("nan")
     if os.path.exists(CK):
         ck = torch.load(CK, map_location="cpu", weights_only=False)
         net.load_state_dict(ck["net"], strict=False); teacher.load_state_dict(ck["teacher"], strict=False); opt.load_state_dict(ck["opt"])
@@ -212,7 +239,7 @@ def _train(cfg: TrainConfig):
 
     t0 = time.time(); last_ck = time.time(); rng_state = rng.bit_generator.state; net.train(); status = "running"; t_meas = None; s_begin = step
     while total is None or step < total:
-        (S, Tv, pairs), rng_state = next_batch()
+        tw = time.time(); (S, Tv, pairs), rng_state = next_batch(); wait_acc += time.time() - tw
         if total is None:   # auto budget: s/step over steps 50..250, then fixed (and stored in the checkpoint)
             if step == 50: t_meas = time.time()
             if step == 250:
@@ -222,32 +249,56 @@ def _train(cfg: TrainConfig):
         for g in opt.param_groups: g["lr"] = g.get("base_lr", cfg.lr) * fac
         ttemp = cfg.t_temp[0] + (cfg.t_temp[1] - cfg.t_temp[0]) * min(1.0, step / max(cfg.t_temp_warmup * (total or 1e9), 1))
         mom = _sched(step, total, 0, cfg.ema[0], cfg.ema[1])
-        bs, bt = collate(S, dev), collate(Tv, dev); pr = torch.tensor(pairs, device=dev)
-        with torch.no_grad(), torch.autocast(**amp):
-            tl = teacher.head(teacher.features(bt)[1][pr[:, 1]]).float()
-        tprob = sinkhorn(tl, ttemp) if cfg.teacher_norm == "sinkhorn" else F.softmax((tl - center) / ttemp, -1)
-        with torch.autocast(**amp):
-            up_s, e = net.features(bs); feat_max = torch.maximum(feat_max, up_s.detach().abs().max().float()); zs = net.head.mlp(e[pr[:, 0]]).float(); sl = net.head.proto(F.normalize(zs, dim=-1)).float()
-        lp = F.log_softmax(sl / cfg.s_temp, -1); per = -(tprob * lp).sum(-1); loss_dino = per.mean()
-        loss_kl = koleo(zs[:cfg.koleo_max]) if cfg.koleo > 0 else torch.zeros((), device=dev)
-        loss = loss_dino + cfg.koleo * loss_kl
+        bs = collate(S, dev)
+        if recon:
+            qr, tq = torch.as_tensor(pairs["qrow"], device=dev), torch.as_tensor(pairs["tq"], device=dev); nq = len(qr)
+            with torch.autocast(**amp):
+                up_s, e = net.features(bs); feat_max = torch.maximum(feat_max, up_s.detach().abs().max().float()); out = net.recon(e[qr]).float()
+            with torch.no_grad():   # per-query counts, then log1p: total, per layout bin, per gene
+                ones = torch.ones(len(tq), device=dev)
+                n_t = torch.zeros(nq, device=dev).index_add_(0, tq, ones)
+                lay_t = torch.zeros(nq * N_LAYOUT, device=dev).index_add_(0, tq * N_LAYOUT + torch.as_tensor(pairs["tlay"], device=dev), ones).view(nq, N_LAYOUT)
+                gen_t = torch.zeros(nq * M.G, device=dev).index_add_(0, tq * M.G + torch.as_tensor(pairs["tgene"], device=dev), ones).view(nq, M.G)
+            loss_cnt = F.mse_loss(out[:, 0], torch.log1p(n_t))
+            loss_lay = (out[:, 1:1 + N_LAYOUT] - torch.log1p(lay_t)).pow(2).sum(-1).mean()
+            loss_gen = (out[:, 1 + N_LAYOUT:] - torch.log1p(gen_t)).pow(2).sum(-1).mean()
+            w = cfg.recon_w; loss = w[0] * loss_cnt + w[1] * loss_lay + w[2] * loss_gen
+        else:
+            bt = collate(Tv, dev); pr = torch.tensor(pairs, device=dev)
+            with torch.no_grad(), torch.autocast(**amp):
+                tl = teacher.head(teacher.features(bt)[1][pr[:, 1]]).float()
+            tprob = sinkhorn(tl, ttemp) if cfg.teacher_norm == "sinkhorn" else F.softmax((tl - center) / ttemp, -1)
+            if cfg.objective == "dino_pooled":   # every molecule of a masked patch gets the patch's mean teacher distribution
+                _, gi = torch.unique(pr[:, 3], return_inverse=True)
+                tprob = (torch.zeros(int(gi.max()) + 1, tprob.shape[1], device=dev).index_add_(0, gi, tprob) / torch.bincount(gi).unsqueeze(1).float())[gi]
+            with torch.autocast(**amp):
+                up_s, e = net.features(bs); feat_max = torch.maximum(feat_max, up_s.detach().abs().max().float()); zs = net.head.mlp(e[pr[:, 0]]).float(); sl = net.head.proto(F.normalize(zs, dim=-1)).float()
+            lp = F.log_softmax(sl / cfg.s_temp, -1); per = -(tprob * lp).sum(-1); loss_dino = per.mean()
+            loss_kl = koleo(zs[:cfg.koleo_max]) if cfg.koleo > 0 else torch.zeros((), device=dev)
+            loss = loss_dino + cfg.koleo * loss_kl
         opt.zero_grad(set_to_none=True); loss.backward(); gnorm = float(torch.nn.utils.clip_grad_norm_(params, cfg.clip)); opt.step()
         with torch.no_grad():
-            center.mul_(cfg.center_momentum).add_(tl.mean(0), alpha=1 - cfg.center_momentum)
+            if not recon: center.mul_(cfg.center_momentum).add_(tl.mean(0), alpha=1 - cfg.center_momentum)
             for n in tr_names: tp[n].mul_(mom).add_(sp[n].detach(), alpha=1 - mom)
         if step % cfg.log_every == 0:
             with torch.no_grad():
-                mp = tprob.mean(0); ent = float(-(mp * (mp + 1e-12).log()).sum() / math.log(cfg.prototypes))
-                pent = float((-(tprob * (tprob + 1e-12).log()).sum(-1)).mean() / math.log(cfg.prototypes)); agree = float((sl.argmax(1) == tl.argmax(1)).float().mean())
+                if recon: ent = pent = agree = nan; ld = kl = nan; lc, ll, lg = float(loss_cnt), float(loss_lay), float(loss_gen)
+                else:
+                    mp = tprob.mean(0); ent = float(-(mp * (mp + 1e-12).log()).sum() / math.log(cfg.prototypes))
+                    pent = float((-(tprob * (tprob + 1e-12).log()).sum(-1)).mean() / math.log(cfg.prototypes)); agree = float((sl.argmax(1) == tl.argmax(1)).float().mean())
+                    ld, kl, lc, ll, lg = float(loss_dino.detach()), float(loss_kl.detach()), nan, nan, nan
                 up_abs = float(feat_max); feat_max.zero_(); estd = float(e.detach().float().std(0).mean())
                 lratio = max((float((m.B @ m.A).norm() * m.scale / m.base.weight.norm()) for m in lora_mods), default=0.0)
             el = sec0 + time.time() - t0; sps = (time.time() - t0) / max(step - s_begin, 1)
-            row = dict(step=step, sec=round(el), loss=float(loss.detach()), loss_dino=float(loss_dino.detach()), koleo=float(loss_kl.detach()), t_entropy=ent, t_batch_entropy=pent, agree=agree, lr=lr, ema=mom, t_temp=ttemp, s_per_step=sps, up_absmax=up_abs, lora_ratio=lratio, emb_std=estd, grad_norm=gnorm, lora_lr=lora_lr * fac)
+            row = dict(step=step, sec=round(el), loss=float(loss.detach()), loss_dino=ld, koleo=kl, t_entropy=ent, t_batch_entropy=pent, agree=agree, lr=lr, ema=mom, t_temp=ttemp, s_per_step=sps,
+                       up_absmax=up_abs, lora_ratio=lratio, emb_std=estd, grad_norm=gnorm, lora_lr=lora_lr * fac, loss_count=lc, loss_layout=ll, loss_genes=lg,
+                       data_wait=wait_acc / max(cfg.log_every if step else 1, 1))   # mean s/step blocked on the loader
+            wait_acc = 0.0
             log.write("\t".join(f"{row[c]:.6g}" if isinstance(row[c], float) else str(row[c]) for c in COLS) + "\n"); log.flush()
             with torch.no_grad(), open(os.path.join(run_dir, "lora_blocks.jsonl"), "a") as fb:
                 fb.write(json.dumps(dict(step=step, **{n.replace("bb.enc.", ""): float((m.B @ m.A).norm() * m.scale / m.base.weight.norm()) for n, m in zip(lora_names, lora_mods)})) + "\n")
             trk.log({f"train/{k}": v for k, v in row.items() if k != "step"}, step)
-            if _TR: _TR.update(_ROOT, **{"progress.done": step, "progress.total": total or 0, "loss_dino": round(row["loss_dino"], 4), "max_feat": round(up_abs, 3), "lora_ratio": round(lratio, 4)})
+            if _TR: _TR.update(_ROOT, **{"progress.done": step, "progress.total": total or 0, "loss": round(row["loss"], 4), "max_feat": round(up_abs, 3), "lora_ratio": round(lratio, 4)})
             if not math.isfinite(row["loss"]): raise FloatingPointError(f"loss is {row['loss']} at step {step}")
             if not up_abs <= cfg.max_feat_abs: raise FloatingPointError(f"encoder features blew up: max|up|={up_abs:.3g} > {cfg.max_feat_abs:g} at step {step} "
                                                                         f"(lora_ratio={lratio:.3g}); lower lora_lr. Last good checkpoint kept.")

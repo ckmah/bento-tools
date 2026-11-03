@@ -3,6 +3,9 @@ Probes (labels are eval-only, from 10x segmentation/clustering; never used in tr
   nuc   nucleus vs cytoplasm (overlaps_nucleus, molecules assigned to a cell)      -> AUROC, balanced accuracy
   clust 10x graph-based cluster of the molecule's cell (26 clusters)               -> balanced accuracy, accuracy
   gene  masked-gene probe: the molecule's own gene hidden (mask token), 280 genes  -> top-1, macro recall, top-1 per abundance bin
+  dnuc  signed distance to the own cell's nucleus boundary (um; < 0 inside), clipped to +-15      -> R2, Spearman rho   (subcellular)
+  dcell distance to the own cell's boundary (um), clipped to 15                                   -> R2, Spearman rho   (subcellular)
+nuc, dnuc and dcell are the subcellular read-outs; clust is cell level.
 Baselines on the same molecules and the same probe: own gene one-hot ('gene1h'), and the gene counts of the 20 nearest molecules
 ('comp20'; + own gene one-hot for nuc/clust, without it for the gene probe). Read the model numbers against these, not alone."""
 import numpy as np, torch, torch.nn.functional as F
@@ -55,11 +58,43 @@ def linear_probe(Xf, yf, Xt, ncls, dev, iters=1500, bs=4096, lr=3e-3, wd=1e-4, s
     """Standardised multinomial logistic regression with Adam (minibatches). Returns test logits (cpu float)."""
     g = torch.Generator(device="cpu").manual_seed(seed)
     Xf = torch.as_tensor(Xf, device=dev).float(); Xt = torch.as_tensor(Xt, device=dev).float(); yf = torch.as_tensor(yf, device=dev).long()
-    mu, sd = Xf.mean(0), Xf.std(0) + 1e-5; W = torch.nn.Linear(Xf.shape[1], ncls).to(dev); opt = torch.optim.AdamW(W.parameters(), lr=lr, weight_decay=wd)
+    mu, sd = _std(Xf); W = torch.nn.Linear(Xf.shape[1], ncls).to(dev); opt = torch.optim.AdamW(W.parameters(), lr=lr, weight_decay=wd)
     for i in range(iters):
         j = torch.randint(0, len(Xf), (min(bs, len(Xf)),), generator=g).to(dev)
         loss = F.cross_entropy(W((Xf[j] - mu) / sd), yf[j]); opt.zero_grad(); loss.backward(); opt.step()
     with torch.no_grad(): return torch.cat([W((Xt[i:i + 65536] - mu) / sd) for i in range(0, len(Xt), 65536)]).float().cpu()
+
+
+def _std(Xf):
+    """Mean and scale for standardising; constant columns (e.g. a gene absent from the fit set) keep scale 1, so a value seen only
+    in the test set cannot blow up to ~1e5 (the old std + 1e-5 did that, wrecking one-hot / count baselines)."""
+    sd = Xf.std(0); return Xf.mean(0), torch.where(sd > 1e-6, sd, torch.ones_like(sd))
+
+
+@torch.no_grad()
+def linear_probe_reg(Xf, yf, Xt, dev, lam=1e-2):
+    """Closed-form ridge regression on standardised features (float64). Returns test predictions (numpy)."""
+    Xf = torch.as_tensor(Xf, device=dev).double(); Xt = torch.as_tensor(Xt, device=dev).double(); yf = torch.as_tensor(yf, device=dev).double()
+    mu, sd = _std(Xf); A = (Xf - mu) / sd; ym = yf.mean(); n, d = A.shape
+    w = torch.linalg.solve(A.T @ A / n + lam * torch.eye(d, device=dev, dtype=A.dtype), A.T @ (yf - ym) / n)
+    return (((Xt - mu) / sd) @ w + ym).float().cpu().numpy()
+
+
+def boundary_dist(M, idx, kind, clip=15.0, chunk=50_000):
+    """Distance (um, xy) from each molecule to the polygon of its own cell's nucleus ('nucleus', signed: < 0 for molecules that
+    overlap the nucleus) or cell ('cell'). NaN where the molecule has no cell or no polygon. None when the polygons are absent."""
+    B = M.bnd.get(kind)
+    if B is None: return None
+    ids, off, V = B["ids"], B["off"], B["xy"]; cid = M.cell[idx].astype(np.int64)
+    j = np.clip(np.searchsorted(ids, cid), 0, len(ids) - 1); ok = (cid >= 0) & (ids[j] == cid)
+    out = np.full(len(idx), np.nan, np.float32); w = np.flatnonzero(ok); vmax = int((off[1:] - off[:-1]).max())
+    for s in range(0, len(w), chunk):
+        r = w[s:s + chunk]; a, L = off[j[r]], off[j[r] + 1] - off[j[r]]; k = np.arange(vmax)[None]
+        P0 = V[a[:, None] + np.minimum(k, L[:, None] - 1)]; P1 = V[a[:, None] + (np.minimum(k, L[:, None] - 1) + 1) % L[:, None]]   # closed polygon
+        x = M.xyz[idx[r], None, :2]; d = P1 - P0; t = np.clip(((x - P0) * d).sum(-1) / np.maximum((d * d).sum(-1), 1e-12), 0, 1)
+        out[r] = np.sqrt((((P0 + t[..., None] * d) - x) ** 2).sum(-1).min(1))
+    if kind == "nucleus": out = np.where(M.nuc[idx] == 1, -out, out)
+    return np.clip(out, -clip, clip)
 
 
 def auroc(y, s):
@@ -98,6 +133,17 @@ def evaluate(net, M, cfg, dev, amp, n_tiles, gene=False, baselines=False):
             r = probes(M, Ff[torch.tensor(kf)] if torch.is_tensor(Ff) else Ff[kf], Ft[torch.tensor(kt)] if torch.is_tensor(Ft) else Ft[kt],
                        lab[A["idx"]][kf].astype(np.int64), lab[B["idx"]][kt].astype(np.int64), kind, dev, ncls)
             res |= {f"{'probe' if name == 'model' else 'base_' + name}/{kind}_{k}": v for k, v in r.items()}
+    if cfg.probe_boundaries:
+        from scipy.stats import spearmanr
+        for kind, bk in (("dnuc", "nucleus"), ("dcell", "cell")):
+            yf, yt = boundary_dist(M, A["idx"], bk), boundary_dist(M, B["idx"], bk)
+            if yf is None: continue
+            kf, kt = np.isfinite(yf), np.isfinite(yt)
+            for name, (Ff, Ft) in feats.items():
+                pt = linear_probe_reg(Ff[torch.tensor(kf)] if torch.is_tensor(Ff) else Ff[kf], yf[kf], Ft[torch.tensor(kt)] if torch.is_tensor(Ft) else Ft[kt], dev)
+                pre = "probe" if name == "model" else "base_" + name
+                res[f"{pre}/{kind}_r2"] = float(1 - ((pt - yt[kt]) ** 2).mean() / yt[kt].var())
+                res[f"{pre}/{kind}_rho"] = float(spearmanr(pt, yt[kt]).statistic)
     if gene:
         yf, yt = M.gene[A["idx"]], M.gene[B["idx"]]; G = M.G
         bins = np.digitize(M.ntr, [1e3, 1e4, 1e5, 1e6]); ptr = M.ntr / M.ntr.sum()

@@ -87,14 +87,16 @@ class Molecules:
 
     def __init__(s, path, cfg):
         t = time.time(); L = lambda a: np.load(os.path.join(path, a + ".npy"))
-        xyz, gene, nuc, clust = L("xyz"), L("gene").astype(np.int64), L("nuc"), L("clust")
+        xyz, gene, nuc, clust, cell = L("xyz"), L("gene").astype(np.int64), L("nuc"), L("clust"), L("cell")
         s.genes = json.load(open(os.path.join(path, "genes.json"))); s.G = len(s.genes)
         if cfg.crop:
             x0, y0, w = cfg.crop; k = (xyz[:, 0] >= x0) & (xyz[:, 0] < x0 + w) & (xyz[:, 1] >= y0) & (xyz[:, 1] < y0 + w)
-            xyz, gene, nuc, clust = xyz[k], gene[k], nuc[k], clust[k]
+            xyz, gene, nuc, clust, cell = xyz[k], gene[k], nuc[k], clust[k], cell[k]
         s.lo = xyz[:, :2].min(0); s.nx, s.ny = (np.floor((xyz[:, :2].max(0) - s.lo) / s.TILE) + 1).astype(int)
         key = s._tile(xyz[:, 0], xyz[:, 1]); o = np.argsort(key, kind="stable")
-        s.xyz, s.gene, s.nuc, s.clust = xyz[o], gene[o], nuc[o], clust[o]; key = key[o]
+        s.xyz, s.gene, s.nuc, s.clust, s.cell = xyz[o], gene[o], nuc[o], clust[o], cell[o]; key = key[o]
+        # eval-only labels: nucleus / cell polygons (ensure_boundaries); probes that need them are skipped when absent
+        s.bnd = {k: dict(np.load(os.path.join(path, f"{k}_bnd.npz"))) for k in BND if os.path.exists(os.path.join(path, f"{k}_bnd.npz"))}
         s.start = np.searchsorted(key, np.arange(s.nx * s.ny + 1)); s.zmin = float(s.xyz[:, 2].min())
         # held-out 1 mm blocks, chosen among blocks with >= 25% of the median block's molecules; alternate probe-fit / probe-test
         B = s.B = cfg.block_um; s.bnx = int(np.ceil((s.xyz[:, 0].max() - s.lo[0] + 1) / B)); s.bny = int(np.ceil((s.xyz[:, 1].max() - s.lo[1] + 1) / B))
@@ -158,9 +160,23 @@ class Molecules:
         return out
 
 
-def make_view(M, idx, rng, cfg, augment=True, mask=True, mask_override=None):
-    """One view: coords centred, rotated about z, flipped, scaled, jittered (augment); unique 0.5 um voxels; patch mask (mask)."""
-    p = M.xyz[idx].astype(np.float64); c = p.copy(); c[:, :2] -= p[:, :2].mean(0); c[:, 2] -= M.zmin
+def mask_patch(cfg, rng):
+    """Mask patch side (um): a fixed float, or drawn per view from [lo, hi] (multi-scale subcellular masking)."""
+    v = cfg.mask_patch_um
+    if isinstance(v, (tuple, list)): return float(rng.uniform(v[0], v[-1])) if rng is not None else float(np.mean(v))
+    return float(v)
+
+
+def _patches(p, P):
+    """Square patch id per molecule (tissue coords, side P), plus each patch's centre."""
+    pk = np.floor(p[:, :2] / P).astype(np.int64); key = pk[:, 0] * 1_000_003 + pk[:, 1]
+    _, first, inv = np.unique(key, return_index=True, return_inverse=True)
+    return inv, (pk[first] + 0.5) * P
+
+
+def _place(M, p, rng, cfg, augment):
+    """Coords centred, rotated about z, flipped, scaled, jittered (augment), then unique 0.5 um voxels."""
+    c = p.copy(); c[:, :2] -= p[:, :2].mean(0); c[:, 2] -= M.zmin
     if augment:
         th = rng.uniform(0, 2 * np.pi); R = np.array([[np.cos(th), -np.sin(th)], [np.sin(th), np.cos(th)]])
         c[:, :2] = c[:, :2] @ R.T
@@ -169,13 +185,63 @@ def make_view(M, idx, rng, cfg, augment=True, mask=True, mask_override=None):
     c = c.astype(np.float32); gc = np.floor((c - c.min(0)) / cfg.ugrid_um).astype(np.int64)
     key = (gc[:, 0] << 42) + (gc[:, 1] << 21) + gc[:, 2]; o = np.argsort(key, kind="stable"); k = key[o]   # bump collisions along z
     pos = np.arange(len(k)); start = np.maximum.accumulate(np.where(np.r_[True, k[1:] != k[:-1]], pos, 0)); gc[o, 2] += pos - start
-    for _ in range(100):
-        _, first, cnt = np.unique(gc, axis=0, return_index=True, return_counts=True)
+    for _ in range(100):   # scalar key: same result as np.unique(gc, axis=0), several times faster
+        _, first, cnt = np.unique((gc[:, 0] << 42) + (gc[:, 1] << 21) + gc[:, 2], return_index=True, return_counts=True)
         if (cnt == 1).all(): break
         dup = np.ones(len(gc), bool); dup[first] = False; gc[dup, 2] += 1
+    return c, gc
+
+
+def make_view(M, idx, rng, cfg, augment=True, mask=True, mask_override=None):
+    """One view: placed by _place; mask = random mask_ratio of square patches (side mask_patch(cfg)) in tissue coords.
+    'patch' is each molecule's patch id within this view (dino_pooled pools teacher targets over it)."""
+    p = M.xyz[idx].astype(np.float64); c, gc = _place(M, p, rng, cfg, augment)
+    patch = np.zeros(len(idx), np.int64)
     if mask_override is not None: m = mask_override
     elif mask:
-        P = cfg.mask_patch_um; pk = np.floor(p[:, :2] / P).astype(np.int64); pk = pk[:, 0] * 1_000_003 + pk[:, 1]   # patches in tissue coords
-        u, inv = np.unique(pk, return_inverse=True); m = (rng.random(len(u)) < cfg.mask_ratio)[inv]
+        patch, ctr = _patches(p, mask_patch(cfg, rng)); m = (rng.random(len(ctr)) < cfg.mask_ratio)[patch]
     else: m = np.zeros(len(idx), bool)
-    return dict(idx=idx, coord=c, grid=gc, gene=M.gene[idx], mask=m, coord_n=np.c_[c[:, :2] / cfg.win_um, c[:, 2:3] / 10.0].astype(np.float32))
+    return dict(idx=idx, coord=c, grid=gc, gene=M.gene[idx], mask=m, patch=patch, coord_n=np.c_[c[:, :2] / cfg.win_um, c[:, 2:3] / 10.0].astype(np.float32))
+
+
+R_BINS, Z_BINS = 4, 2   # recon layout target: radial distance from the patch centre x above/below the query's z
+N_LAYOUT = R_BINS * Z_BINS
+
+
+def make_recon_view(M, idx, rng, cfg):
+    """Student view for objective='recon' (Point-MAE style). Molecules in masked patches are removed, and each masked patch gets one
+    query point at its centre (the pretrained mask token, z = the window's median). The model must say, from the visible context only,
+    what the patch held: how many molecules (count), where (radial x z layout bins, rotation-invariant) and which genes (composition).
+    Returns the view plus per-removed-molecule targets: tq (query index within this view), tgene, tlay."""
+    p = M.xyz[idx].astype(np.float64); P = mask_patch(cfg, rng)
+    patch, ctr = _patches(p, P); mp = rng.random(len(ctr)) < cfg.mask_ratio; m = mp[patch]
+    qp = np.flatnonzero(mp); zq = float(np.median(p[:, 2]))
+    q = np.c_[ctr[qp], np.full(len(qp), zq)]
+    keep, rem = np.flatnonzero(~m), np.flatnonzero(m)
+    allp = np.vstack([p[keep], q]); c, gc = _place(M, allp, rng, cfg, augment=True)
+    qmap = np.full(len(ctr), -1, np.int64); qmap[qp] = np.arange(len(qp)); tq = qmap[patch[rem]]
+    r = np.hypot(*(p[rem, :2] - ctr[patch[rem]]).T) / (P / np.sqrt(2))
+    tlay = np.minimum((r * R_BINS).astype(np.int64), R_BINS - 1) * Z_BINS + (p[rem, 2] >= zq)
+    gene = np.r_[M.gene[idx[keep]], np.zeros(len(qp), np.int64)]
+    return dict(idx=np.r_[idx[keep], np.full(len(qp), -1)], coord=c, grid=gc, gene=gene, mask=np.r_[np.zeros(len(keep), bool), np.ones(len(qp), bool)],
+                coord_n=np.c_[c[:, :2] / cfg.win_um, c[:, 2:3] / 10.0].astype(np.float32), nq=len(qp), tq=tq, tgene=M.gene[idx[rem]], tlay=tlay)
+
+
+BND = {"nucleus": "nucleus_boundaries.parquet", "cell": "cell_boundaries.parquet"}
+
+
+def ensure_boundaries(path, url=URL_10X):
+    """Eval-only labels: nucleus and cell polygons from the 10x bundle (about 28 MB each, range-read out of the zip once), saved as
+    path/<kind>_bnd.npz: ids (sorted cell ids), off (vertex offsets), xy (vertices). Never used in training."""
+    import pandas as pd
+    from .httpzip import extract
+    for kind, member in BND.items():
+        dst = os.path.join(path, f"{kind}_bnd.npz")
+        if os.path.exists(dst): continue
+        raw = os.path.join(path, "raw"); os.makedirs(raw, exist_ok=True); src = os.path.join(raw, member)
+        if not os.path.exists(src): t = time.time(); extract(url, member, src); print(f"10x: {member} in {time.time() - t:.0f}s", flush=True)
+        d = pd.read_parquet(src, columns=["cell_id", "vertex_x", "vertex_y"]).sort_values("cell_id", kind="stable")
+        ids, start = np.unique(d.cell_id.to_numpy().astype(np.int64), return_index=True)
+        np.savez(dst + ".tmp.npz", ids=ids, off=np.r_[start, len(d)].astype(np.int64), xy=d[["vertex_x", "vertex_y"]].to_numpy(np.float32))
+        os.replace(dst + ".tmp.npz", dst)
+    return path

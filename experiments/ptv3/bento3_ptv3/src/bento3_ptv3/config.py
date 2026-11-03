@@ -23,8 +23,9 @@ class TrainConfig:
     shift_frac: float = 0.3                # view B = view A shifted by up to this fraction of win_um in x and y
     scale_range: tuple = (0.9, 1.1)
     jitter_um: float = 0.1
-    mask_patch_um: float = 10.0            # student masks molecules in random mask_patch_um squares ...
-    mask_ratio: float = 0.4                # ... covering this fraction of squares (pretrained Utonia mask token)
+    mask_patch_um: tuple = (1.0, 3.0)      # mask square side (um), drawn per view from [lo, hi]: subcellular, so the molecule's own
+                                           # cell stays mostly visible (10 um hid whole cells and pushed the embedding to cell level)
+    mask_ratio: float = 0.4                # fraction of squares masked (pretrained Utonia mask token)
     min_mol: int = 500                     # skip windows with fewer molecules (glass)
     regions: int = 4                       # regions per step (each gives 2 views)
     ugrid_um: float = 0.5                  # 0.5 um voxel = Utonia's 0.01 grid unit (as in the nuspU arms)
@@ -41,8 +42,15 @@ class TrainConfig:
     utonia_repo: str = "Pointcept/Utonia"
     utonia_rev: str = "9457f025e36c7001ee962a542f0d27a5b600e1e7"
     utonia_sha256: str = "3d7afb731771556ebdf20abd1b6a1f022d9b9f105db8446f5eff02037f7fceb9"
-    # objective: teacher-student self-distillation (EMA teacher, centering + sharpening), loss on molecules masked in the student view
-    t_temp: tuple = (0.04, 0.07)           # teacher temperature: warm up from [0] to [1] over t_temp_warmup of training
+    # objective
+    #   recon        Point-MAE style: masked patches are removed and replaced by one query point each; from the visible context, predict
+    #                the patch's molecule count (Poisson), layout (radial x z bins) and gene composition. Fixed targets: no teacher, no collapse.
+    #   dino_pooled  self-distillation below, with the teacher's targets averaged over each masked patch (the student cannot tell the
+    #                molecules of one masked patch apart: they all carry the same mask token)
+    #   dino         self-distillation: per masked molecule, match the EMA teacher's Sinkhorn prototype distribution for that molecule
+    objective: str = "recon"
+    recon_w: tuple = (1.0, 1.0, 1.0)       # recon loss weights: count, layout, composition
+    t_temp: tuple = (0.04, 0.07)          # teacher temperature: warm up from [0] to [1] over t_temp_warmup of training
     t_temp_warmup: float = 0.3
     s_temp: float = 0.1
     teacher_norm: str = "sinkhorn"         # sinkhorn (Sonata / DINOv2) | center (DINO centring with center_momentum)
@@ -79,6 +87,8 @@ class TrainConfig:
     eval_tiles: int = 160                  # held-out 100 um tiles in the final eval (quick eval: eval_tiles // 4)
     eval_per_tile: int = 2500              # core molecules kept per tile
     probe_gene: bool = True                # final eval: masked-gene linear probe (own gene hidden) with abundance metrics
+    probe_boundaries: bool = True          # subcellular probes: signed distance to the nucleus boundary, distance to the cell boundary
+                                           # (10x segmentation polygons, eval-only; downloaded once by data.ensure_boundaries)
     # sync / tracking (all optional, never block training)
     hf_repo: str = "ckmah/bento3-ptv3-runs"
     hf_prefix: str = "lora"                # path in hf_repo
