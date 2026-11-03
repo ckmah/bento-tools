@@ -1,7 +1,7 @@
 import { render, PeleError } from "pele";
 import { readFileSync, writeFileSync } from "node:fs";
 const CSS = `<style>
-svg.pele, .pele svg, svg { background-color:#0f3460; background-image:
+svg.pele { background-color:#0f3460; background-image:
   linear-gradient(rgba(220,235,255,.10) 1px, transparent 1px), linear-gradient(90deg, rgba(220,235,255,.10) 1px, transparent 1px),
   linear-gradient(rgba(220,235,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(220,235,255,.05) 1px, transparent 1px);
   background-size: 80px 80px, 80px 80px, 16px 16px, 16px 16px; }
