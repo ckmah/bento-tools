@@ -98,9 +98,9 @@ ax.text(2.5, 77, "harder generalization", fontsize=5.3, color=INK, va="bottom")
 letter(0.02, 2.42, "c"); title(0.22, 2.40, "Phases: each ends at a gate; a failed gate stops the next phase")
 ax = axin(0.1, 0.05, 7.05, 2.2); ax.set_xlim(0, 100); ax.set_ylim(0, 40); ax.axis("off")
 phases = [
-    ("0", "Data and\nvocabulary", "HGNC vocabulary\ngene prior emb.\nsplit file, baselines", [], "every gene → one token;\nsplit frozen;\nbaselines scored"),
-    ("1", "Single-panel\npilot", "1 Xenium section\nCellWorld-patch\nfalsification first", ["CellWorld"], "no collapse;\nbeats composition\nat 2 of 3 scales"),
-    ("2", "Panel\nrobustness", "panel dropout\nthinning, count noise\npanel/platform tokens", ["Novae"], "≥80% retention on\n35%-overlap split;\n<5% IID cost"),
+    ("0", "Data and\nvocabulary", "vocabulary, CellWorld\ncheckpoints, Atera\ntop genes; split,\nbaselines", [], "every gene → one token;\nno leakage (Atera\nunseen); split frozen"),
+    ("1", "Pilot on\nAtera", "1a frozen CellWorld\n1b init from CellWorld\n1c from scratch\nfalsification first", ["CellWorld"], "no collapse; 1b or 1c\nbeats 1a and composition\nat 2 of 3 scales"),
+    ("2", "Panel\nrobustness", "on the 1b/1c winner:\npanel dropout\nthinning, count noise\npanel/platform tokens", ["Novae"], "≥80% retention on\n35%-overlap split;\n<5% IID cost"),
     ("3", "Multi-\nsection", "10–20 sections\n2–3 platforms\nrandom context size", ["TERRA", "CellWorld"], "beats composition\non rungs 1–2"),
     ("4", "Cross-platform\ntransfer", "zero-shot, then\nplatform token, then\nlast block or LoRA", ["TERRA"], "beats composition\non shared genes,\ncell and niche"),
     ("5", "Scale\nup", "more donors\nmodel size; data\nfractions by section", ["TERRA", "CellWorld"], "final numbers on\nheld-out tissue\n(rungs 2–4)"),
@@ -119,7 +119,7 @@ for i, (n, name, work, srcs, gate) in enumerate(phases):
     ax.text(gx, 14.6, gate, fontsize=4.9, va="top", ha="center", color=EVAL, linespacing=1.15)
     if i < len(phases) - 1:
         ax.add_patch(FancyArrowPatch((x + pw + 0.2, 29.5), (x + pw + gap - 0.2, 29.5), arrowstyle="-|>", mutation_scale=6, color=MUTED, lw=0.7))
-ax.text(0, 2.2, "recipe throughout: AdamW, BF16, batch 256, warmup to 3e-3 then cosine, EMA 0.999 → 0.9999, 10% hint, 10k steps in the pilot; "
+ax.text(0, 2.2, "recipe throughout: AdamW, BF16, batch 256, warmup to 3e-3 then cosine, EMA 0.999 → 0.9999, 10% hint, 10k steps in the pilot (peak LR 1e-3 when starting from CellWorld); "
         "block masking at 5/10/50 µm, random masking as first ablation; adaptation only via platform token, last block or LoRA.",
         fontsize=5, color=MUTED, va="bottom", wrap=True)
 for ext in ("png", "pdf"): fig.savefig(HERE / f"training_plan.{ext}", dpi=300, facecolor="white")
