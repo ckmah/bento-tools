@@ -41,3 +41,21 @@ IDC** (574,852 cells, 280 genes): the dataset our arrays come from (`Xenium_V1_F
 in our arrays). Its "Big 1", "Big 2", "With Addon" and ILC sections are in the corpus too. So CellWorld has seen this tissue, as
 segmented cells: phase 1 picks the starting point only, and the benefit of starting from CellWorld is tested on sections it never
 saw.
+
+## Results (4 Nov 2026)
+
+`results/` holds the small outputs: `vocab.json`, `panel_xenium_breast_idc.json`, `split.json` (block roles and the sha256 of
+`role.npy`, which is 68 MB and goes to the private HF repo) and `baselines.json`.
+
+| Baseline (probe-test) | Score |
+| --- | --- |
+| Subcellular comp20: nucleus vs cytoplasm | AUROC 0.824 |
+| Subcellular comp20: signed distance to nucleus boundary | Spearman 0.635, R² 0.35 |
+| Subcellular comp20: distance to cell boundary | Spearman 0.337, R² 0.11 |
+| Cell type (26 clusters), own counts | balanced accuracy 0.840 |
+| Niche composition (50 um), own counts | Pearson 0.728, R² 0.29 |
+| Niche composition (50 um), 50 um gene composition | Pearson 0.850, R² 0.47 |
+| Niche composition (50 um), CellCharter (12 niches) | Pearson 0.772, R² 0.33 |
+
+The plan's "CellCompass" niche baseline is squidpy's CellCharter flavor (`calculate_niche(flavor="cellcharter")`); squidpy has
+no method by that name. Baselines need about 13 min and under 15 GB of RAM on 4 CPUs.

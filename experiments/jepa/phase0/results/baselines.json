@@ -1,0 +1,40 @@
+{
+ "split_sha256": "74489cf45e8e648691607c20d2b9e8b70b0eac56d4f1f377d35a5fdd3d5cda44",
+ "subcellular_comp20": {
+  "nucleus_auroc": 0.8244639868419728,
+  "nucleus_signed_dist": {
+   "r2": 0.35166507959365845,
+   "spearman": 0.6352385085320301,
+   "n_test": 200000
+  },
+  "cell_boundary_dist": {
+   "r2": 0.10905373096466064,
+   "spearman": 0.3366817740496227,
+   "n_test": 200000
+  }
+ },
+ "cell_own_counts": {
+  "balanced_accuracy": 0.840471690643975,
+  "n_fit": 67359,
+  "n_test": 67606,
+  "n_classes": 26
+ },
+ "niche_50um_composition": {
+  "own_counts": {
+   "pearson_per_cell": 0.7283972501754761,
+   "r2": 0.2914077341556549
+  },
+  "window_composition_50um": {
+   "pearson_per_cell": 0.8504098653793335,
+   "r2": 0.47279372811317444
+  },
+  "cellcharter_niche_onehot": {
+   "pearson_per_cell": 0.7717339992523193,
+   "r2": 0.3286660313606262
+  },
+  "n_fit": 67359,
+  "n_test": 67606,
+  "cellcharter_k": 12
+ },
+ "seconds": 796
+}
