@@ -98,8 +98,8 @@ ax.text(2.5, 77, "harder generalization", fontsize=5.3, color=INK, va="bottom")
 letter(0.02, 2.42, "c"); title(0.22, 2.40, "Phases: each ends at a gate; a failed gate stops the next phase")
 ax = axin(0.1, 0.05, 7.05, 2.2); ax.set_xlim(0, 100); ax.set_ylim(0, 40); ax.axis("off")
 phases = [
-    ("0", "Data and\nvocabulary", "vocabulary, CellWorld\ncheckpoints, Atera\ntop genes; split,\nbaselines", [], "every gene → one token;\nno leakage (Atera\nunseen); split frozen"),
-    ("1", "Pilot on\nAtera", "1a frozen CellWorld\n1b init from CellWorld\n1c from scratch\nfalsification first", ["CellWorld"], "no collapse; 1b or 1c\nbeats 1a and composition\nat 2 of 3 scales"),
+    ("0", "Data and\nvocabulary", "vocabulary, CellWorld\ncheckpoints, leakage\ncheck; split,\nbaselines", [], "every gene → one token;\nleakage status known;\nsplit frozen"),
+    ("1", "Pilot on\nXenium breast", "1a frozen CellWorld\n1b init from CellWorld\n1c from scratch\nfalsification first", ["CellWorld"], "no collapse; 1b or 1c\nbeats 1a and composition\nat 2 of 3 scales"),
     ("2", "Panel\nrobustness", "on the 1b/1c winner:\npanel dropout\nthinning, count noise\npanel/platform tokens", ["Novae"], "≥80% retention on\n35%-overlap split;\n<5% IID cost"),
     ("3", "Multi-\nsection", "10–20 sections\n2–3 platforms\nrandom context size", ["TERRA", "CellWorld"], "beats composition\non rungs 1–2"),
     ("4", "Cross-platform\ntransfer", "zero-shot, then\nplatform token, then\nlast block or LoRA", ["TERRA"], "beats composition\non shared genes,\ncell and niche"),
