@@ -159,6 +159,17 @@ def embed_native(D, C, model, tok, device, core=600.0, halo=100.0, max_blocks=No
     return out, done
 
 
+def restrict_blocks(D, max_blocks):
+    """Smoke mode: only the first max_blocks probe blocks per role stay probe blocks; the rest count as train, so every probe
+    molecule and cell is embedded and scores are meaningful (on far fewer cells than the full run)."""
+    sp = D["split"]; br = np.asarray(sp["block_role"]).copy(); keep = set(probe_blocks(sp, (ek.FIT, ek.TEST), max_blocks))
+    drop = [b for b in np.flatnonzero(br >= ek.FIT) if b not in keep]; br[drop] = 0
+    o = np.asarray(sp["origin"]); B = sp["block_um"]; xy = D["xy"]
+    bi = ((xy[:, 1] - o[1]) // B).astype(np.int64) * sp["bnx"] + ((xy[:, 0] - o[0]) // B).astype(np.int64)
+    m = np.isin(bi, drop) & (D["role"] >= ek.FIT); D["role"] = D["role"].copy(); D["role"][m] = 0
+    D["split"] = dict(sp, block_role=br.tolist())
+
+
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument("data", nargs="?"); ap.add_argument("p0", nargs="?"); ap.add_argument("ckpt", nargs="?")
     ap.add_argument("--paths", help="paths.json from bento_jepa.hub prepare (data, phase0, ckpt)"); ap.add_argument("--out", required=True)
@@ -170,11 +181,18 @@ def main():
     dev = a.device or ("cuda" if torch.cuda.is_available() else "cpu"); t0 = time.time()
     log = lambda m: print(f"[{time.time()-t0:6.0f}s] {m}", flush=True)
     D = ek.load(a.data, a.p0); tok = panel_tokens(D["genes"]); model = load_cellworld(a.ckpt, dev)
+    if a.max_blocks: restrict_blocks(D, a.max_blocks); a.n_mol = min(a.n_mol, int(((D["role"] == ek.TEST) & (D["cell"] >= 0)).sum()) // 2)
     res = dict(ckpt=os.path.basename(os.path.dirname(a.ckpt)) or a.ckpt, device=dev, split_sha256=D["split"]["role_sha256"],
                max_blocks=a.max_blocks, baselines=json.loads(resources.files("bento_jepa").joinpath("assets/baselines.json").read_text()), runs={})
     save = lambda: json.dump(res, open(a.out, "w"), indent=1)
     picks = ek.mol_picks(D, a.n_mol); T = ek.mol_targets(D, picks); C = ek.cell_table(D); N = ek.niche_targets(C); grid = Grid(D["xy"])
     log(f"loaded: {len(D['xy']):,} molecules, {len(N['idx']):,} probe cells, model {res['ckpt']} on {dev}")
+    from scipy.spatial import cKDTree
+    from .baselines import comp
+    held = np.flatnonzero(D["role"] >= ek.FIT); tr = cKDTree(D["xy"][held])   # comp20 on the same molecules: the bar (also in smoke mode)
+    res["runs"]["comp20"] = dict(subcellular=ek.score_mol({r: np.log1p(comp(tr, D["gene"][held], D["xy"][p], 20, D["G"])) for r, p in picks.items()}, T))
+    res["runs"]["own_counts"] = dict(cell=ek.score_cell(ek.lognorm(C["Xc"]), C)); del tr; save()
+    log(f"comp20 / own counts: {json.dumps(res['runs']['comp20'])} {json.dumps(res['runs']['own_counts'])}")
     for P in a.patch:
         name = f"patch_counts_{P:g}um"; res["runs"][name] = dict(subcellular=ek.score_mol(patch_count_features(D, picks, P), T)); save(); log(f"{name}: {json.dumps(res['runs'][name])}")
         for sc in a.scaling:
