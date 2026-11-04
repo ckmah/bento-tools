@@ -59,7 +59,7 @@ def main():
     t0 = time.time(); L = lambda n: np.load(os.path.join(a.data, n + ".npy"), mmap_mode="r"); rng = np.random.default_rng(a.seed)
     role = np.load(os.path.join(a.p0, "role.npy")); split = json.load(open(os.path.join(a.p0, "split.json")))
     genes = json.load(open(os.path.join(a.data, "genes.json"))); G = len(genes)
-    xy = np.asarray(L("xyz")[:, :2]); gene = np.asarray(L("gene")).astype(np.int64); nuc = np.asarray(L("nuc")); cell = np.asarray(L("cell")).astype(np.int64)
+    xy = np.asarray(L("xyz")[:, :2]); gene = np.asarray(L("gene")).astype(np.int32); nuc = np.asarray(L("nuc")); cell = np.asarray(L("cell")).astype(np.int64)
     clust = np.asarray(L("clust")); res = dict(split_sha256=split["role_sha256"])
 
     # ---------------- subcellular: comp20 per molecule ----------------
@@ -74,7 +74,8 @@ def main():
         d = {r: boundary_dist(xy[pick[r]], cell[pick[r]], nuc[pick[r]], B[kind], signed) for r in pick}
         okf, okt = np.isfinite(d[FIT]), np.isfinite(d[TEST]); Xf, Xt = std_fit(X[FIT][okf], X[TEST][okt])
         sub[name] = dict(**reg_scores(d[TEST][okt], Ridge(alpha=1.0).fit(Xf, d[FIT][okf]).predict(Xt)), n_test=int(okt.sum()))
-    res["subcellular_comp20"] = sub; print("subcellular", json.dumps(sub), f"{time.time()-t0:.0f}s", flush=True)
+    res["subcellular_comp20"] = sub; json.dump(res, open(os.path.join(a.p0, "baselines.json"), "w"), indent=1); del X, tree
+    print("subcellular", json.dumps(sub), f"{time.time()-t0:.0f}s", flush=True)
 
     # ---------------- cells: own counts, cell type ----------------
     ok = cell >= 0; ids, inv = np.unique(cell[ok], return_inverse=True); nC = len(ids)
@@ -90,6 +91,7 @@ def main():
     f, t = (crole == FIT) & (lab >= 0), (crole == TEST) & (lab >= 0); ncls = int(lab.max()) + 1
     Xf, Xt = std_fit(Xn[f], Xn[t]); lr = LogisticRegression(max_iter=3000).fit(Xf, lab[f])
     res["cell_own_counts"] = dict(balanced_accuracy=float(balanced_accuracy_score(lab[t], lr.predict(Xt))), n_fit=int(f.sum()), n_test=int(t.sum()), n_classes=ncls)
+    json.dump(res, open(os.path.join(a.p0, "baselines.json"), "w"), indent=1); del Xc, Xf, Xt, lr
     print("cell", json.dumps(res["cell_own_counts"]), f"{time.time()-t0:.0f}s", flush=True)
 
     # ---------------- niche: 50 um cell-type composition ----------------
@@ -98,9 +100,10 @@ def main():
     for i, (c, n) in enumerate(zip(idx, nb)):
         n = [m for m in n if m != c and lab[m] >= 0]
         if n: Y[i] = np.bincount(lab[n], minlength=ncls) / len(n)
-    win = np.zeros((len(idx), G), np.float32); mt = cKDTree(xy[held]); W = mt.query_ball_point(cen[idx], r=25.0)
-    for i, w in enumerate(W):
-        if w: win[i] = np.bincount(gh[w], minlength=G)
+    win = np.zeros((len(idx), G), np.float32); mt = cKDTree(xy[held]); del xy, gene, nuc, clust, cell
+    for s0 in range(0, len(idx), 4000):   # chunked: a 50 um window holds ~2,000 molecules, so all windows at once is ~270M indices
+        for i, w in enumerate(mt.query_ball_point(cen[idx[s0:s0 + 4000]], r=25.0), s0):
+            if w: win[i] = np.bincount(gh[w], minlength=G)
     win = np.log1p(win / np.maximum(win.sum(1, keepdims=True), 1) * 1e4)
     import anndata as ad, squidpy as sq, scanpy as sc
     A = ad.AnnData(X=Xn.copy()); A.obsm["spatial"] = cen.astype(np.float64); sc.pp.pca(A, n_comps=30, random_state=a.seed)
