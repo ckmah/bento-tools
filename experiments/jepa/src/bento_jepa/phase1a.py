@@ -191,8 +191,10 @@ def main():
     from .baselines import comp
     held = np.flatnonzero(D["role"] >= ek.FIT); tr = cKDTree(D["xy"][held])   # comp20 on the same molecules: the bar (also in smoke mode)
     res["runs"]["comp20"] = dict(subcellular=ek.score_mol({r: np.log1p(comp(tr, D["gene"][held], D["xy"][p], 20, D["G"])) for r, p in picks.items()}, T))
-    res["runs"]["own_counts"] = dict(cell=ek.score_cell(ek.lognorm(C["Xc"]), C)); del tr; save()
-    log(f"comp20 / own counts: {json.dumps(res['runs']['comp20'])} {json.dumps(res['runs']['own_counts'])}")
+    win = ek.lognorm(ek.disc_counts(D["xy"][held], D["gene"][held], C["cen"][N["idx"]], 25.0, D["G"]))   # niche bar: 50 um composition
+    res["runs"]["own_counts"] = dict(cell=ek.score_cell(ek.lognorm(C["Xc"]), C)); res["runs"]["composition_50um"] = dict(niche=ek.score_niche(win, N))
+    del tr, win; save()
+    log(f"bars: {json.dumps({k: res['runs'][k] for k in ('comp20', 'own_counts', 'composition_50um')})}")
     for P in a.patch:
         name = f"patch_counts_{P:g}um"; res["runs"][name] = dict(subcellular=ek.score_mol(patch_count_features(D, picks, P), T)); save(); log(f"{name}: {json.dumps(res['runs'][name])}")
         for sc in a.scaling:
