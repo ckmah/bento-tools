@@ -5,7 +5,7 @@ block's molecule count), so every probe block is mostly tissue: 5% validation, 7
 blocks; every other non-empty block is train. Train molecules within GUARD um of a held-out block are marked guard (-1) and are
 never used for training or evaluation.
 
-usage: python split.py DATA_DIR OUT_DIR   (DATA_DIR holds xyz.npy from bento3_ptv3.data.build_from_10x)
+usage: python -m bento_jepa.split DATA_DIR OUT_DIR   (DATA_DIR holds xyz.npy from bento3_ptv3.data.build_from_10x)
 writes OUT_DIR/split.json (grid, block roles, counts) and OUT_DIR/role.npy (int8 per molecule, same order as xyz.npy:
 -1 guard, 0 train, 1 validation, 2 probe-fit, 3 probe-test)
 """

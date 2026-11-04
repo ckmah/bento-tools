@@ -6,10 +6,10 @@ HF repo `ckmah/bento3-ptv3-runs` under `data/xenium_breast_idc_v1`.
 
 | Step | Script | Output |
 | --- | --- | --- |
-| Gene vocabulary | `vocab.py HGNC_TSV CELLWORLD_VOCAB OUT xenium_breast_idc=genes.json` | `vocab.json` (CellWorld's 19,228 tokens; new genes appended), `panel_<name>.json` |
+| Gene vocabulary | `python -m bento_jepa.vocab HGNC_TSV CELLWORLD_VOCAB OUT xenium_breast_idc=genes.json` | `vocab.json` (CellWorld's 19,228 tokens; new genes appended), `panel_<name>.json` |
 | CellWorld checkpoints | see below | `small|base|large|huge/{model.pt,config.yaml}`, sha256 checked against the repo's `manifest.json` |
-| Split | `split.py DATA OUT` | `split.json`, `role.npy` (-1 guard, 0 train, 1 validation, 2 probe-fit, 3 probe-test) |
-| Baselines | `baselines.py DATA OUT` | `baselines.json` |
+| Split | `python -m bento_jepa.split DATA OUT` | `split.json`, `role.npy` (-1 guard, 0 train, 1 validation, 2 probe-fit, 3 probe-test) |
+| Baselines | `python -m bento_jepa.baselines DATA OUT` | `baselines.json` |
 
 Inputs from outside: the HGNC complete set
 (`https://storage.googleapis.com/public-download-files/hgnc/tsv/tsv/hgnc_complete_set.txt`) and CellWorld's

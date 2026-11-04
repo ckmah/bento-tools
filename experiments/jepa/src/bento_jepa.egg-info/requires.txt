@@ -1,0 +1,13 @@
+numpy>=1.26
+scipy>=1.11
+scikit-learn>=1.4
+omegaconf>=2.3
+huggingface-hub>=0.25
+
+[niche]
+squidpy>=1.8
+scanpy>=1.10
+anndata>=0.10
+
+[torch]
+torch>=2.5

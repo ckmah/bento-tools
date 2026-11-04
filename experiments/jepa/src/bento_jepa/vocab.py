@@ -4,7 +4,7 @@ Token ids start from CellWorld's 19,228-entry list (so its gene table can be loa
 panel gene is first mapped to its current HGNC-approved symbol (approved > previous > alias; an alias shared by several genes
 is not used), then to a token: CellWorld's own entry if it names the same gene, else a new token.
 
-usage: python vocab.py HGNC_TSV CELLWORLD_GENE_VOCAB_JSON OUT_DIR PANEL_NAME=GENES_JSON [PANEL_NAME=GENES_JSON ...]
+usage: python -m bento_jepa.vocab HGNC_TSV CELLWORLD_GENE_VOCAB_JSON OUT_DIR PANEL_NAME=GENES_JSON [PANEL_NAME=GENES_JSON ...]
 writes OUT_DIR/vocab.json and OUT_DIR/panel_<name>.json
 """
 import sys, json, csv, collections, os

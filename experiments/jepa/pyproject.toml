@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bento-jepa"
+version = "0.1.0"
+description = "bento 3.0: segmentation-free JEPA over molecules; phase 0 data prep and baselines, phase 1a frozen CellWorld on patches"
+requires-python = ">=3.10"
+license = { text = "BSD-2-Clause (bento-tools); vendored CellWorld model code MIT" }
+dependencies = ["numpy>=1.26", "scipy>=1.11", "scikit-learn>=1.4", "omegaconf>=2.3", "huggingface-hub>=0.25"]
+
+[project.optional-dependencies]
+torch = ["torch>=2.5"]
+niche = ["squidpy>=1.8", "scanpy>=1.10", "anndata>=0.10"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+bento_jepa = ["assets/*.json"]
+"bento_jepa.cellworld" = ["LICENSE"]

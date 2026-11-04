@@ -1,0 +1,1962 @@
+[
+{
+"panel_symbol": "ABCC11",
+"approved": "ABCC11",
+"hgnc_match": "approved",
+"token": 54,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ACTA2",
+"approved": "ACTA2",
+"hgnc_match": "approved",
+"token": 215,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ACTG2",
+"approved": "ACTG2",
+"hgnc_match": "approved",
+"token": 219,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ADAM9",
+"approved": "ADAM9",
+"hgnc_match": "approved",
+"token": 279,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ADGRE5",
+"approved": "ADGRE5",
+"hgnc_match": "approved",
+"token": 343,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ADH1B",
+"approved": "ADH1B",
+"hgnc_match": "approved",
+"token": 361,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ADIPOQ",
+"approved": "ADIPOQ",
+"hgnc_match": "approved",
+"token": 370,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "AGR3",
+"approved": "AGR3",
+"hgnc_match": "approved",
+"token": 455,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "AIF1",
+"approved": "AIF1",
+"hgnc_match": "approved",
+"token": 480,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "AKR1C1",
+"approved": "AKR1C1",
+"hgnc_match": "approved",
+"token": 531,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "AKR1C3",
+"approved": "AKR1C3",
+"hgnc_match": "approved",
+"token": 533,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ALDH1A3",
+"approved": "ALDH1A3",
+"hgnc_match": "approved",
+"token": 557,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ANGPT2",
+"approved": "ANGPT2",
+"hgnc_match": "approved",
+"token": 671,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ANKRD28",
+"approved": "ANKRD28",
+"hgnc_match": "approved",
+"token": 719,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ANKRD29",
+"approved": "ANKRD29",
+"hgnc_match": "approved",
+"token": 720,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ANKRD30A",
+"approved": "ANKRD30A",
+"hgnc_match": "approved",
+"token": 721,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "APOBEC3A",
+"approved": "APOBEC3A",
+"hgnc_match": "approved",
+"token": 869,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "APOBEC3B",
+"approved": "APOBEC3B",
+"hgnc_match": "approved",
+"token": 870,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "APOC1",
+"approved": "APOC1",
+"hgnc_match": "approved",
+"token": 878,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "AQP1",
+"approved": "AQP1",
+"hgnc_match": "approved",
+"token": 902,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "AQP3",
+"approved": "AQP3",
+"hgnc_match": "approved",
+"token": 907,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "AR",
+"approved": "AR",
+"hgnc_match": "approved",
+"token": 916,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "AVPR1A",
+"approved": "AVPR1A",
+"hgnc_match": "approved",
+"token": 1356,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "BACE2",
+"approved": "BACE2",
+"hgnc_match": "approved",
+"token": 1411,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "BANK1",
+"approved": "BANK1",
+"hgnc_match": "approved",
+"token": 1435,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "BASP1",
+"approved": "BASP1",
+"hgnc_match": "approved",
+"token": 1443,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "C15orf48",
+"approved": "COXFA4L3",
+"hgnc_match": "previous",
+"token": 1840,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "C1QA",
+"approved": "C1QA",
+"hgnc_match": "approved",
+"token": 1888,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "C1QC",
+"approved": "C1QC",
+"hgnc_match": "approved",
+"token": 1891,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "C2orf42",
+"approved": "C2orf42",
+"hgnc_match": "approved",
+"token": 1971,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "C5orf46",
+"approved": "C5orf46",
+"hgnc_match": "approved",
+"token": 2023,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "C6orf132",
+"approved": "C6orf132",
+"hgnc_match": "approved",
+"token": 2032,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CAV1",
+"approved": "CAV1",
+"hgnc_match": "approved",
+"token": 2280,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CAVIN2",
+"approved": "CAVIN2",
+"hgnc_match": "approved",
+"token": 2284,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CCDC6",
+"approved": "CCDC6",
+"hgnc_match": "approved",
+"token": 2423,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CCDC80",
+"approved": "CCDC80",
+"hgnc_match": "approved",
+"token": 2441,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CCL5",
+"approved": "CCL5",
+"hgnc_match": "approved",
+"token": 2495,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CCL8",
+"approved": "CCL8",
+"hgnc_match": "approved",
+"token": 2497,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CCND1",
+"approved": "CCND1",
+"hgnc_match": "approved",
+"token": 2513,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CCPG1",
+"approved": "CCPG1",
+"hgnc_match": "approved",
+"token": 2539,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CCR7",
+"approved": "CCR7",
+"hgnc_match": "approved",
+"token": 2547,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD14",
+"approved": "CD14",
+"hgnc_match": "approved",
+"token": 2568,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD163",
+"approved": "CD163",
+"hgnc_match": "approved",
+"token": 2571,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD19",
+"approved": "CD19",
+"hgnc_match": "approved",
+"token": 2577,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD247",
+"approved": "CD247",
+"hgnc_match": "approved",
+"token": 2593,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD27",
+"approved": "CD27",
+"hgnc_match": "approved",
+"token": 2595,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD274",
+"approved": "CD274",
+"hgnc_match": "approved",
+"token": 2596,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD3E",
+"approved": "CD3E",
+"hgnc_match": "approved",
+"token": 2617,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD3G",
+"approved": "CD3G",
+"hgnc_match": "approved",
+"token": 2619,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD4",
+"approved": "CD4",
+"hgnc_match": "approved",
+"token": 2620,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD68",
+"approved": "CD68",
+"hgnc_match": "approved",
+"token": 2638,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD69",
+"approved": "CD69",
+"hgnc_match": "approved",
+"token": 2639,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD79A",
+"approved": "CD79A",
+"hgnc_match": "approved",
+"token": 2644,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD79B",
+"approved": "CD79B",
+"hgnc_match": "approved",
+"token": 2645,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD80",
+"approved": "CD80",
+"hgnc_match": "approved",
+"token": 2646,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD83",
+"approved": "CD83",
+"hgnc_match": "approved",
+"token": 2649,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD86",
+"approved": "CD86",
+"hgnc_match": "approved",
+"token": 2651,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD8A",
+"approved": "CD8A",
+"hgnc_match": "approved",
+"token": 2652,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD9",
+"approved": "CD9",
+"hgnc_match": "approved",
+"token": 2655,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CD93",
+"approved": "CD93",
+"hgnc_match": "approved",
+"token": 2656,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CDC42EP1",
+"approved": "CDC42EP1",
+"hgnc_match": "approved",
+"token": 2684,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CDH1",
+"approved": "CDH1",
+"hgnc_match": "approved",
+"token": 2705,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CEACAM6",
+"approved": "CEACAM6",
+"hgnc_match": "approved",
+"token": 2809,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CEACAM8",
+"approved": "CEACAM8",
+"hgnc_match": "approved",
+"token": 2811,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CENPF",
+"approved": "CENPF",
+"hgnc_match": "approved",
+"token": 2844,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CLEC14A",
+"approved": "CLEC14A",
+"hgnc_match": "approved",
+"token": 3221,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CLEC9A",
+"approved": "CLEC9A",
+"hgnc_match": "approved",
+"token": 3245,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CLECL1",
+"approved": "CLECL1",
+"hgnc_match": "approved",
+"token": 3246,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CLIC6",
+"approved": "CLIC6",
+"hgnc_match": "approved",
+"token": 3255,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CPA3",
+"approved": "CPA3",
+"hgnc_match": "approved",
+"token": 3548,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CRISPLD2",
+"approved": "CRISPLD2",
+"hgnc_match": "approved",
+"token": 3652,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CTH",
+"approved": "CTH",
+"hgnc_match": "approved",
+"token": 3799,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CTLA4",
+"approved": "CTLA4",
+"hgnc_match": "approved",
+"token": 3802,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CTSG",
+"approved": "CTSG",
+"hgnc_match": "approved",
+"token": 3826,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CTTN",
+"approved": "CTTN",
+"hgnc_match": "approved",
+"token": 3835,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CX3CR1",
+"approved": "CX3CR1",
+"hgnc_match": "approved",
+"token": 3869,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CXCL12",
+"approved": "CXCL12",
+"hgnc_match": "approved",
+"token": 3874,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CXCL16",
+"approved": "CXCL16",
+"hgnc_match": "approved",
+"token": 3877,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CXCL5",
+"approved": "CXCL5",
+"hgnc_match": "approved",
+"token": 3881,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CXCR4",
+"approved": "CXCR4",
+"hgnc_match": "approved",
+"token": 3888,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "CYTIP",
+"approved": "CYTIP",
+"hgnc_match": "approved",
+"token": 3994,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "DAPK3",
+"approved": "DAPK3",
+"hgnc_match": "approved",
+"token": 4022,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "DMKN",
+"approved": "DMKN",
+"hgnc_match": "approved",
+"token": 4388,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "DNAAF1",
+"approved": "DNAAF1",
+"hgnc_match": "approved",
+"token": 4406,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "DNTTIP1",
+"approved": "DNTTIP1",
+"hgnc_match": "approved",
+"token": 4503,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "DPT",
+"approved": "DPT",
+"hgnc_match": "approved",
+"token": 4563,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "DSC2",
+"approved": "DSC2",
+"hgnc_match": "approved",
+"token": 4596,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "DSP",
+"approved": "DSP",
+"hgnc_match": "approved",
+"token": 4608,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "DST",
+"approved": "DST",
+"hgnc_match": "approved",
+"token": 4610,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "DUSP2",
+"approved": "DUSP2",
+"hgnc_match": "approved",
+"token": 4648,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "DUSP5",
+"approved": "DUSP5",
+"hgnc_match": "approved",
+"token": 4657,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "EGFL7",
+"approved": "EGFL7",
+"hgnc_match": "approved",
+"token": 4823,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "EGFR",
+"approved": "EGFR",
+"hgnc_match": "approved",
+"token": 4826,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "EIF4EBP1",
+"approved": "EIF4EBP1",
+"hgnc_match": "approved",
+"token": 4890,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ENAH",
+"approved": "ENAH",
+"hgnc_match": "approved",
+"token": 4987,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "EPCAM",
+"approved": "EPCAM",
+"hgnc_match": "approved",
+"token": 5047,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ERBB2",
+"approved": "ERBB2",
+"hgnc_match": "approved",
+"token": 5095,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ERN1",
+"approved": "ERN1",
+"hgnc_match": "approved",
+"token": 5137,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ESM1",
+"approved": "ESM1",
+"hgnc_match": "approved",
+"token": 5156,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ESR1",
+"approved": "ESR1",
+"hgnc_match": "approved",
+"token": 5160,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FAM107B",
+"approved": "FAM107B",
+"hgnc_match": "approved",
+"token": 5302,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FAM49A",
+"approved": "CYRIA",
+"hgnc_match": "previous",
+"token": 3983,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FASN",
+"approved": "FASN",
+"hgnc_match": "approved",
+"token": 5496,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FBLN1",
+"approved": "FBLN1",
+"hgnc_match": "approved",
+"token": 5515,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FCER1A",
+"approved": "FCER1A",
+"hgnc_match": "approved",
+"token": 5591,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FCER1G",
+"approved": "FCER1G",
+"hgnc_match": "approved",
+"token": 5592,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FCGR3A",
+"approved": "FCGR3A",
+"hgnc_match": "approved",
+"token": 5602,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FGL2",
+"approved": "FGL2",
+"hgnc_match": "approved",
+"token": 5695,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FLNB",
+"approved": "FLNB",
+"hgnc_match": "approved",
+"token": 5757,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FOXA1",
+"approved": "FOXA1",
+"hgnc_match": "approved",
+"token": 5815,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FOXC2",
+"approved": "FOXC2",
+"hgnc_match": "approved",
+"token": 5821,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FOXP3",
+"approved": "FOXP3",
+"hgnc_match": "approved",
+"token": 5861,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "FSTL3",
+"approved": "FSTL3",
+"hgnc_match": "approved",
+"token": 5921,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "GATA3",
+"approved": "GATA3",
+"hgnc_match": "approved",
+"token": 6116,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "GJB2",
+"approved": "GJB2",
+"hgnc_match": "approved",
+"token": 6282,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "GLIPR1",
+"approved": "GLIPR1",
+"hgnc_match": "approved",
+"token": 6317,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "GNLY",
+"approved": "GNLY",
+"hgnc_match": "approved",
+"token": 6415,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "GPR183",
+"approved": "GPR183",
+"hgnc_match": "approved",
+"token": 6558,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "GZMA",
+"approved": "GZMA",
+"hgnc_match": "approved",
+"token": 6798,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "GZMK",
+"approved": "GZMK",
+"hgnc_match": "approved",
+"token": 6801,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "HAVCR2",
+"approved": "HAVCR2",
+"hgnc_match": "approved",
+"token": 6941,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "HMGA1",
+"approved": "HMGA1",
+"hgnc_match": "approved",
+"token": 7138,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "HOOK2",
+"approved": "HOOK2",
+"hgnc_match": "approved",
+"token": 7202,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "HOXD8",
+"approved": "HOXD8",
+"hgnc_match": "approved",
+"token": 7245,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "HOXD9",
+"approved": "HOXD9",
+"hgnc_match": "approved",
+"token": 7246,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "HPX",
+"approved": "HPX",
+"hgnc_match": "approved",
+"token": 7271,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "IGF1",
+"approved": "IGF1",
+"hgnc_match": "approved",
+"token": 7521,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "IGSF6",
+"approved": "IGSF6",
+"hgnc_match": "approved",
+"token": 7578,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "IL2RA",
+"approved": "IL2RA",
+"hgnc_match": "approved",
+"token": 7652,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "IL2RG",
+"approved": "IL2RG",
+"hgnc_match": "approved",
+"token": 7654,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "IL3RA",
+"approved": "IL3RA",
+"hgnc_match": "approved",
+"token": 7666,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "IL7R",
+"approved": "IL7R",
+"hgnc_match": "approved",
+"token": 7676,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ITGAM",
+"approved": "ITGAM",
+"hgnc_match": "approved",
+"token": 7877,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ITGAX",
+"approved": "ITGAX",
+"hgnc_match": "approved",
+"token": 7879,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ITM2C",
+"approved": "ITM2C",
+"hgnc_match": "approved",
+"token": 7903,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "JUP",
+"approved": "JUP",
+"hgnc_match": "approved",
+"token": 7972,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KARS",
+"approved": "KARS1",
+"hgnc_match": "previous",
+"token": 7983,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KDR",
+"approved": "KDR",
+"hgnc_match": "approved",
+"token": 8154,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KIT",
+"approved": "KIT",
+"hgnc_match": "approved",
+"token": 8262,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KLF5",
+"approved": "KLF5",
+"hgnc_match": "approved",
+"token": 8284,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KLRB1",
+"approved": "KLRB1",
+"hgnc_match": "approved",
+"token": 8353,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KLRC1",
+"approved": "KLRC1",
+"hgnc_match": "approved",
+"token": 8354,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KLRD1",
+"approved": "KLRD1",
+"hgnc_match": "approved",
+"token": 8359,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KLRF1",
+"approved": "KLRF1",
+"hgnc_match": "approved",
+"token": 8360,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KRT14",
+"approved": "KRT14",
+"hgnc_match": "approved",
+"token": 8409,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KRT23",
+"approved": "KRT23",
+"hgnc_match": "approved",
+"token": 8418,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KRT5",
+"approved": "KRT5",
+"hgnc_match": "approved",
+"token": 8437,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KRT6B",
+"approved": "KRT6B",
+"hgnc_match": "approved",
+"token": 8439,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KRT7",
+"approved": "KRT7",
+"hgnc_match": "approved",
+"token": 8441,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "KRT8",
+"approved": "KRT8",
+"hgnc_match": "approved",
+"token": 8451,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LAG3",
+"approved": "LAG3",
+"hgnc_match": "approved",
+"token": 8579,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LARS",
+"approved": "LARS1",
+"hgnc_match": "previous",
+"token": 8620,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LDHB",
+"approved": "LDHB",
+"hgnc_match": "approved",
+"token": 8688,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LGALSL",
+"approved": "LGALSL",
+"hgnc_match": "approved",
+"token": 8736,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LILRA4",
+"approved": "LILRA4",
+"hgnc_match": "approved",
+"token": 8774,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LPL",
+"approved": "LPL",
+"hgnc_match": "approved",
+"token": 8908,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LPXN",
+"approved": "LPXN",
+"hgnc_match": "approved",
+"token": 8911,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LRRC15",
+"approved": "LRRC15",
+"hgnc_match": "approved",
+"token": 8957,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LTB",
+"approved": "LTB",
+"hgnc_match": "approved",
+"token": 9066,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LUM",
+"approved": "LUM",
+"hgnc_match": "approved",
+"token": 9084,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LY86",
+"approved": "LY86",
+"hgnc_match": "approved",
+"token": 9104,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LYPD3",
+"approved": "LYPD3",
+"hgnc_match": "approved",
+"token": 9115,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "LYZ",
+"approved": "LYZ",
+"hgnc_match": "approved",
+"token": 9136,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MAP3K8",
+"approved": "MAP3K8",
+"hgnc_match": "approved",
+"token": 9286,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MDM2",
+"approved": "MDM2",
+"hgnc_match": "approved",
+"token": 9463,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MKI67",
+"approved": "MKI67",
+"hgnc_match": "approved",
+"token": 9696,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MLPH",
+"approved": "MLPH",
+"hgnc_match": "approved",
+"token": 9723,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MMP1",
+"approved": "MMP1",
+"hgnc_match": "approved",
+"token": 9738,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MMP12",
+"approved": "MMP12",
+"hgnc_match": "approved",
+"token": 9741,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MMP2",
+"approved": "MMP2",
+"hgnc_match": "approved",
+"token": 9748,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MMRN2",
+"approved": "MMRN2",
+"hgnc_match": "approved",
+"token": 9763,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MNDA",
+"approved": "MNDA",
+"hgnc_match": "approved",
+"token": 9770,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MRC1",
+"approved": "MRC1",
+"hgnc_match": "approved",
+"token": 9853,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MS4A1",
+"approved": "MS4A1",
+"hgnc_match": "approved",
+"token": 9967,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MUC6",
+"approved": "MUC6",
+"hgnc_match": "approved",
+"token": 10118,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MYBPC1",
+"approved": "MYBPC1",
+"hgnc_match": "approved",
+"token": 10148,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MYH11",
+"approved": "MYH11",
+"hgnc_match": "approved",
+"token": 10169,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MYLK",
+"approved": "MYLK",
+"hgnc_match": "approved",
+"token": 10195,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MYO5B",
+"approved": "MYO5B",
+"hgnc_match": "approved",
+"token": 10220,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "MZB1",
+"approved": "MZB1",
+"hgnc_match": "approved",
+"token": 10250,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "NARS",
+"approved": "NARS1",
+"hgnc_match": "previous",
+"token": 10325,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "NCAM1",
+"approved": "NCAM1",
+"hgnc_match": "approved",
+"token": 10365,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "NDUFA4L2",
+"approved": "COXFA4L2",
+"hgnc_match": "previous",
+"token": 10436,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "NKG7",
+"approved": "NKG7",
+"hgnc_match": "approved",
+"token": 10640,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "NOSTRIN",
+"approved": "NOSTRIN",
+"hgnc_match": "approved",
+"token": 10757,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "OCIAD2",
+"approved": "OCIAD2",
+"hgnc_match": "approved",
+"token": 11076,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "OPRPN",
+"approved": "OPRPN",
+"hgnc_match": "approved",
+"token": 11152,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "OXTR",
+"approved": "OXTR",
+"hgnc_match": "approved",
+"token": 11636,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PCLAF",
+"approved": "PCLAF",
+"hgnc_match": "approved",
+"token": 11864,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PDCD1",
+"approved": "PDCD1",
+"hgnc_match": "approved",
+"token": 11898,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PDCD1LG2",
+"approved": "PDCD1LG2",
+"hgnc_match": "approved",
+"token": 11901,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PDE4A",
+"approved": "PDE4A",
+"hgnc_match": "approved",
+"token": 11921,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PDGFRA",
+"approved": "PDGFRA",
+"hgnc_match": "approved",
+"token": 11943,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PDGFRB",
+"approved": "PDGFRB",
+"hgnc_match": "approved",
+"token": 11944,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PDK4",
+"approved": "PDK4",
+"hgnc_match": "approved",
+"token": 11960,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PECAM1",
+"approved": "PECAM1",
+"hgnc_match": "approved",
+"token": 11998,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PELI1",
+"approved": "PELI1",
+"hgnc_match": "approved",
+"token": 12004,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PGR",
+"approved": "PGR",
+"hgnc_match": "approved",
+"token": 12094,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PIGR",
+"approved": "PIGR",
+"hgnc_match": "approved",
+"token": 12197,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PIM1",
+"approved": "PIM1",
+"hgnc_match": "approved",
+"token": 12227,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PLD4",
+"approved": "PLD4",
+"hgnc_match": "approved",
+"token": 12356,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "POSTN",
+"approved": "POSTN",
+"hgnc_match": "approved",
+"token": 12599,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PPARG",
+"approved": "PPARG",
+"hgnc_match": "approved",
+"token": 12638,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PRDM1",
+"approved": "PRDM1",
+"hgnc_match": "approved",
+"token": 12806,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PRF1",
+"approved": "PRF1",
+"hgnc_match": "approved",
+"token": 12837,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PTGDS",
+"approved": "PTGDS",
+"hgnc_match": "approved",
+"token": 13130,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PTN",
+"approved": "PTN",
+"hgnc_match": "approved",
+"token": 13159,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PTPRC",
+"approved": "PTPRC",
+"hgnc_match": "approved",
+"token": 13186,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "PTRHD1",
+"approved": "PTRHD1",
+"hgnc_match": "approved",
+"token": 13207,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "QARS",
+"approved": "QARS1",
+"hgnc_match": "override",
+"token": 13268,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "RAB30",
+"approved": "RAB30",
+"hgnc_match": "approved",
+"token": 13322,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "RAMP2",
+"approved": "RAMP2",
+"hgnc_match": "approved",
+"token": 13430,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "RAPGEF3",
+"approved": "RAPGEF3",
+"hgnc_match": "approved",
+"token": 13453,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "RHOH",
+"approved": "RHOH",
+"hgnc_match": "approved",
+"token": 13770,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "RORC",
+"approved": "RORC",
+"hgnc_match": "approved",
+"token": 13980,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "RTKN2",
+"approved": "RTKN2",
+"hgnc_match": "approved",
+"token": 14179,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "RUNX1",
+"approved": "RUNX1",
+"hgnc_match": "approved",
+"token": 14214,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "S100A14",
+"approved": "S100A14",
+"hgnc_match": "approved",
+"token": 14246,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "S100A4",
+"approved": "S100A4",
+"hgnc_match": "approved",
+"token": 14250,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "S100A8",
+"approved": "S100A8",
+"hgnc_match": "approved",
+"token": 14255,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SCD",
+"approved": "SCD",
+"hgnc_match": "approved",
+"token": 14368,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SCGB2A1",
+"approved": "SCGB2A1",
+"hgnc_match": "approved",
+"token": 14381,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SDC4",
+"approved": "SDC4",
+"hgnc_match": "approved",
+"token": 14450,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SEC11C",
+"approved": "SEC11C",
+"hgnc_match": "approved",
+"token": 14477,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SEC24A",
+"approved": "SEC24A",
+"hgnc_match": "approved",
+"token": 14493,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SELL",
+"approved": "SELL",
+"hgnc_match": "approved",
+"token": 14526,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SERHL2",
+"approved": "SERHL2",
+"hgnc_match": "approved",
+"token": 14580,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SERPINA3",
+"approved": "SERPINA3",
+"hgnc_match": "approved",
+"token": 14593,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SERPINB9",
+"approved": "SERPINB9",
+"hgnc_match": "approved",
+"token": 14611,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SFRP1",
+"approved": "SFRP1",
+"hgnc_match": "approved",
+"token": 14668,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SFRP4",
+"approved": "SFRP4",
+"hgnc_match": "approved",
+"token": 14670,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SH3YL1",
+"approved": "SH3YL1",
+"hgnc_match": "approved",
+"token": 14749,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SLAMF1",
+"approved": "SLAMF1",
+"hgnc_match": "approved",
+"token": 14873,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SLAMF7",
+"approved": "SLAMF7",
+"hgnc_match": "approved",
+"token": 14875,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SLC25A37",
+"approved": "SLC25A37",
+"hgnc_match": "approved",
+"token": 15008,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SLC5A6",
+"approved": "SLC5A6",
+"hgnc_match": "approved",
+"token": 15195,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SMAP2",
+"approved": "SMAP2",
+"hgnc_match": "approved",
+"token": 15306,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SMS",
+"approved": "SMS",
+"hgnc_match": "approved",
+"token": 15405,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SNAI1",
+"approved": "SNAI1",
+"hgnc_match": "approved",
+"token": 15418,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SOX17",
+"approved": "SOX17",
+"hgnc_match": "approved",
+"token": 15551,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SOX18",
+"approved": "SOX18",
+"hgnc_match": "approved",
+"token": 15552,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SPIB",
+"approved": "SPIB",
+"hgnc_match": "approved",
+"token": 15683,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SQLE",
+"approved": "SQLE",
+"hgnc_match": "approved",
+"token": 15786,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SRPK1",
+"approved": "SRPK1",
+"hgnc_match": "approved",
+"token": 15820,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SSTR2",
+"approved": "SSTR2",
+"hgnc_match": "approved",
+"token": 15872,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "STC1",
+"approved": "STC1",
+"hgnc_match": "approved",
+"token": 15951,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "SVIL",
+"approved": "SVIL",
+"hgnc_match": "approved",
+"token": 16119,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TAC1",
+"approved": "TAC1",
+"hgnc_match": "approved",
+"token": 16207,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TACSTD2",
+"approved": "TACSTD2",
+"hgnc_match": "approved",
+"token": 16217,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TCEAL7",
+"approved": "TCEAL7",
+"hgnc_match": "approved",
+"token": 16412,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TCF4",
+"approved": "TCF4",
+"hgnc_match": "approved",
+"token": 16428,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TCF7",
+"approved": "TCF7",
+"hgnc_match": "approved",
+"token": 16429,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TCIM",
+"approved": "TCIM",
+"hgnc_match": "approved",
+"token": 16436,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TCL1A",
+"approved": "TCL1A",
+"hgnc_match": "approved",
+"token": 16438,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TENT5C",
+"approved": "TENT5C",
+"hgnc_match": "approved",
+"token": 16505,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TFAP2A",
+"approved": "TFAP2A",
+"hgnc_match": "approved",
+"token": 16559,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "THAP2",
+"approved": "THAP2",
+"hgnc_match": "approved",
+"token": 16616,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TIFA",
+"approved": "TIFA",
+"hgnc_match": "approved",
+"token": 16669,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TIGIT",
+"approved": "TIGIT",
+"hgnc_match": "approved",
+"token": 16679,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TIMP4",
+"approved": "TIMP4",
+"hgnc_match": "approved",
+"token": 16701,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TMEM147",
+"approved": "TMEM147",
+"hgnc_match": "approved",
+"token": 16851,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TNFRSF17",
+"approved": "TNFRSF17",
+"hgnc_match": "approved",
+"token": 17111,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TOMM7",
+"approved": "TOMM7",
+"hgnc_match": "approved",
+"token": 17186,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TOP2A",
+"approved": "TOP2A",
+"hgnc_match": "approved",
+"token": 17192,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TPD52",
+"approved": "TPD52",
+"hgnc_match": "approved",
+"token": 17228,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TPSAB1",
+"approved": "TPSAB1",
+"hgnc_match": "approved",
+"token": 17257,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TRAC",
+"approved": "TRAC",
+"hgnc_match": "approved",
+"token": 17272,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TRAF4",
+"approved": "TRAF4",
+"hgnc_match": "approved",
+"token": 17280,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TRAPPC3",
+"approved": "TRAPPC3",
+"hgnc_match": "approved",
+"token": 17302,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TRIB1",
+"approved": "TRIB1",
+"hgnc_match": "approved",
+"token": 17340,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TUBA4A",
+"approved": "TUBA4A",
+"hgnc_match": "approved",
+"token": 17624,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "TUBB2B",
+"approved": "TUBB2B",
+"hgnc_match": "approved",
+"token": 17631,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "UCP1",
+"approved": "UCP1",
+"hgnc_match": "approved",
+"token": 17818,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "USP53",
+"approved": "USP53",
+"hgnc_match": "approved",
+"token": 17988,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "VOPP1",
+"approved": "VOPP1",
+"hgnc_match": "approved",
+"token": 18096,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "VWF",
+"approved": "VWF",
+"hgnc_match": "approved",
+"token": 18173,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "WARS",
+"approved": "WARS1",
+"hgnc_match": "previous",
+"token": 18178,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ZEB1",
+"approved": "ZEB1",
+"hgnc_match": "approved",
+"token": 18556,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ZEB2",
+"approved": "ZEB2",
+"hgnc_match": "approved",
+"token": 18557,
+"token_source": "cellworld"
+},
+{
+"panel_symbol": "ZNF562",
+"approved": "ZNF562",
+"hgnc_match": "approved",
+"token": 18927,
+"token_source": "cellworld"
+}
+]
